@@ -70,11 +70,13 @@ module.exports = async (req, res) => {
           ...contractRenewals.filter(i => i && i.id).map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ];
 
-        // Chạy các lệnh theo từng nhóm (batch) để tránh làm nghẽn kết nối hoặc vượt quá giới hạn serverless
-        const BATCH_SIZE = 20;
+        // Chạy các lệnh theo từng nhóm nhỏ và có độ trễ ngắn để tránh làm quá tải kết nối
+        const BATCH_SIZE = 5;
         for (let i = 0; i < operations.length; i += BATCH_SIZE) {
           const batch = operations.slice(i, i + BATCH_SIZE);
           await Promise.all(batch);
+          // Nghỉ một chút giữa các batch
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         return res.status(200).json({ success: true });

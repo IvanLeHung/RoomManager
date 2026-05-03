@@ -21,8 +21,7 @@ const initPrisma = () => {
   const pool = new Pool({ 
     connectionString,
     max: 1,
-    connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 30000
+    ssl: true
   });
   const adapter = new PrismaNeon(pool);
   return new PrismaClient({ adapter });
