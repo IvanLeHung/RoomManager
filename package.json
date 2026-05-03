@@ -7,8 +7,10 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@vercel/speed-insights": "^2.0.0",
+    "ws": "^8.18.0",
     "@vitejs/plugin-react": "latest",
     "dotenv": "^17.4.2",
     "prisma": "^7.8.0",
