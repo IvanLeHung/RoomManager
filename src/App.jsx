@@ -718,15 +718,20 @@ function AppMain() {
 
   // Initial Fetch from Cloud
   useEffect(() => {
-    fetch('/api/data')
-      .then(res => res.ok ? res.json() : Promise.reject())
-      .then(cloudData => {
-        if (cloudData && !cloudData.error && cloudData.rooms?.length > 0) {
+    async function initCloud() {
+      try {
+        const res = await fetch('/api/data');
+        if (!res.ok) throw new Error('Network response was not ok');
+        const cloudData = await res.json();
+        if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms) && cloudData.rooms.length > 0) {
           setData(cloudData);
           setLastSynced(new Date());
         }
-      })
-      .catch(err => console.log("Hệ thống đang chạy chế độ Local hoặc chưa cấu hình Database."));
+      } catch (err) {
+        console.log("Cloud mode inactive or not configured yet.");
+      }
+    }
+    initCloud();
   }, []);
 
   // Cloud Sync Logic (Debounced)
@@ -757,12 +762,12 @@ function AppMain() {
     return () => clearTimeout(timer);
   }, [data]);
   useEffect(() => {
-    let changed = false;
-    const newData = { ...data };
+    if (!data || !data.contracts || !data.memberships) return;
     
+    let changed = false;
     // 1. Ensure memberships sync with contract status
-    const updatedMemberships = (data.memberships || []).map(m => {
-      const contract = (data.contracts || []).find(c => c.id === m.contractId);
+    const updatedMemberships = data.memberships.map(m => {
+      const contract = data.contracts.find(c => c.id === m.contractId);
       if (!contract || contract.status === 'ended' || contract.status === 'cancelled') {
         if (m.status === 'active') {
           changed = true;
@@ -775,7 +780,7 @@ function AppMain() {
     if (changed) {
       setData(prev => ({ ...prev, memberships: updatedMemberships }));
     }
-  }, [data.contracts, data.memberships]);
+  }, [data?.contracts, data?.memberships]);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }, [data]);
   useEffect(() => { localStorage.setItem(BANK_KEY, JSON.stringify(bankInfo)); }, [bankInfo]);
@@ -1124,7 +1129,15 @@ function AppMain() {
           <button className={`nav-item ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>⚙️ Cài đặt</button>
         </aside>
         <div className="content content-fade">
-          {tab === 'dashboard' && <Dashboard data={data} onRoomClick={(id) => { setTab('rooms'); setQuery(id); }} onAction={handleAction} />}
+          {tab === 'dashboard' && (
+            <Dashboard 
+              data={data} 
+              onRoomClick={(id) => { setTab('rooms'); setQuery(id); }} 
+              onAction={handleAction} 
+              isSyncing={isSyncing} 
+              lastSynced={lastSynced} 
+            />
+          )}
           {tab === 'rooms' && <RoomsTab data={data} onAction={handleAction} onSelect={setSelectedRoom} query={query} />}
           {tab === 'tenants' && <TenantsTab tenants={filteredTenants} data={data} onAction={(type, t) => { if (type==='detail') setDetailTenant(t); else handleAction(type, t); }} query={query} setQuery={setQuery} setData={setData} />}
           {tab === 'receipts' && (
@@ -1492,7 +1505,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
   );
 }
 
-function Dashboard({ data, onRoomClick, onAction }) {
+function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
   const stats = getDashboardStats(data, INITIAL_MONTH);
   
   const recentRooms = [...data.rooms].slice(-5).reverse();
