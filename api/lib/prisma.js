@@ -14,7 +14,7 @@ const initPrisma = () => {
     throw new Error("DATABASE_URL is missing or empty");
   }
   
-  const pool = new Pool(connectionString); // Truyền trực tiếp chuỗi kết nối
+  const pool = new Pool({ connectionString }); // TRẢ LẠI ĐÚNG CÚ PHÁP OBJECT
   const adapter = new PrismaNeon(pool);
   return new PrismaClient({ adapter });
 };
