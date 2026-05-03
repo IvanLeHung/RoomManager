@@ -745,11 +745,13 @@ function AppMain() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'full_sync', payload: data })
       })
-      .then(res => {
+      .then(async res => {
         if (res.ok) {
           setLastSynced(new Date());
         } else {
-          console.error("Server trả về lỗi khi đồng bộ");
+          const errData = await res.json().catch(() => ({}));
+          console.error("Server trả về lỗi khi đồng bộ:", errData);
+          alert("Lỗi đồng bộ: " + (errData.details || errData.error || "Không xác định"));
         }
         setIsSyncing(false);
       })
