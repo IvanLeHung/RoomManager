@@ -55,7 +55,8 @@ module.exports = async (req, res) => {
         const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'mustCollect', 'mustRefund', 'createdAt'];
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
-        await prisma.$transaction([
+        // Sử dụng Promise.all thay cho $transaction để tránh lỗi "Unable to start a transaction" trên môi trường Serverless
+        const operations = [
           ...rooms.map(item => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...tenants.map(item => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...memberships.map(item => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
@@ -63,7 +64,9 @@ module.exports = async (req, res) => {
           ...receipts.map(item => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...moveOutReports.map(item => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...contractRenewals.map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
-        ]);
+        ];
+
+        await Promise.all(operations);
         
         return res.status(200).json({ success: true });
       }
