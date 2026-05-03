@@ -7,7 +7,12 @@ const ws = require('ws');
 neonConfig.webSocketConstructor = ws;
 
 const connectionString = process.env.DATABASE_URL;
-const pool = new Pool({ connectionString });
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined in environment variables");
+}
+
+const pool = new Pool({ connectionString: connectionString });
 const adapter = new PrismaNeon(pool);
 const prisma = new PrismaClient({ adapter });
 
