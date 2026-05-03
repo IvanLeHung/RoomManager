@@ -18,7 +18,12 @@ const initPrisma = () => {
     throw new Error("DATABASE_URL is missing or empty");
   }
   
-  const pool = new Pool({ connectionString });
+  const pool = new Pool({ 
+    connectionString,
+    max: 1,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000
+  });
   const adapter = new PrismaNeon(pool);
   return new PrismaClient({ adapter });
 };

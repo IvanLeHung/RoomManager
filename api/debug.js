@@ -16,5 +16,9 @@ module.exports = async (req, res) => {
       dbUrlStart: dbUrl.substring(0, 15) + "...",
       message: error.message
     });
+  } finally {
+    try {
+      await prisma.$disconnect();
+    } catch (e) {}
   }
 };

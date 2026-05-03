@@ -29,6 +29,10 @@ module.exports = async (req, res) => {
         details: error.message,
         stack: error.stack 
       });
+    } finally {
+      try {
+        await prisma.$disconnect();
+      } catch (e) {}
     }
   }
 
@@ -66,7 +70,12 @@ module.exports = async (req, res) => {
           ...contractRenewals.filter(i => i && i.id).map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ];
 
-        await Promise.all(operations);
+        // Chạy các lệnh theo từng nhóm (batch) để tránh làm nghẽn kết nối hoặc vượt quá giới hạn serverless
+        const BATCH_SIZE = 20;
+        for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+          const batch = operations.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch);
+        }
         
         return res.status(200).json({ success: true });
       }
@@ -79,6 +88,13 @@ module.exports = async (req, res) => {
         details: error.message,
         stack: error.stack 
       });
+    } finally {
+      // Đảm bảo đóng kết nối để tránh rò rỉ (leak) trong môi trường serverless
+      try {
+        await prisma.$disconnect();
+      } catch (e) {
+        console.error("Lỗi khi đóng prisma:", e);
+      }
     }
   }
 
