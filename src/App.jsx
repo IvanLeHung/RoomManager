@@ -748,12 +748,15 @@ function AppMain() {
       .then(res => {
         if (res.ok) {
           setLastSynced(new Date());
+        } else {
+          console.error("Server trả về lỗi khi đồng bộ");
         }
         setIsSyncing(false);
       })
       .catch(err => {
         setIsSyncing(false);
-        console.error("Lỗi đồng bộ Cloud:", err);
+        console.error("Lỗi kết nối Server:", err);
+        // alert("Không thể lưu dữ liệu lên Cloud. Vui lòng kiểm tra cấu hình Database trên Vercel.");
       });
       
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
