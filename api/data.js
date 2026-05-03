@@ -37,16 +37,32 @@ module.exports = async (req, res) => {
     
     try {
       if (type === 'full_sync') {
-        const { rooms, tenants, memberships, contracts, receipts, moveOutReports, contractRenewals } = payload;
+        const { rooms = [], tenants = [], memberships = [], contracts = [], receipts = [], moveOutReports = [], contractRenewals = [] } = payload;
+
+        const pick = (obj, keys) => {
+          const res = {};
+          keys.forEach(k => {
+            if (obj[k] !== undefined) res[k] = obj[k];
+          });
+          return res;
+        };
+
+        const roomKeys = ['id', 'rent', 'deposit', 'cleaning', 'elevator', 'laundry', 'internet', 'electricPrice', 'waterPrice', 'initialElectric', 'initialWater', 'note', 'createdAt'];
+        const tenantKeys = ['id', 'name', 'phone', 'cccd', 'cccdDate', 'cccdPlace', 'address', 'licensePlate', 'note', 'createdAt'];
+        const membershipKeys = ['id', 'contractId', 'tenantId', 'roomId', 'role', 'status', 'joinedDate', 'leftDate', 'createdAt'];
+        const contractKeys = ['id', 'roomId', 'startDate', 'endDate', 'signedDate', 'deposit', 'rent', 'status', 'noticeDate', 'expectedMoveOutDate', 'actualEndDate', 'endedAt', 'note', 'createdAt'];
+        const receiptKeys = ['id', 'type', 'roomId', 'contractId', 'month', 'rent', 'fixedServices', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'other', 'total', 'paidAmount', 'debt', 'status', 'note', 'createdAt', 'savedAt'];
+        const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'mustCollect', 'mustRefund', 'createdAt'];
+        const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
         await prisma.$transaction([
-          ...rooms.map(item => prisma.room.upsert({ where: { id: item.id }, update: item, create: item })),
-          ...tenants.map(item => prisma.tenant.upsert({ where: { id: item.id }, update: item, create: item })),
-          ...memberships.map(item => prisma.membership.upsert({ where: { id: item.id }, update: item, create: item })),
-          ...contracts.map(item => prisma.contract.upsert({ where: { id: item.id }, update: item, create: item })),
-          ...receipts.map(item => prisma.receipt.upsert({ where: { id: item.id }, update: item, create: item })),
-          ...moveOutReports.map(item => prisma.moveOutReport.upsert({ where: { id: item.id }, update: item, create: item })),
-          ...contractRenewals.map(item => prisma.contractRenewal.upsert({ where: { id: item.id }, update: item, create: item })),
+          ...rooms.map(item => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...tenants.map(item => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...memberships.map(item => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contracts.map(item => { const data = pick(item, contractKeys); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...receipts.map(item => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...moveOutReports.map(item => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contractRenewals.map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ]);
         
         return res.status(200).json({ success: true });
