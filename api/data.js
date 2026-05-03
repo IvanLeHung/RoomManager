@@ -57,13 +57,13 @@ module.exports = async (req, res) => {
 
         // Sử dụng Promise.all thay cho $transaction để tránh lỗi "Unable to start a transaction" trên môi trường Serverless
         const operations = [
-          ...rooms.map(item => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...tenants.map(item => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...memberships.map(item => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...contracts.map(item => { const data = pick(item, contractKeys); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...receipts.map(item => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...moveOutReports.map(item => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...contractRenewals.map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...rooms.filter(i => i && i.id).map(item => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...tenants.filter(i => i && i.id).map(item => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...memberships.filter(i => i && i.id).map(item => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contracts.filter(i => i && i.id).map(item => { const data = pick(item, contractKeys); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...receipts.filter(i => i && i.id).map(item => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...moveOutReports.filter(i => i && i.id).map(item => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contractRenewals.filter(i => i && i.id).map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ];
 
         await Promise.all(operations);
