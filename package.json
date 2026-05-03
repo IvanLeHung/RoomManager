@@ -2,7 +2,8 @@
   "scripts": {
     "dev": "vite",
     "build": "prisma generate && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
