@@ -797,6 +797,7 @@ function AppMain() {
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [addingSupplier, setAddingSupplier] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
   const fileInputRef = React.useRef(null);
 
@@ -820,6 +821,8 @@ function AppMain() {
         }
       } catch (err) {
         console.log("Cloud mode inactive or not configured yet.");
+      } finally {
+        setHasLoadedCloud(true);
       }
     }
     initCloud();
@@ -828,7 +831,7 @@ function AppMain() {
   // Cloud Sync Logic (Debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!data || data === DEFAULT_DATA) return;
+      if (!data || data === DEFAULT_DATA || !hasLoadedCloud) return;
       
       setIsSyncing(true);
       fetch('/api/data', {
