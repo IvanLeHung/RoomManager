@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Room {
+  id              String   @id
+  rent            Int
+  deposit         Int
+  cleaning        Int
+  elevator        Int
+  laundry         Int
+  internet        Int
+  electricPrice   Int
+  waterPrice      Int
+  initialElectric Int?
+  initialWater    Int?
+  note            String?
+  createdAt       DateTime @default(now())
+}
+
+model Tenant {
+  id           String   @id
+  name         String
+  phone        String?
+  cccd         String?
+  cccdDate     String?
+  cccdPlace    String?
+  address      String?
+  licensePlate String?
+  note         String?
+  createdAt    DateTime @default(now())
+}
+
+model Membership {
+  id         String   @id
+  contractId String
+  tenantId   String
+  roomId     String
+  role       String   // 'primary' | 'member'
+  status     String   // 'active' | 'ended'
+  joinedDate String?
+  leftDate   String?
+  createdAt  DateTime @default(now())
+}
+
+model Contract {
+  id                  String   @id
+  roomId              String
+  startDate           String
+  endDate             String
+  signedDate          String?
+  deposit             Int
+  rent                Int
+  status              String   // 'active' | 'notice' | 'moving_out' | 'ended'
+  noticeDate          String?
+  expectedMoveOutDate String?
+  actualEndDate       String?
+  endedAt             String?
+  note                String?
+  createdAt           DateTime @default(now())
+}
+
+model Receipt {
+  id             String   @id
+  type           String   // 'monthly' | 'move_out_settlement'
+  roomId         String
+  contractId     String
+  month          String
+  rent           Int
+  fixedServices  Int
+  electricOld    Float
+  electricNew    Float
+  electricUsed   Float
+  electricAmount Float
+  waterOld       Float
+  waterNew       Float
+  waterUsed      Float
+  waterAmount    Float
+  other          Int
+  total          Int
+  paidAmount     Int
+  debt           Int
+  status         String
+  note           String?
+  createdAt      String
+  savedAt        String?
+}
+
+model MoveOutReport {
+  id             String   @id
+  contractId     String
+  roomId         String
+  actualEndDate  String
+  electricOld    Float
+  electricNew    Float
+  electricUsed   Float
+  electricAmount Float
+  waterOld       Float
+  waterNew       Float
+  waterUsed      Float
+  waterAmount    Float
+  depositUsed    Int
+  unpaidRent     Int
+  cleaningFee    Int
+  damageFee      Int
+  mustCollect    Int
+  mustRefund     Int
+  createdAt      DateTime @default(now())
+}
+
+model ContractRenewal {
+  id           String   @id
+  contractId   String
+  roomId       String
+  signedDate   String
+  oldEndDate   String
+  newStartDate String
+  newEndDate   String
+  oldRent      Int
+  newRent      Int
+  oldDeposit   Int
+  newDeposit   Int
+  note         String?
+  createdAt    String
+}
+
+model Supplier {
+  id          String   @id
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  bankName    String?
+  bankAccount String?
+  bankOwner   String?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ExpenseCategory {
+  id          String   @id
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ExpensePayment {
+  id            String   @id
+  supplierId    String?
+  categoryId    String
+  month         String
+  paymentDate   String
+  title         String
+  description   String?
+  totalAmount   Int
+  paidAmount    Int
+  status        String   // 'unpaid' | 'partial' | 'paid'
+  paymentMethod String   // 'cash' | 'transfer' | 'qr'
+  attachmentUrl String?
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+

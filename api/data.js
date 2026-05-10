@@ -1,0 +1,117 @@
+const prisma = require('./lib/prisma');
+
+module.exports = async (req, res) => {
+  if (req.method === 'GET') {
+    try {
+      const [rooms, tenants, memberships, contracts, receipts, moveOutReports, contractRenewals, suppliers, expenseCategories, expensePayments] = await Promise.all([
+        prisma.room.findMany(),
+        prisma.tenant.findMany(),
+        prisma.membership.findMany(),
+        prisma.contract.findMany(),
+        prisma.receipt.findMany(),
+        prisma.moveOutReport.findMany(),
+        prisma.contractRenewal.findMany(),
+        prisma.supplier.findMany(),
+        prisma.expenseCategory.findMany(),
+        prisma.expensePayment.findMany(),
+      ]);
+
+      return res.status(200).json({
+        rooms,
+        tenants,
+        memberships,
+        contracts,
+        receipts,
+        moveOutReports,
+        contractRenewals,
+        suppliers,
+        expenseCategories,
+        expensePayments,
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ 
+        error: 'Failed to fetch data', 
+        details: error.message,
+        stack: error.stack 
+      });
+    } finally {
+      try {
+        await prisma.$disconnect();
+      } catch (e) {}
+    }
+  }
+
+  if (req.method === 'POST') {
+    const { type, payload } = req.body;
+    
+    try {
+      if (type === 'full_sync') {
+        const { rooms = [], tenants = [], memberships = [], contracts = [], receipts = [], moveOutReports = [], contractRenewals = [] } = payload;
+
+        const pick = (obj, keys) => {
+          const res = {};
+          keys.forEach(k => {
+            if (obj[k] !== undefined) res[k] = obj[k];
+          });
+          return res;
+        };
+
+        const roomKeys = ['id', 'rent', 'deposit', 'cleaning', 'elevator', 'laundry', 'internet', 'electricPrice', 'waterPrice', 'initialElectric', 'initialWater', 'note', 'createdAt'];
+        const tenantKeys = ['id', 'name', 'phone', 'cccd', 'cccdDate', 'cccdPlace', 'address', 'licensePlate', 'note', 'createdAt'];
+        const membershipKeys = ['id', 'contractId', 'tenantId', 'roomId', 'role', 'status', 'joinedDate', 'leftDate', 'createdAt'];
+        const contractKeys = ['id', 'roomId', 'startDate', 'endDate', 'signedDate', 'deposit', 'rent', 'status', 'noticeDate', 'expectedMoveOutDate', 'actualEndDate', 'endedAt', 'note', 'createdAt'];
+        const receiptKeys = ['id', 'type', 'roomId', 'contractId', 'month', 'rent', 'fixedServices', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'other', 'total', 'paidAmount', 'debt', 'status', 'note', 'createdAt', 'savedAt'];
+        const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'mustCollect', 'mustRefund', 'createdAt'];
+        const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
+
+        const supplierKeys = ['id', 'name', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
+        const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
+        const expenseKeys = ['id', 'supplierId', 'categoryId', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
+
+        // Sử dụng Promise.all thay cho $transaction để tránh lỗi "Unable to start a transaction" trên môi trường Serverless
+        const operations = [
+          ...rooms.filter(i => i && i.id).map(item => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...tenants.filter(i => i && i.id).map(item => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...memberships.filter(i => i && i.id).map(item => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contracts.filter(i => i && i.id).map(item => { const data = pick(item, contractKeys); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...receipts.filter(i => i && i.id).map(item => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...moveOutReports.filter(i => i && i.id).map(item => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contractRenewals.filter(i => i && i.id).map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.suppliers || []).filter(i => i && i.id).map(item => { const data = pick(item, supplierKeys); return prisma.supplier.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.expenseCategories || []).filter(i => i && i.id).map(item => { const data = pick(item, categoryKeys); return prisma.expenseCategory.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.expensePayments || []).filter(i => i && i.id).map(item => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
+        ];
+
+        // Chạy các lệnh theo từng nhóm nhỏ và có độ trễ ngắn để tránh làm quá tải kết nối
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+          const batch = operations.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch);
+          // Nghỉ một chút giữa các batch
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        return res.status(200).json({ success: true });
+      }
+
+      return res.status(400).json({ error: 'Invalid sync type' });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ 
+        error: 'Failed to save data', 
+        details: error.message,
+        stack: error.stack 
+      });
+    } finally {
+      // Đảm bảo đóng kết nối để tránh rò rỉ (leak) trong môi trường serverless
+      try {
+        await prisma.$disconnect();
+      } catch (e) {
+        console.error("Lỗi khi đóng prisma:", e);
+      }
+    }
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+};
