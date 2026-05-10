@@ -764,7 +764,12 @@ function AppMain() {
     return {
       ...DEFAULT_DATA,
       ...loaded,
-      suppliers: (loaded.suppliers && loaded.suppliers.length > 0) ? loaded.suppliers : DEFAULT_DATA.suppliers,
+      suppliers: (loaded.suppliers && loaded.suppliers.length > 20) 
+        ? loaded.suppliers.map(s => {
+            const def = DEFAULT_DATA.suppliers.find(d => d.id === s.id);
+            return def ? { ...def, ...s, defaultCategory: s.defaultCategory || def.defaultCategory } : s;
+          })
+        : DEFAULT_DATA.suppliers,
       expenseCategories: loaded.expenseCategories || DEFAULT_DATA.expenseCategories,
       expensePayments: loaded.expensePayments || [],
       contractRenewals: loaded.contractRenewals || [],
@@ -3811,12 +3816,35 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
     note: ''
   });
 
+  // Tự sinh mã phiếu chi
+  useEffect(() => {
+    if (!expense && !form.expenseCode) {
+      const [m, y] = (form.month || INITIAL_MONTH).split('/');
+      const prefix = `PC-${y}${m}`;
+      const count = (data.expensePayments || []).filter(e => e.expenseCode && e.expenseCode.startsWith(prefix)).length + 1;
+      const code = `${prefix}-${String(count).padStart(3, '0')}`;
+      setForm(prev => ({ ...prev, expenseCode: code }));
+    }
+  }, [form.month, expense, data.expensePayments]);
+
   useEffect(() => {
     let status = 'unpaid';
     if (form.paidAmount >= form.totalAmount && form.totalAmount > 0) status = 'paid';
     else if (form.paidAmount > 0) status = 'partial';
     setForm(prev => ({ ...prev, status }));
   }, [form.totalAmount, form.paidAmount]);
+
+  // Tự chọn loại chi phí theo nhà cung cấp
+  const handleSupplierChange = (val) => {
+    const sup = (data.suppliers || []).find(s => s.id === val);
+    const updates = { supplierId: val };
+    if (sup && sup.defaultCategory) {
+      updates.categoryId = sup.defaultCategory;
+    }
+    // Nếu chọn vãng lai, xóa tên người nhận cũ
+    if (!val) updates.recipientName = '';
+    setForm(prev => ({ ...prev, ...updates }));
+  };
 
   return (
     <div className="modal">
@@ -3827,12 +3855,22 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
         </div>
         <div className="detail-body-v2 stack" style={{ gap: '20px' }}>
           <div className="form-grid-v2">
-            <label>Nhà cung cấp
-              <select value={form.supplierId} onChange={e => setForm({...form, supplierId: e.target.value})}>
+            <label>Mã phiếu chi (Tự sinh)
+              <input type="text" value={form.expenseCode || ''} readOnly style={{ background: '#f8fafc', fontWeight: 'bold' }} />
+            </label>
+            <label>Nhà CC / Nhà cung cấp
+              <select value={form.supplierId} onChange={e => handleSupplierChange(e.target.value)}>
                 <option value="">-- Vãng lai / Không có trong danh sách --</option>
-                {data.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {(data.suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
+          </div>
+          
+          {!form.supplierId && (
+            <label>Tên người nhận / Đơn vị nhận tiền (Bắt buộc khi vãng lai)
+              <input type="text" value={form.recipientName || ''} onChange={e => setForm({...form, recipientName: e.target.value})} placeholder="Nhập tên người nhận tiền..." />
+            </label>
+          )}
             <label>Loại chi phí
               <select value={form.categoryId} onChange={e => setForm({...form, categoryId: e.target.value})}>
                 {data.expenseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -3879,6 +3917,7 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
             <button className="secondary-btn" onClick={onClose}>Hủy</button>
             <button className="primary-btn" onClick={() => {
               if (!form.title) return alert('Vui lòng nhập nội dung chi.');
+              if (!form.supplierId && !form.recipientName) return alert('Vui lòng nhập tên người nhận khi chọn Vãng lai.');
               onSave(form);
             }}>Lưu phiếu chi</button>
           </div>
