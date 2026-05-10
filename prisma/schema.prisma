@@ -130,8 +130,10 @@ model ContractRenewal {
 }
 
 model Supplier {
-  id          String   @id
-  name        String
+  id              String   @id
+  name            String
+  group           String?
+  defaultCategory String?
   phone       String?
   email       String?
   address     String?
