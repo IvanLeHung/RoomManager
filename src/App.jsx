@@ -42,7 +42,16 @@ const DEFAULT_DATA = {
   receipts: [],
   moveOutReports: [],
   contractRenewals: [],
-  suppliers: [],
+  suppliers: [
+    { id: 'sup_evn', name: 'Điện lực (EVN)', phone: '19001006', bankName: 'VietinBank', bankAccount: '112000000012', bankOwner: 'TAP DOAN DIEN LUC VIET NAM', note: 'Thanh toán tiền điện hàng tháng' },
+    { id: 'sup_water', name: 'Công ty Cấp nước', phone: '19001010', bankName: 'Agribank', bankAccount: '150000000034', bankOwner: 'CONG TY CAP NUOC', note: 'Thanh toán tiền nước' },
+    { id: 'sup_vnpt', name: 'VNPT (Internet/TV)', phone: '18001166', bankName: 'BIDV', bankAccount: '120000000056', bankOwner: 'VNPT GROUP', note: 'Cước mạng và truyền hình' },
+    { id: 'sup_fpt', name: 'FPT Telecom', phone: '19006600', bankName: 'TPBank', bankAccount: '00000000078', bankOwner: 'FPT TELECOM', note: 'Dịch vụ Internet dự phòng' },
+    { id: 'sup_viettel', name: 'Viettel Telecom', phone: '18008119', bankName: 'MBBank', bankAccount: '000000000099', bankOwner: 'VIETTEL TELECOM', note: 'Cước điện thoại/Internet' },
+    { id: 'sup_clean', name: 'Dịch vụ Vệ sinh Xanh', phone: '0901234567', bankName: 'Techcombank', bankAccount: '190012345678', bankOwner: 'NGUYEN VAN A', note: 'Vệ sinh định kỳ hàng tuần' },
+    { id: 'sup_repair', name: 'Đội bảo trì Sửa chữa', phone: '0988776655', bankName: 'Vietcombank', bankAccount: '001100223344', bankOwner: 'TRAN VAN B', note: 'Sửa chữa điện nước, thiết bị' },
+    { id: 'sup_waste', name: 'Thu gom rác thải', phone: '0243123456', bankName: 'Agribank', bankAccount: '130099887766', bankOwner: 'CONG TY MOI TRUONG', note: 'Phí rác định kỳ' },
+  ],
   expenseCategories: [
     { id: 'cat_elec', name: 'Điện' },
     { id: 'cat_water', name: 'Nước' },
@@ -713,7 +722,7 @@ function AppMain() {
     return {
       ...DEFAULT_DATA,
       ...loaded,
-      suppliers: loaded.suppliers || [],
+      suppliers: (loaded.suppliers && loaded.suppliers.length > 0) ? loaded.suppliers : DEFAULT_DATA.suppliers,
       expenseCategories: loaded.expenseCategories || DEFAULT_DATA.expenseCategories,
       expensePayments: loaded.expensePayments || [],
       contractRenewals: loaded.contractRenewals || [],
