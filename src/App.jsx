@@ -42,6 +42,7 @@ const DEFAULT_DATA = {
   receipts: [],
   moveOutReports: [],
   contractRenewals: [],
+  suppliers: [
     { id: 'sup_evn', name: 'Điện lực', group: 'Điện', defaultCategory: 'cat_elec' },
     { id: 'sup_water', name: 'Cấp nước', group: 'Nước', defaultCategory: 'cat_water' },
     { id: 'sup_vnpt', name: 'VNPT', group: 'Internet', defaultCategory: 'cat_internet' },
