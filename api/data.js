@@ -83,14 +83,19 @@ module.exports = async (req, res) => {
           ...(payload.expensePayments || []).filter(i => i && i.id).map(item => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ];
 
-        // Chạy các lệnh theo từng nhóm để tối ưu hiệu suất và tránh timeout
-        const BATCH_SIZE = 15;
-        for (let i = 0; i < operations.length; i += BATCH_SIZE) {
-          const batch = operations.slice(i, i + BATCH_SIZE);
-          await Promise.all(batch);
-          // Giảm độ trễ để chạy nhanh hơn trên môi trường Serverless
-          if (i + BATCH_SIZE < operations.length) {
-            await new Promise(resolve => setTimeout(resolve, 10));
+        // Chạy các lệnh theo thứ tự tuần tự (Serial) để đảm bảo ổn định nhất trên môi trường Serverless với giới hạn kết nối
+        for (const op of operations) {
+          try {
+            await op;
+          } catch (e) {
+            console.error("Lỗi khi thực hiện operation:", e.message);
+            // Thử lại một lần nếu lỗi kết nối tạm thời
+            if (e.message.includes('terminated') || e.message.includes('connection')) {
+              await new Promise(resolve => setTimeout(resolve, 50));
+              await op;
+            } else {
+              throw e;
+            }
           }
         }
         
