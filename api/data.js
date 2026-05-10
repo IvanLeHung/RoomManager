@@ -83,16 +83,19 @@ module.exports = async (req, res) => {
           ...(payload.expensePayments || []).filter(i => i && i.id).map(item => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ];
 
-        // Chạy các lệnh theo thứ tự tuần tự (Serial) để đảm bảo ổn định nhất trên môi trường Serverless với giới hạn kết nối
-        for (const op of operations) {
+        // Chạy các lệnh theo nhóm (Batch) với kích thước lớn hơn để đảm bảo hoàn thành trong giới hạn 10s của Vercel
+        const BATCH_SIZE = 40;
+        for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+          const batch = operations.slice(i, i + BATCH_SIZE);
           try {
-            await op;
+            await Promise.all(batch);
           } catch (e) {
-            console.error("Lỗi khi thực hiện operation:", e.message);
-            // Thử lại một lần nếu lỗi kết nối tạm thời
-            if (e.message.includes('terminated') || e.message.includes('connection')) {
-              await new Promise(resolve => setTimeout(resolve, 50));
-              await op;
+            console.error(`Lỗi ở batch ${i}:`, e.message);
+            // Thử lại từng cái một nếu batch lớn thất bại (để cô lập lỗi)
+            if (e.message.includes('terminated') || e.message.includes('timeout')) {
+              for (const op of batch) {
+                try { await op; } catch (inner) { console.error("Lỗi con:", inner.message); }
+              }
             } else {
               throw e;
             }
