@@ -708,7 +708,17 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
 }
 
 function AppMain() {
-  const [data, setData] = useState(() => safeRead(STORAGE_KEY, DEFAULT_DATA));
+  const [data, setData] = useState(() => {
+    const loaded = safeRead(STORAGE_KEY, DEFAULT_DATA);
+    return {
+      ...DEFAULT_DATA,
+      ...loaded,
+      suppliers: loaded.suppliers || [],
+      expenseCategories: loaded.expenseCategories || DEFAULT_DATA.expenseCategories,
+      expensePayments: loaded.expensePayments || [],
+      contractRenewals: loaded.contractRenewals || [],
+    };
+  });
   const [bankInfo, setBankInfo] = useState(() => safeRead(BANK_KEY, DEFAULT_BANK));
   const [tab, setTab] = useState('dashboard');
   const [query, setQuery] = useState('');
@@ -741,8 +751,15 @@ function AppMain() {
         const res = await fetch('/api/data');
         if (!res.ok) throw new Error('Network response was not ok');
         const cloudData = await res.json();
-        if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms) && cloudData.rooms.length > 0) {
-          setData(cloudData);
+        if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
+          setData(prev => ({
+            ...prev,
+            ...cloudData,
+            suppliers: cloudData.suppliers || prev.suppliers || [],
+            expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
+            expensePayments: cloudData.expensePayments || prev.expensePayments || [],
+            contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
+          }));
           setLastSynced(new Date());
         }
       } catch (err) {
@@ -3524,8 +3541,8 @@ function ExpensesTab({ data, onAction }) {
             const [y, m] = e.target.value.split('-'); 
             setFilter({...filter, month: `${m}/${y}`}); 
           }} /></label>
-          <label style={{ margin: 0 }}>Nhà CC <select value={filter.supplierId} onChange={e => setFilter({...filter, supplierId: e.target.value})}><option value="">Tất cả</option>{data.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-          <label style={{ margin: 0 }}>Loại <select value={filter.categoryId} onChange={e => setFilter({...filter, categoryId: e.target.value})}><option value="">Tất cả</option>{data.expenseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label style={{ margin: 0 }}>Nhà CC <select value={filter.supplierId} onChange={e => setFilter({...filter, supplierId: e.target.value})}><option value="">Tất cả</option>{(data.suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+          <label style={{ margin: 0 }}>Loại <select value={filter.categoryId} onChange={e => setFilter({...filter, categoryId: e.target.value})}><option value="">Tất cả</option>{(data.expenseCategories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label style={{ margin: 0 }}>Trạng thái <select value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}><option value="all">Tất cả</option><option value="paid">Đã thanh toán</option><option value="partial">Thanh toán một phần</option><option value="unpaid">Chưa thanh toán</option></select></label>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="primary-btn" onClick={() => onAction('create_expense')}>+ Tạo phiếu chi</button>
@@ -3539,11 +3556,11 @@ function ExpensesTab({ data, onAction }) {
             <thead><tr><th>Ngày</th><th>Nhà CC</th><th>Loại</th><th>Nội dung</th><th>Tổng tiền</th><th>Đã trả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
             <tbody>
               {filteredExpenses.map(e => {
-                const supplier = data.suppliers.find(s => s.id === e.supplierId);
-                const category = data.expenseCategories.find(c => c.id === e.categoryId);
+                const supplier = (data.suppliers || []).find(s => s.id === e.supplierId);
+                const category = (data.expenseCategories || []).find(c => c.id === e.categoryId);
                 return (
                   <tr key={e.id}>
-                    <td>{e.paymentDate.split('-').reverse().join('/')}</td>
+                    <td>{e.paymentDate ? e.paymentDate.split('-').reverse().join('/') : 'N/A'}</td>
                     <td><b>{supplier?.name || 'Vãng lai'}</b></td>
                     <td><span className="small muted">{category?.name}</span></td>
                     <td>{e.title}</td>
@@ -3705,14 +3722,14 @@ function FinancialReportTab({ data, onAction }) {
               <thead><tr><th>Nhà CC</th><th>Loại</th><th>Tổng</th><th>Đã trả</th></tr></thead>
               <tbody>
                 {stats.expenseVouchers.map(e => {
-                  const supplier = data.suppliers.find(s => s.id === e.supplierId);
-                  const category = data.expenseCategories.find(c => c.id === e.categoryId);
+                  const supplier = (data.suppliers || []).find(s => s.id === e.supplierId);
+                  const category = (data.expenseCategories || []).find(c => c.id === e.categoryId);
                   return (
                     <tr key={e.id}>
                       <td><b>{supplier?.name || 'Vãng lai'}</b></td>
                       <td><span className="small muted">{category?.name}</span></td>
-                      <td>{formatMoney(e.totalAmount)}</td>
-                      <td style={{ color: 'var(--danger)', fontWeight: '600' }}>{formatMoney(e.paidAmount)}</td>
+                      <td>{formatMoney(e.totalAmount || 0)}</td>
+                      <td style={{ color: 'var(--danger)', fontWeight: '600' }}>{formatMoney(e.paidAmount || 0)}</td>
                     </tr>
                   );
                 })}
