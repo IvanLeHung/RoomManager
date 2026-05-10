@@ -3871,6 +3871,8 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
               <input type="text" value={form.recipientName || ''} onChange={e => setForm({...form, recipientName: e.target.value})} placeholder="Nhập tên người nhận tiền..." />
             </label>
           )}
+
+          <div className="form-grid-v2">
             <label>Loại chi phí
               <select value={form.categoryId} onChange={e => setForm({...form, categoryId: e.target.value})}>
                 {data.expenseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
