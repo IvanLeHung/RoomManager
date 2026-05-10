@@ -65,7 +65,7 @@ module.exports = async (req, res) => {
         const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'mustCollect', 'mustRefund', 'createdAt'];
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
-        const supplierKeys = ['id', 'name', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
+        const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
         const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
         const expenseKeys = ['id', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
 
@@ -83,13 +83,15 @@ module.exports = async (req, res) => {
           ...(payload.expensePayments || []).filter(i => i && i.id).map(item => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ];
 
-        // Chạy các lệnh theo từng nhóm nhỏ và có độ trễ ngắn để tránh làm quá tải kết nối
-        const BATCH_SIZE = 5;
+        // Chạy các lệnh theo từng nhóm để tối ưu hiệu suất và tránh timeout
+        const BATCH_SIZE = 15;
         for (let i = 0; i < operations.length; i += BATCH_SIZE) {
           const batch = operations.slice(i, i + BATCH_SIZE);
           await Promise.all(batch);
-          // Nghỉ một chút giữa các batch
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Giảm độ trễ để chạy nhanh hơn trên môi trường Serverless
+          if (i + BATCH_SIZE < operations.length) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+          }
         }
         
         return res.status(200).json({ success: true });
