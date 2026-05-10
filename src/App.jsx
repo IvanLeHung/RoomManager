@@ -42,23 +42,64 @@ const DEFAULT_DATA = {
   receipts: [],
   moveOutReports: [],
   contractRenewals: [],
-  suppliers: [
-    { id: 'sup_evn', name: 'Điện lực (EVN)', phone: '19001006', bankName: 'VietinBank', bankAccount: '112000000012', bankOwner: 'TAP DOAN DIEN LUC VIET NAM', note: 'Thanh toán tiền điện hàng tháng' },
-    { id: 'sup_water', name: 'Công ty Cấp nước', phone: '19001010', bankName: 'Agribank', bankAccount: '150000000034', bankOwner: 'CONG TY CAP NUOC', note: 'Thanh toán tiền nước' },
-    { id: 'sup_vnpt', name: 'VNPT (Internet/TV)', phone: '18001166', bankName: 'BIDV', bankAccount: '120000000056', bankOwner: 'VNPT GROUP', note: 'Cước mạng và truyền hình' },
-    { id: 'sup_fpt', name: 'FPT Telecom', phone: '19006600', bankName: 'TPBank', bankAccount: '00000000078', bankOwner: 'FPT TELECOM', note: 'Dịch vụ Internet dự phòng' },
-    { id: 'sup_viettel', name: 'Viettel Telecom', phone: '18008119', bankName: 'MBBank', bankAccount: '000000000099', bankOwner: 'VIETTEL TELECOM', note: 'Cước điện thoại/Internet' },
-    { id: 'sup_clean', name: 'Dịch vụ Vệ sinh Xanh', phone: '0901234567', bankName: 'Techcombank', bankAccount: '190012345678', bankOwner: 'NGUYEN VAN A', note: 'Vệ sinh định kỳ hàng tuần' },
-    { id: 'sup_repair', name: 'Đội bảo trì Sửa chữa', phone: '0988776655', bankName: 'Vietcombank', bankAccount: '001100223344', bankOwner: 'TRAN VAN B', note: 'Sửa chữa điện nước, thiết bị' },
-    { id: 'sup_waste', name: 'Thu gom rác thải', phone: '0243123456', bankName: 'Agribank', bankAccount: '130099887766', bankOwner: 'CONG TY MOI TRUONG', note: 'Phí rác định kỳ' },
+    { id: 'sup_evn', name: 'Điện lực', group: 'Điện', defaultCategory: 'cat_elec' },
+    { id: 'sup_water', name: 'Cấp nước', group: 'Nước', defaultCategory: 'cat_water' },
+    { id: 'sup_vnpt', name: 'VNPT', group: 'Internet', defaultCategory: 'cat_internet' },
+    { id: 'sup_fpt', name: 'FPT Telecom', group: 'Internet', defaultCategory: 'cat_internet' },
+    { id: 'sup_viettel', name: 'Viettel Telecom', group: 'Internet', defaultCategory: 'cat_internet' },
+    { id: 'sup_sctv', name: 'SCTV', group: 'Truyền hình / mạng', defaultCategory: 'cat_internet' },
+    { id: 'sup_trash_private', name: 'Thu gom rác dân lập', group: 'Rác / môi trường', defaultCategory: 'cat_trash' },
+    { id: 'sup_trash_city', name: 'Công ty môi trường đô thị', group: 'Rác / môi trường', defaultCategory: 'cat_trash' },
+    { id: 'sup_clean_staff', name: 'Nhân viên vệ sinh', group: 'Vệ sinh', defaultCategory: 'cat_cleaning' },
+    { id: 'sup_clean_service', name: 'Dịch vụ vệ sinh', group: 'Vệ sinh', defaultCategory: 'cat_cleaning' },
+    { id: 'sup_security', name: 'Bảo vệ tòa nhà', group: 'Bảo vệ', defaultCategory: 'cat_guard' },
+    { id: 'sup_elevator', name: 'Dịch vụ bảo trì thang máy', group: 'Thang máy', defaultCategory: 'cat_maintenance' },
+    { id: 'sup_camera', name: 'Dịch vụ camera an ninh', group: 'Camera', defaultCategory: 'cat_camera' },
+    { id: 'sup_pccc', name: 'Dịch vụ PCCC', group: 'PCCC', defaultCategory: 'cat_pccc' },
+    { id: 'sup_elec_repair', name: 'Thợ điện', group: 'Sửa chữa', defaultCategory: 'cat_repair' },
+    { id: 'sup_water_repair', name: 'Thợ nước', group: 'Sửa chữa', defaultCategory: 'cat_repair' },
+    { id: 'sup_build_repair', name: 'Thợ hồ / xây dựng', group: 'Sửa chữa', defaultCategory: 'cat_repair' },
+    { id: 'sup_paint_repair', name: 'Thợ sơn', group: 'Sửa chữa', defaultCategory: 'cat_repair' },
+    { id: 'sup_lock_repair', name: 'Thợ khóa', group: 'Sửa chữa', defaultCategory: 'cat_repair' },
+    { id: 'sup_glass_repair', name: 'Thợ nhôm kính', group: 'Sửa chữa', defaultCategory: 'cat_repair' },
+    { id: 'sup_door_repair', name: 'Thợ cửa cuốn', group: 'Sửa chữa', defaultCategory: 'cat_repair' },
+    { id: 'sup_ac_repair', name: 'Thợ sửa máy lạnh', group: 'Điện lạnh', defaultCategory: 'cat_repair' },
+    { id: 'sup_ac_clean', name: 'Dịch vụ vệ sinh máy lạnh', group: 'Điện lạnh', defaultCategory: 'cat_cleaning' },
+    { id: 'sup_furniture', name: 'Cửa hàng nội thất', group: 'Nội thất', defaultCategory: 'cat_material' },
+    { id: 'sup_hardware', name: 'Cửa hàng điện nước', group: 'Vật tư', defaultCategory: 'cat_material' },
+    { id: 'sup_materials', name: 'Cửa hàng vật liệu xây dựng', group: 'Vật tư', defaultCategory: 'cat_material' },
+    { id: 'sup_metal', name: 'Cửa hàng kim khí', group: 'Vật tư', defaultCategory: 'cat_material' },
+    { id: 'sup_electric_store', name: 'Cửa hàng thiết bị điện', group: 'Thiết bị', defaultCategory: 'cat_material' },
+    { id: 'sup_water_store', name: 'Cửa hàng thiết bị nước', group: 'Thiết bị', defaultCategory: 'cat_material' },
+    { id: 'sup_appliance', name: 'Cửa hàng điện máy', group: 'Gia dụng', defaultCategory: 'cat_material' },
+    { id: 'sup_laundry', name: 'Dịch vụ giặt sấy', group: 'Giặt sấy', defaultCategory: 'cat_other' },
+    { id: 'sup_pest', name: 'Dịch vụ diệt côn trùng', group: 'Diệt côn trùng', defaultCategory: 'cat_other' },
+    { id: 'sup_garden', name: 'Dịch vụ chăm sóc cây xanh', group: 'Cây xanh', defaultCategory: 'cat_other' },
+    { id: 'sup_legal', name: 'Dịch vụ pháp lý', group: 'Pháp lý', defaultCategory: 'cat_service' },
+    { id: 'sup_acc', name: 'Dịch vụ kế toán', group: 'Kế toán', defaultCategory: 'cat_service' },
+    { id: 'sup_bank_fee', name: 'Ngân hàng / phí chuyển khoản', group: 'Ngân hàng', defaultCategory: 'cat_bank' },
+    { id: 'sup_tax', name: 'Cơ quan thuế', group: 'Thuế', defaultCategory: 'cat_tax' },
+    { id: 'sup_landlord', name: 'Chủ nhà / bên cho thuê mặt bằng', group: 'Chủ nhà', defaultCategory: 'cat_rent' },
+    { id: 'sup_mgmt', name: 'Ban quản lý tòa nhà', group: 'Quản lý', defaultCategory: 'cat_management' },
+    { id: 'sup_other', name: 'Nhà cung cấp khác', group: 'Khác', defaultCategory: 'cat_other' },
   ],
   expenseCategories: [
-    { id: 'cat_elec', name: 'Điện' },
-    { id: 'cat_water', name: 'Nước' },
-    { id: 'cat_internet', name: 'Internet' },
+    { id: 'cat_elec', name: 'Tiền điện' },
+    { id: 'cat_water', name: 'Tiền nước' },
+    { id: 'cat_internet', name: 'Internet / Truyền hình' },
     { id: 'cat_cleaning', name: 'Vệ sinh' },
     { id: 'cat_repair', name: 'Sửa chữa' },
-    { id: 'cat_material', name: 'Vật tư' },
+    { id: 'cat_material', name: 'Vật tư / Nội thất' },
+    { id: 'cat_rent', name: 'Tiền thuê mặt bằng' },
+    { id: 'cat_trash', name: 'Phí rác' },
+    { id: 'cat_guard', name: 'Bảo vệ' },
+    { id: 'cat_maintenance', name: 'Bảo trì' },
+    { id: 'cat_camera', name: 'Camera' },
+    { id: 'cat_pccc', name: 'PCCC' },
+    { id: 'cat_bank', name: 'Phí ngân hàng' },
+    { id: 'cat_tax', name: 'Thuế / phí' },
+    { id: 'cat_management', name: 'Phí quản lý' },
+    { id: 'cat_service', name: 'Phí dịch vụ' },
     { id: 'cat_other', name: 'Chi phí khác' },
   ],
   expensePayments: [],
@@ -3550,34 +3591,35 @@ function ExpensesTab({ data, onAction }) {
             const [y, m] = e.target.value.split('-'); 
             setFilter({...filter, month: `${m}/${y}`}); 
           }} /></label>
-          <label style={{ margin: 0 }}>Nhà CC <select value={filter.supplierId} onChange={e => setFilter({...filter, supplierId: e.target.value})}><option value="">Tất cả</option>{(data.suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-          <label style={{ margin: 0 }}>Loại <select value={filter.categoryId} onChange={e => setFilter({...filter, categoryId: e.target.value})}><option value="">Tất cả</option>{(data.expenseCategories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label style={{ margin: 0 }}>Nhà CC / Nhà cung cấp <select value={filter.supplierId} onChange={e => setFilter({...filter, supplierId: e.target.value})}><option value="">Tất cả</option>{(data.suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+          <label style={{ margin: 0 }}>Loại chi phí <select value={filter.categoryId} onChange={e => setFilter({...filter, categoryId: e.target.value})}><option value="">Tất cả</option>{(data.expenseCategories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label style={{ margin: 0 }}>Trạng thái <select value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}><option value="all">Tất cả</option><option value="paid">Đã thanh toán</option><option value="partial">Thanh toán một phần</option><option value="unpaid">Chưa thanh toán</option></select></label>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="primary-btn" onClick={() => onAction('create_expense')}>+ Tạo phiếu chi</button>
-            <button className="secondary-btn" onClick={() => onAction('manage_suppliers')}>🏢 Nhà CC</button>
+            <button className="secondary-btn" onClick={() => onAction('manage_suppliers')}>🏢 Quản lý Nhà CC</button>
           </div>
         </div>
       </div>
       <div className="widget liquid-glass" style={{ padding: 0 }}>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Ngày</th><th>Nhà CC</th><th>Loại</th><th>Nội dung</th><th>Tổng tiền</th><th>Đã trả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <thead><tr><th>Mã phiếu</th><th>Ngày</th><th>Nhà CC</th><th>Loại</th><th>Nội dung</th><th>Tổng tiền</th><th>Đã trả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
             <tbody>
               {filteredExpenses.map(e => {
                 const supplier = (data.suppliers || []).find(s => s.id === e.supplierId);
                 const category = (data.expenseCategories || []).find(c => c.id === e.categoryId);
                 return (
                   <tr key={e.id}>
+                    <td><span className="small muted mono">{e.expenseCode}</span></td>
                     <td>{e.paymentDate ? e.paymentDate.split('-').reverse().join('/') : 'N/A'}</td>
-                    <td><b>{supplier?.name || 'Vãng lai'}</b></td>
+                    <td><b>{supplier?.name || e.recipientName || 'Vãng lai'}</b></td>
                     <td><span className="small muted">{category?.name}</span></td>
                     <td>{e.title}</td>
                     <td style={{ fontWeight: '700' }}>{formatMoney(e.totalAmount)}</td>
                     <td>{formatMoney(e.paidAmount)}</td>
                     <td>
                       <span className={`status-badge-liquid ${e.status === 'paid' ? 'active' : e.status === 'partial' ? 'notice' : 'debt'}`}>
-                        {e.status === 'paid' ? 'Đã thanh toán' : e.status === 'partial' ? 'Thanh toán một phần' : 'Chưa thanh toán'}
+                        {e.status === 'paid' ? 'ĐÃ THANH TOÁN' : e.status === 'partial' ? 'THANH TOÁN MỘT PHẦN' : 'CHƯA THANH TOÁN'}
                       </span>
                     </td>
                     <td>
@@ -3590,7 +3632,7 @@ function ExpensesTab({ data, onAction }) {
                   </tr>
                 );
               })}
-              {filteredExpenses.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>Không có dữ liệu chi phí.</td></tr>}
+              {filteredExpenses.length === 0 && <tr><td colSpan="9" style={{ textAlign: 'center', padding: '40px' }}>Không có dữ liệu chi phí.</td></tr>}
             </tbody>
           </table>
         </div>

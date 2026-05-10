@@ -67,7 +67,7 @@ module.exports = async (req, res) => {
 
         const supplierKeys = ['id', 'name', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
         const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
-        const expenseKeys = ['id', 'supplierId', 'categoryId', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
+        const expenseKeys = ['id', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
 
         // Sử dụng Promise.all thay cho $transaction để tránh lỗi "Unable to start a transaction" trên môi trường Serverless
         const operations = [

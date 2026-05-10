@@ -155,6 +155,8 @@ model ExpensePayment {
   id            String   @id
   supplierId    String?
   categoryId    String
+  expenseCode   String?
+  recipientName String?
   month         String
   paymentDate   String
   title         String
