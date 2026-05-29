@@ -16,7 +16,7 @@
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest",
-    "ws": "^8.18.0",
+    "ws": "^8.20.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
