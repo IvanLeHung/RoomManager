@@ -378,18 +378,6 @@ function parseMonthValue(month) {
   return y * 12 + m;
 }
 
-function getPreviousReceipt(receipts, roomId, contractId, currentMonth) {
-  const currentValue = parseMonthValue(currentMonth);
-  return (receipts || [])
-    .filter(r =>
-      r.roomId === roomId &&
-      (contractId ? r.contractId === contractId : true) &&
-      r.type === 'monthly' &&
-      parseMonthValue(r.month) < currentValue
-    )
-    .sort((a, b) => parseMonthValue(b.month) - parseMonthValue(a.month))[0] || null;
-}
-
 function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
   const currentValue = parseMonthValue(currentMonth);
   return (receipts || [])
@@ -404,11 +392,11 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
 function createMonthlyReceipt(room, contract, previousReceipt, month) {
   const electricOld = previousReceipt
     ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
-    : Number(room.initialElectric || room.electricStart || 0);
+    : Number(room.electricNew ?? room.electricEnd ?? room.initialElectric ?? room.electricStart ?? 0);
 
   const waterOld = previousReceipt
     ? Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0)
-    : Number(room.initialWater || room.waterStart || 0);
+    : Number(room.waterNew ?? room.waterEnd ?? room.initialWater ?? room.waterStart ?? 0);
 
   const rent = Number(contract?.rent || room.rent || 0);
   const fixedServices = fixedServiceTotal(room);
@@ -1224,7 +1212,7 @@ function AppMain() {
         if (!window.confirm(`Phòng ${roomId} đã có phiếu tháng ${month}. Bạn có muốn ghi đè?`)) return;
         setData(old => ({ ...old, receipts: old.receipts.filter(r => r.id !== exists.id) }));
       }
-      const prev = getPreviousReceipt(data.receipts, roomId, activeContract.id, month);
+      const prev = getPreviousReceiptByRoom(data.receipts, roomId, month);
       const newRec = createMonthlyReceipt(roomOrTenant, activeContract, prev, month);
       setData(old => ({ ...old, receipts: [...(old.receipts || []), newRec] }));
       alert(`Đã tạo phiếu tháng ${month} cho phòng ${roomId}`);
@@ -2101,7 +2089,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
       const exists = (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === selectedMonth && r.type === 'monthly');
       
       if (!exists) {
-        const prev = getPreviousReceipt(data.receipts, room.id, contract.id, selectedMonth);
+        const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth);
         newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth));
         createdCount++;
       } else {
