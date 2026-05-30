@@ -180,6 +180,21 @@ function parseDateFlexible(value) {
   return null;
 }
 
+function isValidBusinessDate(value) {
+  const date = parseDateFlexible(value);
+  return !!date && !Number.isNaN(date.getTime()) && date.getFullYear() >= 2000;
+}
+
+function formatBusinessDate(value, fallback = 'Chưa cập nhật') {
+  if (!isValidBusinessDate(value)) return fallback;
+  return String(value).slice(0, 10).split('-').reverse().join('/');
+}
+
+function isValidContractRange(startDate, endDate) {
+  if (!isValidBusinessDate(startDate) || !isValidBusinessDate(endDate)) return false;
+  return parseDateFlexible(endDate) > parseDateFlexible(startDate);
+}
+
 function isValidDateString(value) {
   if (!value) return false;
   const date = new Date(value + 'T00:00:00');
@@ -511,9 +526,9 @@ function LoginScreen({ onUnlock }) {
 function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'main', onClose }) {
   const primaryTenant = tenants.find(t => t.role === 'primary') || tenants[0] || {};
   const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const startDay = contract.startDate ? contract.startDate.split('-').reverse().join('/') : '.../.../....';
-  const endDay = contract.endDate ? contract.endDate.split('-').reverse().join('/') : '................';
-  const duration = diffMonths(contract.startDate, contract.endDate);
+  const startDay = formatBusinessDate(contract.startDate);
+  const endDay = formatBusinessDate(contract.endDate);
+  const duration = isValidContractRange(contract.startDate, contract.endDate) ? `${diffMonths(contract.startDate, contract.endDate)} tháng` : '—';
   const isMain = type === 'main';
   const isLiquidation = type === 'liquidation';
   const isRenewal = type === 'renewal';
@@ -577,7 +592,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <p>2.2. Hai Bên lập Phụ lục 01 – Biên bản bàn giao (kèm ảnh/video), ghi rõ thiết bị – hiện trạng – chỉ số điện/nước đầu kỳ – số thẻ/vân tay.</p>
                 <p>2.3. Kể từ thời điểm bàn giao, Bên B có toàn quyền sử dụng Phòng thuê theo Hợp đồng.</p>
                 <h3>ĐIỀU 3. THỜI HẠN THUÊ</h3>
-                <p>3.1. Thời hạn thuê: <b>{duration}</b> tháng kể từ ngày bàn giao.</p>
+                <p>3.1. Thời hạn thuê: <b>{duration}</b> kể từ ngày bàn giao.</p>
                 <p>3.2. Từ ngày <b>{startDay}</b> Đến hết ngày <b>{endDay}</b></p>
                 <p>3.3. Hết thời hạn thuê, Hợp đồng tự động gia hạn theo tháng với điều khoản không đổi, trừ khi một Bên thông báo chấm dứt trước ≥30 ngày bằng văn bản/tin nhắn (Zalo/SMS).</p>
                 <h3>ĐIỀU 4. TIỀN ĐẶT CỌC</h3>
@@ -1724,8 +1739,8 @@ function RentalHistoryTab({ data, onAction }) {
                   <td><b>{c.actualEndDate?.split('-').reverse().join('/') || 'N/A'}</b></td>
                   <td>P{c.roomId}</td>
                   <td>{tenant.name}</td>
-                  <td>{c.startDate?.split('-').reverse().join('/')}</td>
-                  <td>{c.endDate?.split('-').reverse().join('/')}</td>
+                  <td>{formatBusinessDate(c.startDate)}</td>
+                  <td>{formatBusinessDate(c.endDate)}</td>
                   <td>{formatMoney(c.deposit)}</td>
                   <td><button className="secondary-btn sm" onClick={() => onAction('view_contract', { roomId: c.roomId, contractId: c.id })}>Xem HĐ</button></td>
                 </tr>
@@ -1978,7 +1993,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
                   {stats.expiringContracts.slice(0, 5).map(c => (
                     <div key={c.id} className="mini-list-item">
                       <span>P{c.roomId}</span>
-                      <b className="danger">{c.endDate?.split('-').reverse().join('/')}</b>
+                      <b className="danger">{formatBusinessDate(c.endDate)}</b>
                     </div>
                   ))}
                   {stats.expiringContracts.length === 0 && <p className="small muted">Không có hợp đồng nào sắp hết hạn.</p>}
@@ -2542,16 +2557,22 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
     ...roomMoveOuts.map(r => ({ id: r.id, type: 'room', date: r.createdAt, actor: 'Admin', title: 'Tất toán', detail: formatDate(r.actualEndDate) }))
   ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
   const filteredActivityItems = historyFilter === 'all' ? activityItems : activityItems.filter(item => item.type === historyFilter);
+  const electricUsage = Math.max(0, electricNew - electricOld);
+  const waterUsage = Math.max(0, waterNew - waterOld);
+  const electricNote = electricUsage === 0 ? 'Chưa ghi chỉ số mới' : `Dùng ${formatLocaleNumber(electricUsage)} kWh`;
+  const waterNote = waterUsage === 0 ? 'Chưa ghi chỉ số mới' : `Dùng ${formatLocaleNumber(waterUsage)} m3`;
+  const electricMeterNote = electricUsage === 0 ? 'Chưa ghi chỉ số mới' : `Tiêu thụ ${formatLocaleNumber(electricUsage)} kWh`;
+  const waterMeterNote = waterUsage === 0 ? 'Chưa ghi chỉ số mới' : `Tiêu thụ ${formatLocaleNumber(waterUsage)} m3`;
   const tabs = [
     ['overview', 'Tổng quan', ''],
     ['contract', 'Hợp đồng', !contractDateValid ? '!' : ''],
     ['residents', 'Người ở', activeMembers.length || ''],
     ['payments', 'Thanh toán', receiptDebt > 0 ? 'Nợ' : ''],
     ['meters', 'Điện nước', ''],
-    ['assets', 'Tài sản', roomAssets.length || '0'],
-    ['maintenance', 'Bảo trì', maintenanceItems.length || '0'],
+    ['assets', 'Tài sản', roomAssets.length || ''],
+    ['maintenance', 'Bảo trì', maintenanceItems.length || ''],
     ['history', 'Lịch sử', activityItems.length || ''],
-    ['files', 'Tệp', attachments.length || '0']
+    ['files', 'Tệp', attachments.length || '']
   ];
 
   const renderMetric = (labelText, value, note) => (
@@ -2628,8 +2649,8 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
       <div className="op-card" style={{ gridColumn: 'span 2' }}>
         <h3 className="op-card-title">Điện nước gần nhất</h3>
         <div className="op-grid">
-          {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, `Dùng ${formatLocaleNumber(Math.max(0, electricNew - electricOld))} kWh`)}
-          {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, `Dùng ${formatLocaleNumber(Math.max(0, waterNew - waterOld))} m3`)}
+          {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, electricNote)}
+          {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, waterNote)}
         </div>
       </div>
       </div>
@@ -2757,8 +2778,8 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
         <div className="op-card">
           <h3 className="op-card-title">Chỉ số hiện tại</h3>
           <div className="op-grid">
-            {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, `Tiêu thụ ${formatLocaleNumber(Math.max(0, electricNew - electricOld))} kWh`)}
-            {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, `Tiêu thụ ${formatLocaleNumber(Math.max(0, waterNew - waterOld))} m3`)}
+            {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, electricMeterNote)}
+            {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, waterMeterNote)}
             {renderMetric('Đơn giá điện', formatMoney(room.electricPrice || 0))}
             {renderMetric('Đơn giá nước', formatMoney(room.waterPrice || 0))}
           </div>
@@ -2847,12 +2868,13 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                   <button className="secondary-btn" onClick={() => setShowMoreActions(!showMoreActions)}>⋯ Thao tác khác</button>
                   {showMoreActions && (
                     <div className="more-actions-menu">
-                      <button onClick={() => { setShowMoreActions(false); onAction('edit_contract'); }}>Sửa HĐ</button>
-                      <button onClick={() => { setShowMoreActions(false); onAction('renew_contract'); }}>Gia hạn</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('edit_contract'); }}>Sửa hợp đồng</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('renew_contract'); }}>Gia hạn hợp đồng</button>
                       <button onClick={() => { setShowMoreActions(false); onAction('transfer_room'); }}>Đổi phòng</button>
                       <button onClick={() => { setShowMoreActions(false); onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice'); }}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : 'Báo chuyển'}</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>Xuất PDF</button>
                       <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Tất toán</button>
-                      <button onClick={() => { setShowMoreActions(false); currentReceipt ? onAction('view_qr', currentReceipt) : null; }}>Xuất PDF</button>
+                      <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Kết thúc thuê</button>
                     </div>
                   )}
                 </div>
@@ -3357,18 +3379,22 @@ function RenewalModal({ contract, data, onClose, onSave }) {
   const room = data.rooms.find(r => r.id === contract.roomId);
   const tenant = getPrimaryTenantByContract(data, contract.id) || { name: 'N/A', phone: 'N/A' };
   const [showAppendix, setShowAppendix] = useState(false);
+  const hasValidCurrentEndDate = isValidBusinessDate(contract.endDate);
+  const currentEndDateText = formatBusinessDate(contract.endDate);
+  const currentStartDateText = formatBusinessDate(contract.startDate);
+  const defaultStartDate = hasValidCurrentEndDate ? contract.endDate : new Date().toISOString().slice(0, 10);
   
   const [form, setForm] = useState({
     signedDate: new Date().toISOString().slice(0, 10),
-    newStartDate: contract.endDate || new Date().toISOString().slice(0, 10),
-    newEndDate: addMonthsToDate(contract.endDate, 12) || '',
+    newStartDate: defaultStartDate,
+    newEndDate: hasValidCurrentEndDate ? addMonthsToDate(contract.endDate, 12) : '',
     keepPricing: true,
     newRent: contract.rent,
     newDeposit: contract.deposit,
     note: ''
   });
 
-  const isValid = form.newEndDate && (!contract.endDate || form.newEndDate > contract.endDate);
+  const isValid = form.newEndDate && (!hasValidCurrentEndDate || form.newEndDate > contract.endDate);
   const rentChanged = !form.keepPricing && Number(form.newRent) !== Number(contract.rent);
   const depositChanged = !form.keepPricing && Number(form.newDeposit) !== Number(contract.deposit);
 
@@ -3439,7 +3465,7 @@ function RenewalModal({ contract, data, onClose, onSave }) {
               <p>Hai bên thống nhất gia hạn thời hạn thuê phòng ${contract.roomId} như sau:</p>
               <ul>
                 <li>Ngày bắt đầu gia hạn: <b>${form.newStartDate.split('-').reverse().join('/')}</b></li>
-                <li>Ngày hết hạn cũ: <b>${contract.endDate?.split('-').reverse().join('/') || '—'}</b></li>
+                <li>Ngày hết hạn cũ: <b>${currentEndDateText}</b></li>
                 <li>Ngày hết hạn mới: <b>${form.newEndDate.split('-').reverse().join('/')}</b></li>
               </ul>
               <p>Sau thời hạn trên, nếu Bên B tiếp tục có nhu cầu thuê, hai bên sẽ thỏa thuận gia hạn tiếp hoặc ký hợp đồng/phụ lục mới.</p>
@@ -3515,7 +3541,7 @@ function RenewalModal({ contract, data, onClose, onSave }) {
         <div className="modal-header">
           <div>
             <h2 style={{ fontSize: '24px' }}>Gia hạn hợp đồng • Phòng {contract.roomId}</h2>
-            <p className="muted">{tenant.name} • Hết hạn hiện tại: {contract.endDate?.split('-').reverse().join('/') || 'Chưa có'}</p>
+            <p className="muted">{tenant.name} • Hết hạn hiện tại: {currentEndDateText}</p>
           </div>
           <button className="secondary-btn" onClick={onClose}>✕</button>
         </div>
@@ -3525,11 +3551,14 @@ function RenewalModal({ contract, data, onClose, onSave }) {
           <section className="op-card" style={{ background: '#f8fafc', borderStyle: 'dashed' }}>
             <h3 className="op-card-title">📌 Thông tin hiện tại</h3>
             <div className="op-grid">
-              <div className="op-item"><span className="op-label">Ngày bắt đầu</span><span className="op-value">{contract.startDate?.split('-').reverse().join('/')}</span></div>
-              <div className="op-item"><span className="op-label">Hết hạn hiện tại</span><span className="op-value">{contract.endDate?.split('-').reverse().join('/') || 'N/A'}</span></div>
+              <div className="op-item"><span className="op-label">Ngày bắt đầu</span><span className="op-value">{currentStartDateText}</span></div>
+              <div className="op-item"><span className="op-label">Hết hạn hiện tại</span><span className="op-value">{currentEndDateText}</span></div>
               <div className="op-item"><span className="op-label">Giá thuê</span><span className="op-value">{formatMoney(contract.rent)}</span></div>
               <div className="op-item"><span className="op-label">Tiền cọc</span><span className="op-value">{formatMoney(contract.deposit)}</span></div>
             </div>
+            {(!isValidBusinessDate(contract.startDate) || !hasValidCurrentEndDate) && (
+              <div className="warning-box" style={{ marginTop: '12px' }}>Hợp đồng thiếu ngày bắt đầu/kết thúc hợp lệ. Vui lòng cập nhật dữ liệu hợp đồng trước khi gia hạn.</div>
+            )}
           </section>
 
           {/* Form gia hạn */}
@@ -3541,8 +3570,8 @@ function RenewalModal({ contract, data, onClose, onSave }) {
               <label style={{ gridColumn: 'span 2' }}>
                 Ngày hết hạn mới
                 <input type="date" value={form.newEndDate} onChange={e => setForm({...form, newEndDate: e.target.value})} />
-                {!contract.endDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Chưa có ngày hết hạn cũ. Vui lòng chọn ngày mới.</p>}
-                {contract.endDate && form.newEndDate <= contract.endDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Ngày hết hạn mới phải sau ngày {contract.endDate.split('-').reverse().join('/')}</p>}
+                {!hasValidCurrentEndDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Chưa có ngày hết hạn cũ hợp lệ. Vui lòng chọn ngày mới.</p>}
+                {hasValidCurrentEndDate && form.newEndDate <= contract.endDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Ngày hết hạn mới phải sau ngày {currentEndDateText}</p>}
               </label>
             </div>
 
@@ -3576,8 +3605,8 @@ function RenewalModal({ contract, data, onClose, onSave }) {
 
           <div className="btn-group">
             <button className="secondary-btn" onClick={onClose}>Hủy</button>
-            <button className="secondary-btn" onClick={() => setShowAppendix(!showAppendix)}>
-              {showAppendix ? '👁️ Ẩn phụ lục' : '📄 Xem phụ lục'}
+            <button className="secondary-btn" onClick={() => setShowAppendix(!showAppendix)} disabled={!isValid}>
+              {!isValid ? 'Chưa có phụ lục' : showAppendix ? 'Ẩn phụ lục' : 'Xem phụ lục'}
             </button>
             <button className="primary-btn" onClick={() => onSave(form)} disabled={!isValid} style={{ flex: 2 }}>
               🚀 Gia hạn hợp đồng
@@ -3649,7 +3678,7 @@ function AppendixContent({ contract, tenant, form, room }) {
         <p>Hai bên thống nhất gia hạn thời hạn thuê phòng {contract.roomId} như sau:</p>
         <ul style={{ paddingLeft: '25px', margin: '10px 0' }}>
           <li>Ngày bắt đầu gia hạn: <b>{form.newStartDate.split('-').reverse().join('/')}</b></li>
-          <li>Ngày hết hạn cũ: <b>{contract.endDate?.split('-').reverse().join('/') || '—'}</b></li>
+          <li>Ngày hết hạn cũ: <b>{formatBusinessDate(contract.endDate)}</b></li>
           <li>Ngày hết hạn mới: <b>{form.newEndDate.split('-').reverse().join('/')}</b></li>
         </ul>
         <p>Sau thời hạn trên, nếu Bên B tiếp tục có nhu cầu thuê, hai bên sẽ thỏa thuận gia hạn tiếp hoặc ký hợp đồng/phụ lục mới.</p>
