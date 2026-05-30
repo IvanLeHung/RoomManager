@@ -2484,6 +2484,8 @@ function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
 
 function RoomDetailModal({ room, data, onClose, onAction }) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [historyFilter, setHistoryFilter] = useState('all');
+  const [showMoreActions, setShowMoreActions] = useState(false);
   const { label, color, contract } = getRoomStatusInfo(data, room.id);
   const primaryTenant = contract ? getPrimaryTenantByContract(data, contract.id) : null;
   const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
@@ -2510,38 +2512,47 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
   const waterOld = latestReceipt ? getWaterOld(latestReceipt) : (room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
   const waterNew = latestReceipt ? getWaterNew(latestReceipt) : (room.waterNew ?? waterOld);
   const tenantInitial = primaryTenant?.name ? primaryTenant.name.trim().charAt(0).toUpperCase() : 'P';
-  const tabs = [
-    ['overview', 'Tổng quan'],
-    ['contract', 'Hợp đồng'],
-    ['residents', `Người ở${activeMembers.length ? ` (${activeMembers.length})` : ''}`],
-    ['payments', `Thanh toán${receiptDebt > 0 ? ' (!)' : ''}`],
-    ['meters', 'Điện nước'],
-    ['assets', 'Tài sản'],
-    ['maintenance', 'Bảo trì'],
-    ['history', 'Lịch sử'],
-    ['files', 'Tệp']
-  ];
-
-  const formatDate = (value) => value ? String(value).slice(0, 10).split('-').reverse().join('/') : '—';
+  const isValidBusinessDate = (value) => {
+    const date = parseDateFlexible(value);
+    return !!date && date.getFullYear() >= 2000;
+  };
+  const formatDate = (value) => isValidBusinessDate(value) ? String(value).slice(0, 10).split('-').reverse().join('/') : 'Chưa cập nhật';
   const dateDiffDays = (value) => {
+    if (!isValidBusinessDate(value)) return null;
     const date = parseDateFlexible(value);
     if (!date) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return Math.ceil((date.getTime() - today.getTime()) / 86400000);
   };
+  const contractStartValid = !contract || isValidBusinessDate(contract.startDate);
+  const contractEndValid = !contract || isValidBusinessDate(contract.endDate);
+  const contractDateValid = !contract || (contractStartValid && contractEndValid && parseDateFlexible(contract.endDate) > parseDateFlexible(contract.startDate));
+  const contractDuration = contractDateValid ? `${diffMonths(contract.startDate, contract.endDate)} tháng` : '—';
   const contractDaysLeft = dateDiffDays(contract?.endDate);
-  const contractStatus = !contract ? 'Chưa có hợp đồng' : contractDaysLeft === null ? 'Còn hạn' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
-  const contractStatusClass = !contract ? 'vacant' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
+  const contractStatus = !contract ? 'Chưa có hợp đồng' : !contractDateValid ? 'Thiếu ngày hợp lệ' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
+  const contractStatusClass = !contract ? 'vacant' : !contractDateValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
   const receiptStatus = !currentReceipt ? 'Chưa có phiếu' : isReceiptOverdue ? 'Quá hạn' : currentReceipt.status;
   const receiptStatusClass = receiptStatus === 'Đã thanh toán' ? 'active' : receiptStatus === 'Nợ một phần' ? 'notice' : receiptStatus === 'Quá hạn' ? 'debt' : 'debt';
   const occupantLimit = room.maxPeople || room.capacity || '—';
   const activityItems = [
-    ...roomReceipts.slice(0, 5).map(r => ({ id: r.id, date: r.savedAt || r.createdAt, title: `Phiếu ${r.month}`, detail: `${formatMoney(r.total)} - ${r.status}` })),
-    ...contractRenewals.map(r => ({ id: r.id, date: r.createdAt, title: 'Gia hạn hợp đồng', detail: `${formatDate(r.oldEndDate)} -> ${formatDate(r.newEndDate)}` })),
-    ...roomTransfers.map(t => ({ id: t.id, date: t.createdAt, title: 'Đổi phòng', detail: `P${t.oldRoomId} -> P${t.newRoomId}` })),
-    ...roomMoveOuts.map(r => ({ id: r.id, date: r.createdAt, title: 'Tất toán', detail: formatDate(r.actualEndDate) }))
+    ...roomReceipts.slice(0, 5).map(r => ({ id: r.id, type: 'receipt', date: r.savedAt || r.createdAt, actor: 'Hệ thống', title: `Phiếu ${r.month}`, detail: `${formatMoney(r.total)} - ${r.status}` })),
+    ...contractRenewals.map(r => ({ id: r.id, type: 'contract', date: r.createdAt, actor: 'Admin', title: 'Gia hạn hợp đồng', detail: `${formatDate(r.oldEndDate)} -> ${formatDate(r.newEndDate)}` })),
+    ...roomTransfers.map(t => ({ id: t.id, type: 'room', date: t.createdAt, actor: 'Admin', title: 'Đổi phòng', detail: `P${t.oldRoomId} -> P${t.newRoomId}` })),
+    ...roomMoveOuts.map(r => ({ id: r.id, type: 'room', date: r.createdAt, actor: 'Admin', title: 'Tất toán', detail: formatDate(r.actualEndDate) }))
   ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
+  const filteredActivityItems = historyFilter === 'all' ? activityItems : activityItems.filter(item => item.type === historyFilter);
+  const tabs = [
+    ['overview', 'Tổng quan', ''],
+    ['contract', 'Hợp đồng', !contractDateValid ? '!' : ''],
+    ['residents', 'Người ở', activeMembers.length || ''],
+    ['payments', 'Thanh toán', receiptDebt > 0 ? 'Nợ' : ''],
+    ['meters', 'Điện nước', ''],
+    ['assets', 'Tài sản', roomAssets.length || '0'],
+    ['maintenance', 'Bảo trì', maintenanceItems.length || '0'],
+    ['history', 'Lịch sử', activityItems.length || ''],
+    ['files', 'Tệp', attachments.length || '0']
+  ];
 
   const renderMetric = (labelText, value, note) => (
     <div className="op-item">
@@ -2649,10 +2660,11 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
     );
   };
 
-  const renderEmptyOps = (title, detail) => (
+  const renderEmptyOps = (title, detail, actionLabel, actionHandler) => (
     <div className="op-card" style={{ alignItems: 'center', textAlign: 'center', padding: '32px' }}>
       <p className="op-value">{title}</p>
       <p className="op-label">{detail}</p>
+      {actionLabel && <button className="primary-btn sm" onClick={actionHandler}>{actionLabel}</button>}
     </div>
   );
 
@@ -2669,20 +2681,29 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                 {renderMetric('Trạng thái', contractStatus)}
                 {renderMetric('Ngày bắt đầu', formatDate(contract.startDate))}
                 {renderMetric('Ngày hết hạn', formatDate(contract.endDate))}
-                {renderMetric('Thời hạn thuê', `${diffMonths(contract.startDate, contract.endDate)} tháng`)}
+                {renderMetric('Thời hạn thuê', contractDuration)}
                 {renderMetric('Chu kỳ thanh toán', `Ngày ${paymentDay} hằng tháng`)}
                 {renderMetric('Tiền thuê', formatMoney(contract.rent))}
                 {renderMetric('Tiền cọc', formatMoney(contract.deposit))}
               </div>
             </div>
+            {!contractDateValid && (
+              <div className="warning-box">Hợp đồng thiếu ngày bắt đầu/kết thúc hợp lệ. Vui lòng cập nhật lại ngày hợp đồng trước khi gia hạn hoặc tất toán.</div>
+            )}
             <div className="op-card">
               <h3 className="op-card-title">Lịch sử gia hạn</h3>
               {contractRenewals.length ? contractRenewals.map(r => (
                 <div key={r.id} className="op-item"><span className="op-value">{formatDate(r.oldEndDate)} {'->'} {formatDate(r.newEndDate)}</span><span className="op-label">{r.note || 'Không có ghi chú'}</span></div>
               )) : <p className="muted small">Chưa có lịch sử gia hạn.</p>}
             </div>
+            <div className="op-action-footer" style={{ marginTop: 0 }}>
+              <button className="secondary-btn" onClick={() => onAction('edit_contract')}>Sửa hợp đồng</button>
+              <button className="secondary-btn" onClick={() => onAction('renew_contract')}>Gia hạn</button>
+              <button className="secondary-btn" onClick={() => onAction('view_contract')}>In hợp đồng</button>
+              <button className="secondary-btn danger" onClick={() => onAction('moving_out')}>Kết thúc thuê</button>
+            </div>
           </>
-        ) : renderEmptyOps('Chưa có hợp đồng', 'Phòng trống hoặc chưa tạo hợp đồng.')}
+        ) : renderEmptyOps('Chưa có hợp đồng', 'Phòng trống hoặc chưa tạo hợp đồng.', '+ Tạo hợp đồng', () => onAction('add_tenant'))}
       </div>
     );
     if (activeTab === 'residents') return (
@@ -2697,7 +2718,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
           </div>
         ))}
         {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }}>+ Thêm người ở cùng</button>}
-        {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.')}
+        {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.', '+ Thuê mới', () => onAction('add_tenant'))}
       </div>
     );
     if (activeTab === 'payments') return (
@@ -2758,17 +2779,31 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
       </div>
     );
     if (activeTab === 'assets') return roomAssets.length ? (
-      <div className="op-grid">{roomAssets.map((asset, idx) => <div key={idx} className="op-card"><h3 className="op-card-title">{asset.name}</h3><p className="op-value">{asset.status || 'Đang dùng'}</p><p className="op-label">{asset.note || 'Chưa có ghi chú'}</p></div>)}</div>
-    ) : renderEmptyOps('Chưa có danh sách tài sản', 'Có thể bổ sung giường, tủ, máy lạnh, đồng hồ và ảnh bàn giao ở bước tiếp theo.');
+      <div className="stack" style={{ gap: '12px' }}>
+        <div className="op-action-footer" style={{ marginTop: 0 }}><button className="primary-btn sm">+ Thêm tài sản</button><button className="secondary-btn sm">Nhập từ mẫu</button><button className="secondary-btn sm">In bàn giao</button></div>
+        <div className="table-wrap"><table><thead><tr><th>Tài sản</th><th>Số lượng</th><th>Tình trạng</th><th>Ngày bàn giao</th><th>Ghi chú</th></tr></thead><tbody>{roomAssets.map((asset, idx) => <tr key={idx}><td>{asset.name}</td><td>{asset.quantity || 1}</td><td>{asset.status || 'Đang dùng'}</td><td>{formatDate(asset.handoverDate)}</td><td>{asset.note || '—'}</td></tr>)}</tbody></table></div>
+      </div>
+    ) : renderEmptyOps('Chưa có tài sản bàn giao', 'Thêm giường, tủ, máy lạnh, đồng hồ điện/nước để quản lý khi khách chuyển vào hoặc chuyển ra.', '+ Thêm tài sản', () => alert('Chức năng thêm tài sản sẽ được triển khai ở bước tiếp theo.'));
     if (activeTab === 'maintenance') return maintenanceItems.length ? (
       <div className="stack" style={{ gap: '12px' }}>{maintenanceItems.map((item, idx) => <div key={idx} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{item.status || 'Mới'} • {item.note || ''}</p></div>)}</div>
-    ) : renderEmptyOps('Chưa có sự cố bảo trì', 'Các sự cố điện, nước, khóa cửa và thiết bị sẽ được ghi tại đây.');
+    ) : renderEmptyOps('Chưa có sự cố bảo trì', 'Tạo yêu cầu bảo trì để theo dõi điện, nước, thiết bị, người xử lý, chi phí và trạng thái.', '+ Tạo yêu cầu bảo trì', () => alert('Chức năng tạo bảo trì sẽ được triển khai ở bước tiếp theo.'));
     if (activeTab === 'history') return activityItems.length ? (
-      <div className="stack" style={{ gap: '12px' }}>{activityItems.map(item => <div key={`${item.title}-${item.id}`} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{formatDate(String(item.date || '').slice(0, 10))} • {item.detail}</p></div>)}</div>
+      <div className="stack" style={{ gap: '12px' }}>
+        <div className="btn-group" style={{ margin: 0, flexWrap: 'wrap' }}>
+          {[
+            ['all', 'Tất cả'],
+            ['receipt', 'Phiếu tháng'],
+            ['contract', 'Hợp đồng'],
+            ['room', 'Phòng']
+          ].map(([id, text]) => <button key={id} className={`secondary-btn sm ${historyFilter === id ? 'active-tab' : ''}`} onClick={() => setHistoryFilter(id)}>{text}</button>)}
+        </div>
+        {filteredActivityItems.map(item => <div key={`${item.title}-${item.id}`} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{formatDate(String(item.date || '').slice(0, 10))} • {item.actor} • {item.detail}</p></div>)}
+        {!filteredActivityItems.length && renderEmptyOps('Không có lịch sử phù hợp', 'Thử chọn bộ lọc khác.')}
+      </div>
     ) : renderEmptyOps('Chưa có lịch sử hoạt động', 'Các lần lập phiếu, đổi phòng, gia hạn và tất toán sẽ hiển thị tại đây.');
     if (activeTab === 'files') return attachments.length ? (
       <div className="stack" style={{ gap: '12px' }}>{attachments.map((file, idx) => <div key={idx} className="op-card"><p className="op-value">{file.name || `Tệp ${idx + 1}`}</p><p className="op-label">{file.type || 'Tệp đính kèm'}</p></div>)}</div>
-    ) : renderEmptyOps('Chưa có tệp đính kèm', 'Có thể thêm hợp đồng, CCCD, ảnh đồng hồ và ảnh bàn giao ở bước tiếp theo.');
+    ) : renderEmptyOps('Chưa có tệp đính kèm', 'Tải lên hợp đồng, CCCD, ảnh đồng hồ, ảnh bàn giao, ảnh chuyển khoản hoặc hóa đơn sửa chữa.', '+ Tải tệp lên', () => alert('Chức năng tải tệp sẽ được triển khai ở bước tiếp theo.'));
     return null;
   };
 
@@ -2789,7 +2824,11 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
 
         <div className="detail-body-v2">
           <nav className="room-op-tabs">
-            {tabs.map(([id, text]) => <button key={id} className={`tab-link ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{text}</button>)}
+            {tabs.map(([id, text, badge]) => (
+              <button key={id} className={`tab-link ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>
+                {text}{badge !== '' && <span className={`tab-badge ${badge === '!' || badge === 'Nợ' ? 'warn' : ''}`}>{badge}</span>}
+              </button>
+            ))}
           </nav>
 
           <div className="tab-content" style={{ minHeight: '300px' }}>
@@ -2804,11 +2843,19 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                 <button className="primary-btn" onClick={() => onAction('create_receipt')}>⚡ Lập phiếu tháng</button>
                 {currentReceipt && <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => onAction('pay_receipt', currentReceipt)}>Ghi nhận thanh toán</button>}
                 {currentReceipt && <button className="secondary-btn" onClick={() => onAction('view_qr', currentReceipt)}>Xem QR</button>}
-                <button className="secondary-btn" onClick={() => onAction('edit_contract')}>✏️ Sửa HĐ</button>
-                <button className="secondary-btn" onClick={() => onAction('renew_contract')}>🔄 Gia hạn</button>
-                <button className="secondary-btn" onClick={() => onAction('transfer_room')}>↔ Đổi phòng</button>
-                <button className="secondary-btn warning" style={{ flex: 1 }} onClick={() => onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice')}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : '⚠️ Báo chuyển'}</button>
-                <button className="secondary-btn danger" style={{ flex: 1 }} onClick={() => onAction('moving_out')}>💸 Tất toán</button>
+                <div style={{ position: 'relative' }}>
+                  <button className="secondary-btn" onClick={() => setShowMoreActions(!showMoreActions)}>⋯ Thao tác khác</button>
+                  {showMoreActions && (
+                    <div className="more-actions-menu">
+                      <button onClick={() => { setShowMoreActions(false); onAction('edit_contract'); }}>Sửa HĐ</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('renew_contract'); }}>Gia hạn</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('transfer_room'); }}>Đổi phòng</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice'); }}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : 'Báo chuyển'}</button>
+                      <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Tất toán</button>
+                      <button onClick={() => { setShowMoreActions(false); currentReceipt ? onAction('view_qr', currentReceipt) : null; }}>Xuất PDF</button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
