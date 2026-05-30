@@ -2330,7 +2330,17 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
 }
 
 function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
-  const [tempIndices, setTempIndices] = useState(data.rooms.map(r => ({ id: r.id, electric: r.initialElectric || r.electricStart || 0, water: r.initialWater || r.waterStart || 0 })));
+  const buildTempIndices = (rooms) => rooms.map(r => ({
+    id: r.id,
+    electric: r.initialElectric ?? r.electricStart ?? r.electricNew ?? 0,
+    water: r.initialWater ?? r.waterStart ?? r.waterNew ?? 0
+  }));
+  const [tempIndices, setTempIndices] = useState(() => buildTempIndices(data.rooms));
+  const [savedMessage, setSavedMessage] = useState('');
+
+  useEffect(() => {
+    setTempIndices(buildTempIndices(data.rooms));
+  }, [data.rooms]);
 
   const handleUpdateIndices = () => {
     setData(old => ({
@@ -2338,11 +2348,24 @@ function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
       rooms: old.rooms.map(r => {
         const found = tempIndices.find(ti => ti.id === r.id);
         if (found) {
-          return { ...r, initialElectric: parseLocaleNumber(found.electric), initialWater: parseLocaleNumber(found.water), electricStart: parseLocaleNumber(found.electric), waterStart: parseLocaleNumber(found.water) };
+          const electric = parseLocaleNumber(found.electric);
+          const water = parseLocaleNumber(found.water);
+          return {
+            ...r,
+            initialElectric: electric,
+            initialWater: water,
+            electricStart: electric,
+            waterStart: water,
+            electricOld: electric,
+            waterOld: water,
+            electricNew: r.electricNew ?? electric,
+            waterNew: r.waterNew ?? water
+          };
         }
         return r;
       })
     }));
+    setSavedMessage(`Đã lưu chỉ số đầu kỳ lúc ${new Date().toLocaleTimeString('vi-VN')}`);
   };
 
   return (
@@ -2404,6 +2427,7 @@ function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
             </table>
           </div>
           <button className="primary-btn wide" style={{ marginTop: '20px' }} onClick={handleUpdateIndices}>Lưu chỉ số đầu kỳ</button>
+          {savedMessage && <p className="small" style={{ marginTop: '10px', color: 'var(--success)', fontWeight: 700 }}>{savedMessage}</p>}
         </section>
       </div>
 
