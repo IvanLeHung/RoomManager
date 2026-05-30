@@ -171,6 +171,7 @@ function numberToWords(number) {
 
 function parseDateFlexible(value) {
   if (!value) return null;
+  if (value instanceof Date) return value;
   const text = String(value);
   if (text.includes('-')) return new Date(`${text}T00:00:00`);
   if (text.includes('/')) {
@@ -178,6 +179,54 @@ function parseDateFlexible(value) {
     if (parts.length === 3) return new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}T00:00:00`);
   }
   return null;
+}
+
+const INVALID_CONTRACT_YEARS = [1900, 1970];
+
+function isInvalidContractDate(value) {
+  const date = parseDateFlexible(value);
+  if (!date || Number.isNaN(date.getTime())) return true;
+  return INVALID_CONTRACT_YEARS.includes(date.getFullYear());
+}
+
+function formatContractDate(value, fallback = 'Chưa cập nhật') {
+  if (isInvalidContractDate(value)) return fallback;
+  const date = parseDateFlexible(value);
+  if (!date) return fallback;
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function isValidBusinessDate(value) {
+  return !isInvalidContractDate(value);
+}
+
+function formatBusinessDate(value, fallback = 'Chưa cập nhật') {
+  return formatContractDate(value, fallback);
+}
+
+function calculateRentalDuration(startDate, endDate) {
+  if (isInvalidContractDate(startDate) || isInvalidContractDate(endDate)) return '—';
+  const start = parseDateFlexible(startDate);
+  const end = parseDateFlexible(endDate);
+  if (!start || !end || end <= start) return '—';
+  const months = diffMonths(startDate, endDate);
+  return months > 0 ? `${months} tháng` : '—';
+}
+
+function isValidContractRange(startDate, endDate) {
+  if (isInvalidContractDate(startDate) || isInvalidContractDate(endDate)) return false;
+  return parseDateFlexible(endDate) > parseDateFlexible(startDate);
+}
+
+function formatDateForInput(value) {
+  return isInvalidContractDate(value) ? '' : String(value).slice(0, 10);
+}
+
+function formatDisplayDate(value, fallback = '—') {
+  if (!value) return fallback;
+  const date = parseDateFlexible(value);
+  if (!date || Number.isNaN(date.getTime())) return fallback;
+  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function isValidDateString(value) {
@@ -511,9 +560,9 @@ function LoginScreen({ onUnlock }) {
 function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'main', onClose }) {
   const primaryTenant = tenants.find(t => t.role === 'primary') || tenants[0] || {};
   const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const startDay = contract.startDate ? contract.startDate.split('-').reverse().join('/') : '.../.../....';
-  const endDay = contract.endDate ? contract.endDate.split('-').reverse().join('/') : '................';
-  const duration = diffMonths(contract.startDate, contract.endDate);
+  const startDay = formatBusinessDate(contract.startDate);
+  const endDay = formatBusinessDate(contract.endDate);
+  const duration = calculateRentalDuration(contract.startDate, contract.endDate);
   const isMain = type === 'main';
   const isLiquidation = type === 'liquidation';
   const isRenewal = type === 'renewal';
@@ -577,7 +626,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <p>2.2. Hai Bên lập Phụ lục 01 – Biên bản bàn giao (kèm ảnh/video), ghi rõ thiết bị – hiện trạng – chỉ số điện/nước đầu kỳ – số thẻ/vân tay.</p>
                 <p>2.3. Kể từ thời điểm bàn giao, Bên B có toàn quyền sử dụng Phòng thuê theo Hợp đồng.</p>
                 <h3>ĐIỀU 3. THỜI HẠN THUÊ</h3>
-                <p>3.1. Thời hạn thuê: <b>{duration}</b> tháng kể từ ngày bàn giao.</p>
+                <p>3.1. Thời hạn thuê: <b>{duration}</b> kể từ ngày bàn giao.</p>
                 <p>3.2. Từ ngày <b>{startDay}</b> Đến hết ngày <b>{endDay}</b></p>
                 <p>3.3. Hết thời hạn thuê, Hợp đồng tự động gia hạn theo tháng với điều khoản không đổi, trừ khi một Bên thông báo chấm dứt trước ≥30 ngày bằng văn bản/tin nhắn (Zalo/SMS).</p>
                 <h3>ĐIỀU 4. TIỀN ĐẶT CỌC</h3>
@@ -788,6 +837,7 @@ function AppMain() {
   const [viewingSupplier, setViewingSupplier] = useState(null);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [addingSupplier, setAddingSupplier] = useState(false);
+  const [roomOpsModal, setRoomOpsModal] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
@@ -882,19 +932,27 @@ function AppMain() {
     return (data.tenants || []).filter(t => t.name.toLowerCase().includes(q) || (t.phone && t.phone.includes(q)) || (t.cccd && t.cccd.includes(q)));
   }, [data.tenants, query]);
 
+  const confirmDanger = (title, consequence) => {
+    if (!window.confirm(`${title}\n\n${consequence}`)) return false;
+    return window.confirm('Xác nhận lần 2: thao tác này sẽ được ghi vào dữ liệu phòng. Bạn chắc chắn tiếp tục?');
+  };
+
   function handleAction(type, roomOrTenant) {
     if (type === 'add_tenant') {
       const room = data.rooms.find(r => r.id === roomOrTenant.id);
       setNewRentalRoom(room);
     } else if (type === 'notice') {
-      if (window.confirm(`Xác nhận báo chuyển cho phòng ${roomOrTenant.id}?`)) updateContractStatus(roomOrTenant.id, 'notice');
+      if (window.confirm(`Xác nhận báo chuyển cho phòng ${roomOrTenant.id}?\n\nPhòng sẽ được đưa vào trạng thái sắp trống để theo dõi công nợ và lịch kiểm phòng.`)) updateContractStatus(roomOrTenant.id, 'notice');
     } else if (type === 'cancel_notice') {
       if (window.confirm(`Hủy báo chuyển phòng ${roomOrTenant.id}?`)) updateContractStatus(roomOrTenant.id, 'active');
     } else if (type === 'moving_out') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const room = data.rooms.find(r => r.id === roomId);
       const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
-      if (activeContract) setSettlingRoom({ room, contract: activeContract });
+      if (activeContract && confirmDanger(
+        `Bạn chắc chắn muốn tất toán/kết thúc thuê phòng ${roomId}?`,
+        'Hệ thống sẽ chốt công nợ, cập nhật trạng thái hợp đồng, kết thúc cư trú và ghi lịch sử trả phòng.'
+      )) setSettlingRoom({ room, contract: activeContract });
     } else if (type === 'view_contract') {
       const tenantMembership = roomOrTenant && !roomOrTenant.roomId
         ? (data.memberships || []).find(m => m.tenantId === roomOrTenant.id && m.status === 'active')
@@ -937,7 +995,15 @@ function AppMain() {
     } else if (type === 'transfer_room') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
-      if (activeContract) setTransferringContract(activeContract);
+      if (activeContract && window.confirm(`Đổi phòng cho P${roomId}?\n\nHệ thống sẽ kết thúc hợp đồng phòng cũ, tạo hợp đồng phòng mới và ghi lịch sử chuyển phòng.`)) setTransferringContract(activeContract);
+    } else if (type === 'add_asset') {
+      setRoomOpsModal({ type: 'asset', room: roomOrTenant });
+    } else if (type === 'add_maintenance') {
+      setRoomOpsModal({ type: 'maintenance', room: roomOrTenant });
+    } else if (type === 'add_file') {
+      setRoomOpsModal({ type: 'file', room: roomOrTenant });
+    } else if (type === 'record_meter') {
+      setRoomOpsModal({ type: 'meter', room: roomOrTenant });
     } else if (type === 'view_tenants') {
       setQuery(`P${roomOrTenant.id}`);
       setTab('tenants');
@@ -1639,6 +1705,39 @@ function AppMain() {
         </div>
       )}
       {paymentReceipt && <PaymentModal receipt={paymentReceipt} onClose={() => setPaymentReceipt(null)} onSave={(updated) => { setData(old => ({ ...old, receipts: old.receipts.map(r => r.id === updated.id ? updated : r) })); setPaymentReceipt(null); }} />}
+      {roomOpsModal && (
+        <RoomOpsModal
+          mode={roomOpsModal.type}
+          room={roomOpsModal.room}
+          onClose={() => setRoomOpsModal(null)}
+          onSave={(payload) => {
+            setData(old => ({
+              ...old,
+              rooms: (old.rooms || []).map(r => {
+                if (r.id !== roomOpsModal.room.id) return r;
+                if (roomOpsModal.type === 'asset') {
+                  return { ...r, assets: [payload, ...(r.assets || [])] };
+                }
+                if (roomOpsModal.type === 'maintenance') {
+                  return { ...r, maintenanceTickets: [payload, ...(r.maintenanceTickets || [])] };
+                }
+                if (roomOpsModal.type === 'file') {
+                  return { ...r, attachments: [payload, ...(r.attachments || [])] };
+                }
+                return {
+                  ...r,
+                  electricOld: r.electricNew ?? r.electricOld ?? r.electricStart ?? 0,
+                  electricNew: payload.electricNew,
+                  waterOld: r.waterNew ?? r.waterOld ?? r.waterStart ?? 0,
+                  waterNew: payload.waterNew,
+                  lastMeterReading: payload
+                };
+              })
+            }));
+            setRoomOpsModal(null);
+          }}
+        />
+      )}
       
       {(addingExpense || editingExpense) && (
         <ExpenseModal 
@@ -1724,8 +1823,8 @@ function RentalHistoryTab({ data, onAction }) {
                   <td><b>{c.actualEndDate?.split('-').reverse().join('/') || 'N/A'}</b></td>
                   <td>P{c.roomId}</td>
                   <td>{tenant.name}</td>
-                  <td>{c.startDate?.split('-').reverse().join('/')}</td>
-                  <td>{c.endDate?.split('-').reverse().join('/')}</td>
+                  <td>{formatBusinessDate(c.startDate)}</td>
+                  <td>{formatBusinessDate(c.endDate)}</td>
                   <td>{formatMoney(c.deposit)}</td>
                   <td><button className="secondary-btn sm" onClick={() => onAction('view_contract', { roomId: c.roomId, contractId: c.id })}>Xem HĐ</button></td>
                 </tr>
@@ -1978,7 +2077,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
                   {stats.expiringContracts.slice(0, 5).map(c => (
                     <div key={c.id} className="mini-list-item">
                       <span>P{c.roomId}</span>
-                      <b className="danger">{c.endDate?.split('-').reverse().join('/')}</b>
+                      <b className="danger">{formatBusinessDate(c.endDate)}</b>
                     </div>
                   ))}
                   {stats.expiringContracts.length === 0 && <p className="small muted">Không có hợp đồng nào sắp hết hạn.</p>}
@@ -2484,6 +2583,8 @@ function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
 
 function RoomDetailModal({ room, data, onClose, onAction }) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [historyFilter, setHistoryFilter] = useState('all');
+  const [showMoreActions, setShowMoreActions] = useState(false);
   const { label, color, contract } = getRoomStatusInfo(data, room.id);
   const primaryTenant = contract ? getPrimaryTenantByContract(data, contract.id) : null;
   const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
@@ -2510,38 +2611,59 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
   const waterOld = latestReceipt ? getWaterOld(latestReceipt) : (room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
   const waterNew = latestReceipt ? getWaterNew(latestReceipt) : (room.waterNew ?? waterOld);
   const tenantInitial = primaryTenant?.name ? primaryTenant.name.trim().charAt(0).toUpperCase() : 'P';
-  const tabs = [
-    ['overview', 'Tổng quan'],
-    ['contract', 'Hợp đồng'],
-    ['residents', `Người ở${activeMembers.length ? ` (${activeMembers.length})` : ''}`],
-    ['payments', `Thanh toán${receiptDebt > 0 ? ' (!)' : ''}`],
-    ['meters', 'Điện nước'],
-    ['assets', 'Tài sản'],
-    ['maintenance', 'Bảo trì'],
-    ['history', 'Lịch sử'],
-    ['files', 'Tệp']
-  ];
-
-  const formatDate = (value) => value ? String(value).slice(0, 10).split('-').reverse().join('/') : '—';
+  const formatDate = formatContractDate;
   const dateDiffDays = (value) => {
+    if (isInvalidContractDate(value)) return null;
     const date = parseDateFlexible(value);
     if (!date) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return Math.ceil((date.getTime() - today.getTime()) / 86400000);
   };
+  const contractStartValid = !contract || !isInvalidContractDate(contract.startDate);
+  const contractEndValid = !contract || !isInvalidContractDate(contract.endDate);
+  const contractDateValid = !contract || isValidContractRange(contract.startDate, contract.endDate);
+  const contractDuration = contract ? calculateRentalDuration(contract.startDate, contract.endDate) : '—';
   const contractDaysLeft = dateDiffDays(contract?.endDate);
-  const contractStatus = !contract ? 'Chưa có hợp đồng' : contractDaysLeft === null ? 'Còn hạn' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
-  const contractStatusClass = !contract ? 'vacant' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
+  const contractStatus = !contract ? 'Chưa có hợp đồng' : !contractDateValid ? 'Thiếu ngày hợp lệ' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
+  const contractStatusClass = !contract ? 'vacant' : !contractDateValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
   const receiptStatus = !currentReceipt ? 'Chưa có phiếu' : isReceiptOverdue ? 'Quá hạn' : currentReceipt.status;
   const receiptStatusClass = receiptStatus === 'Đã thanh toán' ? 'active' : receiptStatus === 'Nợ một phần' ? 'notice' : receiptStatus === 'Quá hạn' ? 'debt' : 'debt';
   const occupantLimit = room.maxPeople || room.capacity || '—';
+  const formatRenewalRange = (renewal) => {
+    if (isInvalidContractDate(renewal.oldEndDate)) return `Gia hạn đến ${formatDate(renewal.newEndDate)}`;
+    return `${formatDate(renewal.oldEndDate)} -> ${formatDate(renewal.newEndDate)}`;
+  };
   const activityItems = [
-    ...roomReceipts.slice(0, 5).map(r => ({ id: r.id, date: r.savedAt || r.createdAt, title: `Phiếu ${r.month}`, detail: `${formatMoney(r.total)} - ${r.status}` })),
-    ...contractRenewals.map(r => ({ id: r.id, date: r.createdAt, title: 'Gia hạn hợp đồng', detail: `${formatDate(r.oldEndDate)} -> ${formatDate(r.newEndDate)}` })),
-    ...roomTransfers.map(t => ({ id: t.id, date: t.createdAt, title: 'Đổi phòng', detail: `P${t.oldRoomId} -> P${t.newRoomId}` })),
-    ...roomMoveOuts.map(r => ({ id: r.id, date: r.createdAt, title: 'Tất toán', detail: formatDate(r.actualEndDate) }))
+    ...roomReceipts.slice(0, 5).map(r => ({ id: r.id, type: 'receipt', date: r.savedAt || r.createdAt, actor: 'Hệ thống', title: `Phiếu ${r.month}`, detail: `${formatMoney(r.total)} - ${r.status}` })),
+    ...roomReceipts.filter(r => Number(r.paidAmount || 0) > 0).slice(0, 5).map(r => ({ id: `pay-${r.id}`, type: 'payment', date: r.paidAt || r.savedAt || r.createdAt, actor: r.collector || 'Admin', title: 'Ghi nhận thanh toán', detail: `Đã thu ${formatMoney(r.paidAmount || 0)} cho phiếu ${r.month}` })),
+    ...contractRenewals.map(r => ({ id: r.id, type: 'contract', date: r.createdAt, actor: 'Admin', title: 'Gia hạn hợp đồng', detail: formatRenewalRange(r) })),
+    ...roomTransfers.map(t => ({ id: t.id, type: 'room', date: t.createdAt, actor: 'Admin', title: 'Đổi phòng', detail: `P${t.oldRoomId} -> P${t.newRoomId}` })),
+    ...roomMoveOuts.map(r => ({ id: r.id, type: 'room', date: r.createdAt, actor: 'Admin', title: 'Tất toán', detail: formatDisplayDate(r.actualEndDate) })),
+    ...roomAssets.map(a => ({ id: a.id || a.name, type: 'asset', date: a.createdAt || a.handoverDate, actor: 'Admin', title: 'Tài sản phòng', detail: `${a.name} - ${a.currentStatus || a.status || 'Đang dùng'}` })),
+    ...maintenanceItems.map(m => ({ id: m.id || m.title, type: 'maintenance', date: m.createdAt || m.createdDate, actor: m.assignee || 'Admin', title: 'Bảo trì', detail: `${m.title} - ${m.status || 'Mới tạo'}` })),
+    ...attachments.map(f => ({ id: f.id || f.name, type: 'file', date: f.createdAt || f.uploadedAt, actor: f.uploader || 'Admin', title: 'Tệp đính kèm', detail: `${f.group || f.type || 'Khác'} - ${f.name}` }))
   ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
+  const filteredActivityItems = historyFilter === 'all' ? activityItems : activityItems.filter(item => item.type === historyFilter);
+  const electricUsage = Math.max(0, electricNew - electricOld);
+  const waterUsage = Math.max(0, waterNew - waterOld);
+  const electricValue = electricUsage === 0 ? 'Chưa ghi chỉ số mới' : `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`;
+  const waterValue = waterUsage === 0 ? 'Chưa ghi chỉ số mới' : `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`;
+  const electricNote = electricUsage === 0 ? `Chỉ số gần nhất: ${formatLocaleNumber(electricNew)}` : `Dùng ${formatLocaleNumber(electricUsage)} kWh`;
+  const waterNote = waterUsage === 0 ? `Chỉ số gần nhất: ${formatLocaleNumber(waterNew)}` : `Dùng ${formatLocaleNumber(waterUsage)} m3`;
+  const electricMeterNote = electricUsage === 0 ? 'Chưa ghi chỉ số mới' : `Tiêu thụ ${formatLocaleNumber(electricUsage)} kWh`;
+  const waterMeterNote = waterUsage === 0 ? 'Chưa ghi chỉ số mới' : `Tiêu thụ ${formatLocaleNumber(waterUsage)} m3`;
+  const tabs = [
+    ['overview', 'Tổng quan', ''],
+    ['contract', 'Hợp đồng', !contractDateValid ? '!' : ''],
+    ['residents', 'Người ở', activeMembers.length || ''],
+    ['payments', 'Thanh toán', receiptDebt > 0 ? 'Nợ' : ''],
+    ['meters', 'Điện nước', ''],
+    ['assets', 'Tài sản', roomAssets.length || ''],
+    ['maintenance', 'Bảo trì', maintenanceItems.length || ''],
+    ['history', 'Lịch sử', activityItems.length || ''],
+    ['files', 'Tệp', attachments.length || '']
+  ];
 
   const renderMetric = (labelText, value, note) => (
     <div className="op-item">
@@ -2557,10 +2679,12 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
         <div className="op-card" style={{ gridColumn: 'span 2', background: '#f8fafc' }}>
           <h3 className="op-card-title">Tổng quan nhanh</h3>
           <div className="op-grid">
-            {renderMetric('Tiền phải thu', currentReceipt ? formatMoney(receiptTotal) : 'Chưa có phiếu', currentReceipt ? `Đã thu ${formatMoney(receiptPaid)}` : null)}
+            {renderMetric('Tiền phải thu', currentReceipt ? formatMoney(receiptTotal) : 'Chưa có phiếu', null)}
+            {renderMetric('Đã thu', currentReceipt ? formatMoney(receiptPaid) : formatMoney(0), currentReceipt ? receiptStatus : 'Chưa ghi nhận')}
             {renderMetric('Còn nợ', formatMoney(receiptDebt), receiptDebt > 0 ? `Hạn thu ngày ${paymentDay}` : 'Không còn nợ')}
             {renderMetric('Hợp đồng đến', contract ? formatDate(contract.endDate) : '—', contractStatus)}
             {renderMetric('Số người ở', `${activeMembers.length}/${occupantLimit}`, 'Đang cư trú')}
+            {renderMetric('Trạng thái cư trú', label, primaryTenant ? primaryTenant.name : 'Phòng trống')}
           </div>
         </div>
       </div>
@@ -2617,8 +2741,8 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
       <div className="op-card" style={{ gridColumn: 'span 2' }}>
         <h3 className="op-card-title">Điện nước gần nhất</h3>
         <div className="op-grid">
-          {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, `Dùng ${formatLocaleNumber(Math.max(0, electricNew - electricOld))} kWh`)}
-          {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, `Dùng ${formatLocaleNumber(Math.max(0, waterNew - waterOld))} m3`)}
+          {renderMetric('Điện', electricValue, electricNote)}
+          {renderMetric('Nước', waterValue, waterNote)}
         </div>
       </div>
       </div>
@@ -2649,10 +2773,11 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
     );
   };
 
-  const renderEmptyOps = (title, detail) => (
+  const renderEmptyOps = (title, detail, actionLabel, actionHandler) => (
     <div className="op-card" style={{ alignItems: 'center', textAlign: 'center', padding: '32px' }}>
       <p className="op-value">{title}</p>
       <p className="op-label">{detail}</p>
+      {actionLabel && <button className="primary-btn sm" onClick={actionHandler}>{actionLabel}</button>}
     </div>
   );
 
@@ -2669,35 +2794,53 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                 {renderMetric('Trạng thái', contractStatus)}
                 {renderMetric('Ngày bắt đầu', formatDate(contract.startDate))}
                 {renderMetric('Ngày hết hạn', formatDate(contract.endDate))}
-                {renderMetric('Thời hạn thuê', `${diffMonths(contract.startDate, contract.endDate)} tháng`)}
+                {renderMetric('Thời hạn thuê', contractDuration)}
                 {renderMetric('Chu kỳ thanh toán', `Ngày ${paymentDay} hằng tháng`)}
                 {renderMetric('Tiền thuê', formatMoney(contract.rent))}
                 {renderMetric('Tiền cọc', formatMoney(contract.deposit))}
               </div>
             </div>
+            {!contractDateValid && (
+              <div className="warning-box">Hợp đồng thiếu ngày bắt đầu hợp lệ. Vui lòng cập nhật để tính đúng thời hạn thuê và phụ lục gia hạn.</div>
+            )}
             <div className="op-card">
               <h3 className="op-card-title">Lịch sử gia hạn</h3>
               {contractRenewals.length ? contractRenewals.map(r => (
-                <div key={r.id} className="op-item"><span className="op-value">{formatDate(r.oldEndDate)} {'->'} {formatDate(r.newEndDate)}</span><span className="op-label">{r.note || 'Không có ghi chú'}</span></div>
+                <div key={r.id} className="op-item"><span className="op-value">{formatRenewalRange(r)}</span><span className="op-label">{r.note || 'Không có ghi chú'}</span></div>
               )) : <p className="muted small">Chưa có lịch sử gia hạn.</p>}
             </div>
+            <div className="op-action-footer" style={{ marginTop: 0 }}>
+              <button className="secondary-btn" onClick={() => onAction('edit_contract')}>Sửa hợp đồng</button>
+              <button className="secondary-btn" onClick={() => onAction('renew_contract')}>Gia hạn</button>
+              <button className="secondary-btn" onClick={() => onAction('view_contract')}>In hợp đồng</button>
+              <button className="secondary-btn danger" onClick={() => onAction('moving_out')}>Kết thúc thuê</button>
+            </div>
           </>
-        ) : renderEmptyOps('Chưa có hợp đồng', 'Phòng trống hoặc chưa tạo hợp đồng.')}
+        ) : renderEmptyOps('Chưa có hợp đồng', 'Phòng trống hoặc chưa tạo hợp đồng.', '+ Tạo hợp đồng', () => onAction('add_tenant'))}
       </div>
     );
     if (activeTab === 'residents') return (
       <div className="stack" style={{ gap: '12px' }}>
-        {allMembers.map(m => (
-          <div key={m.id} className="op-card" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <p className="op-value">{m.tenant?.name || 'N/A'} {m.role === 'primary' ? '(Người đứng tên)' : '(Ở cùng)'}</p>
-              <p className="op-label">{m.tenant?.phone || '—'} • CCCD {m.tenant?.cccd || '—'} • Vào {formatDate(m.joinedDate || contract?.startDate)}</p>
+        {['primary', 'member'].map(group => {
+          const rows = allMembers.filter(m => group === 'primary' ? m.role === 'primary' : m.role !== 'primary');
+          if (!rows.length) return null;
+          return (
+            <div key={group} className="op-card">
+              <h3 className="op-card-title">{group === 'primary' ? 'Người đứng tên' : 'Người ở cùng'}</h3>
+              {rows.map(m => (
+                <div key={m.id} className="op-row">
+                  <div>
+                    <p className="op-value">{m.tenant?.name || 'N/A'}</p>
+                    <p className="op-label">{m.tenant?.phone || '—'} • CCCD {m.tenant?.cccd || '—'} • Vào {formatDate(m.joinedDate || contract?.startDate)}{m.leftDate ? ` • Ra ${formatDisplayDate(m.leftDate)}` : ''}</p>
+                  </div>
+                  <span className={`status-badge-liquid ${m.status === 'active' ? 'active' : 'vacant'}`}>{m.status === 'active' ? 'Đang ở' : 'Đã rời đi'}</span>
+                </div>
+              ))}
             </div>
-            <span className={`status-badge-liquid ${m.status === 'active' ? 'active' : 'vacant'}`}>{m.status === 'active' ? 'Đang ở' : 'Đã rời đi'}</span>
-          </div>
-        ))}
-        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }}>+ Thêm người ở cùng</button>}
-        {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.')}
+          );
+        })}
+        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }}>+ Thêm người ở</button>}
+        {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.', '+ Thuê mới', () => onAction('add_tenant'))}
       </div>
     );
     if (activeTab === 'payments') return (
@@ -2709,22 +2852,26 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
         <div className="op-card" style={{ padding: 0 }}>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Tháng</th><th>Tổng tiền</th><th>Đã thu</th><th>Còn nợ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+              <thead><tr><th>Phiếu</th><th>Tổng tiền</th><th>Đã thu</th><th>Còn nợ</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
               <tbody>
                 {roomReceipts.map(r => {
                   const debt = Math.max(0, Number(r.total || 0) - Number(r.paidAmount || 0));
+                  const paid = Number(r.paidAmount || 0);
+                  const status = r.status === 'Đã hủy' ? 'Đã hủy' : debt === 0 && paid > 0 ? 'Đã thanh toán' : paid > 0 ? 'Thanh toán một phần' : 'Chưa thanh toán';
+                  const dueText = `${String(paymentDay).padStart(2, '0')}/${String(r.month || INITIAL_MONTH).padStart(7, '0')}`;
                   return (
                     <tr key={r.id}>
-                      <td>{r.month}</td>
+                      <td>Phiếu {r.month}</td>
                       <td>{formatMoney(r.total || 0)}</td>
                       <td>{formatMoney(r.paidAmount || 0)}</td>
                       <td style={{ color: debt > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>{formatMoney(debt)}</td>
-                      <td><span className={`status-badge-liquid ${r.status === 'Đã thanh toán' ? 'active' : r.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{r.status}</span></td>
-                      <td><div style={{ display: 'flex', gap: '4px' }}><button className="primary-btn sm" onClick={() => onAction('pay_receipt', r)}>Thu</button><button className="secondary-btn sm" onClick={() => onAction('view_qr', r)}>QR</button></div></td>
+                      <td>{dueText}</td>
+                      <td><span className={`status-badge-liquid ${status === 'Đã thanh toán' ? 'active' : status === 'Thanh toán một phần' ? 'notice' : 'debt'}`}>{status}</span></td>
+                      <td><div className="row-actions"><button className="primary-btn sm" onClick={() => onAction('pay_receipt', r)}>Ghi nhận</button><button className="secondary-btn sm" onClick={() => onAction('view_qr', r)}>QR</button><button className="secondary-btn sm" onClick={() => onAction('view_qr', r)}>Chi tiết</button><button className="secondary-btn sm" onClick={() => window.print()}>Biên nhận</button></div></td>
                     </tr>
                   );
                 })}
-                {!roomReceipts.length && <tr><td colSpan="6" className="center muted" style={{ padding: '20px' }}>Chưa có dữ liệu thanh toán.</td></tr>}
+                {!roomReceipts.length && <tr><td colSpan="7" className="center muted" style={{ padding: '20px' }}>Chưa có dữ liệu thanh toán.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -2736,21 +2883,25 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
         <div className="op-card">
           <h3 className="op-card-title">Chỉ số hiện tại</h3>
           <div className="op-grid">
-            {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, `Tiêu thụ ${formatLocaleNumber(Math.max(0, electricNew - electricOld))} kWh`)}
-            {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, `Tiêu thụ ${formatLocaleNumber(Math.max(0, waterNew - waterOld))} m3`)}
+            {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, electricMeterNote)}
+            {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, waterMeterNote)}
             {renderMetric('Đơn giá điện', formatMoney(room.electricPrice || 0))}
             {renderMetric('Đơn giá nước', formatMoney(room.waterPrice || 0))}
           </div>
+          <button className="primary-btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onAction('record_meter')}>+ Ghi chỉ số điện nước</button>
         </div>
         <div className="op-card" style={{ padding: 0 }}>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Tháng</th><th>Điện cũ</th><th>Điện mới</th><th>Dùng</th><th>Nước cũ</th><th>Nước mới</th><th>Dùng</th></tr></thead>
+              <thead><tr><th>Tháng</th><th>Chỉ số cũ</th><th>Chỉ số mới</th><th>Tiêu thụ</th><th>Đơn giá</th><th>Thành tiền</th><th>Ngày ghi</th><th>Người ghi</th></tr></thead>
               <tbody>
                 {roomReceipts.filter(r => r.type === 'monthly').map(r => (
-                  <tr key={r.id}><td>{r.month}</td><td>{formatLocaleNumber(getElectricOld(r))}</td><td>{formatLocaleNumber(getElectricNew(r))}</td><td>{formatLocaleNumber(r.electricUsed || 0)}</td><td>{formatLocaleNumber(getWaterOld(r))}</td><td>{formatLocaleNumber(getWaterNew(r))}</td><td>{formatLocaleNumber(r.waterUsed || 0)}</td></tr>
+                  <React.Fragment key={r.id}>
+                    <tr><td>Điện {r.month}</td><td>{formatLocaleNumber(getElectricOld(r))}</td><td>{formatLocaleNumber(getElectricNew(r))}</td><td>{formatLocaleNumber(r.electricUsed || 0)}</td><td>{formatMoney(room.electricPrice || 0)}</td><td>{formatMoney(r.electricAmount || 0)}</td><td>{formatDisplayDate((r.savedAt || r.createdAt || '').slice(0, 10))}</td><td>{r.reader || 'Admin'}</td></tr>
+                    <tr><td>Nước {r.month}</td><td>{formatLocaleNumber(getWaterOld(r))}</td><td>{formatLocaleNumber(getWaterNew(r))}</td><td>{formatLocaleNumber(r.waterUsed || 0)}</td><td>{formatMoney(room.waterPrice || 0)}</td><td>{formatMoney(r.waterAmount || 0)}</td><td>{formatDisplayDate((r.savedAt || r.createdAt || '').slice(0, 10))}</td><td>{r.reader || 'Admin'}</td></tr>
+                  </React.Fragment>
                 ))}
-                {!roomReceipts.length && <tr><td colSpan="7" className="center muted" style={{ padding: '20px' }}>Chưa có lịch sử chỉ số.</td></tr>}
+                {!roomReceipts.length && <tr><td colSpan="8" className="center muted" style={{ padding: '20px' }}>Chưa có lịch sử chỉ số.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -2758,17 +2909,40 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
       </div>
     );
     if (activeTab === 'assets') return roomAssets.length ? (
-      <div className="op-grid">{roomAssets.map((asset, idx) => <div key={idx} className="op-card"><h3 className="op-card-title">{asset.name}</h3><p className="op-value">{asset.status || 'Đang dùng'}</p><p className="op-label">{asset.note || 'Chưa có ghi chú'}</p></div>)}</div>
-    ) : renderEmptyOps('Chưa có danh sách tài sản', 'Có thể bổ sung giường, tủ, máy lạnh, đồng hồ và ảnh bàn giao ở bước tiếp theo.');
+      <div className="stack" style={{ gap: '12px' }}>
+        <div className="op-action-footer" style={{ marginTop: 0 }}><button className="primary-btn sm" onClick={() => onAction('add_asset')}>+ Thêm tài sản</button><button className="secondary-btn sm">Nhập từ mẫu</button><button className="secondary-btn sm" onClick={() => window.print()}>In bàn giao</button></div>
+        <div className="table-wrap"><table><thead><tr><th>Tài sản</th><th>Loại</th><th>SL</th><th>Bàn giao</th><th>Hiện tại</th><th>Giá trị</th><th>Ghi chú</th><th>Thao tác</th></tr></thead><tbody>{roomAssets.map((asset, idx) => <tr key={asset.id || idx}><td>{asset.name}</td><td>{asset.category || asset.type || '—'}</td><td>{asset.quantity || 1}</td><td>{asset.handoverStatus || asset.status || 'Tốt'}</td><td>{asset.currentStatus || asset.status || 'Đang dùng'}</td><td>{formatMoney(asset.value || 0)}</td><td>{asset.note || '—'}</td><td><div className="row-actions"><button className="secondary-btn sm">Sửa</button><button className="secondary-btn sm">Thêm ảnh</button></div></td></tr>)}</tbody></table></div>
+      </div>
+    ) : renderEmptyOps('Chưa có danh sách tài sản', 'Thêm giường, tủ, máy lạnh, đồng hồ điện/nước hoặc ảnh bàn giao phòng.', '+ Thêm tài sản', () => onAction('add_asset'));
     if (activeTab === 'maintenance') return maintenanceItems.length ? (
-      <div className="stack" style={{ gap: '12px' }}>{maintenanceItems.map((item, idx) => <div key={idx} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{item.status || 'Mới'} • {item.note || ''}</p></div>)}</div>
-    ) : renderEmptyOps('Chưa có sự cố bảo trì', 'Các sự cố điện, nước, khóa cửa và thiết bị sẽ được ghi tại đây.');
+      <div className="stack" style={{ gap: '12px' }}>
+        <button className="primary-btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onAction('add_maintenance')}>+ Tạo yêu cầu bảo trì</button>
+        {maintenanceItems.map((item, idx) => <div key={item.id || idx} className="op-card"><div className="op-row"><div><p className="op-value">{item.title}</p><p className="op-label">{item.category || 'Khác'} • {item.priority || 'Trung bình'} • {item.reporter || 'Khách thuê'} báo • {item.assignee || 'Chưa phân công'}</p><p className="op-label">Chi phí {formatMoney(item.cost || 0)} • {item.costOwner || 'Chưa rõ'} chịu phí • {item.note || 'Không có ghi chú'}</p></div><span className={`status-badge-liquid ${item.status === 'Hoàn tất' ? 'active' : item.status === 'Đã hủy' ? 'vacant' : 'notice'}`}>{item.status || 'Mới tạo'}</span></div></div>)}
+      </div>
+    ) : renderEmptyOps('Chưa có sự cố bảo trì', 'Các sự cố điện, nước, khóa cửa và thiết bị sẽ được ghi tại đây.', '+ Tạo yêu cầu bảo trì', () => onAction('add_maintenance'));
     if (activeTab === 'history') return activityItems.length ? (
-      <div className="stack" style={{ gap: '12px' }}>{activityItems.map(item => <div key={`${item.title}-${item.id}`} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{formatDate(String(item.date || '').slice(0, 10))} • {item.detail}</p></div>)}</div>
+      <div className="stack" style={{ gap: '12px' }}>
+        <div className="btn-group" style={{ margin: 0, flexWrap: 'wrap' }}>
+          {[
+            ['all', 'Tất cả'],
+            ['receipt', 'Phiếu tháng'],
+            ['payment', 'Thanh toán'],
+            ['contract', 'Hợp đồng'],
+            ['room', 'Phòng'],
+            ['resident', 'Người ở'],
+            ['meter', 'Điện nước'],
+            ['asset', 'Tài sản'],
+            ['maintenance', 'Bảo trì'],
+            ['file', 'Tệp']
+          ].map(([id, text]) => <button key={id} className={`secondary-btn sm ${historyFilter === id ? 'active-tab' : ''}`} onClick={() => setHistoryFilter(id)}>{text}</button>)}
+        </div>
+        {filteredActivityItems.map(item => <div key={`${item.title}-${item.id}`} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{formatDisplayDate(String(item.date || '').slice(0, 10))} • {item.actor} • {item.detail}</p></div>)}
+        {!filteredActivityItems.length && renderEmptyOps('Chưa có lịch sử phù hợp', 'Thử chọn bộ lọc khác để xem thêm hoạt động.')}
+      </div>
     ) : renderEmptyOps('Chưa có lịch sử hoạt động', 'Các lần lập phiếu, đổi phòng, gia hạn và tất toán sẽ hiển thị tại đây.');
     if (activeTab === 'files') return attachments.length ? (
-      <div className="stack" style={{ gap: '12px' }}>{attachments.map((file, idx) => <div key={idx} className="op-card"><p className="op-value">{file.name || `Tệp ${idx + 1}`}</p><p className="op-label">{file.type || 'Tệp đính kèm'}</p></div>)}</div>
-    ) : renderEmptyOps('Chưa có tệp đính kèm', 'Có thể thêm hợp đồng, CCCD, ảnh đồng hồ và ảnh bàn giao ở bước tiếp theo.');
+      <div className="stack" style={{ gap: '12px' }}><button className="primary-btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onAction('add_file')}>+ Tải tệp lên</button>{attachments.map((file, idx) => <div key={file.id || idx} className="op-card"><div className="op-row"><div><p className="op-value">{file.name || `Tệp ${idx + 1}`}</p><p className="op-label">{file.group || file.type || 'Khác'} • {file.size || '—'} • {file.uploader || 'Admin'} • {formatDisplayDate(file.uploadedAt || String(file.createdAt || '').slice(0, 10))}</p></div><div className="row-actions"><button className="secondary-btn sm">Xem</button><button className="secondary-btn sm">Tải xuống</button><button className="secondary-btn sm danger">Xóa</button></div></div></div>)}</div>
+    ) : renderEmptyOps('Chưa có tệp đính kèm', 'Có thể tải hợp đồng, CCCD, ảnh đồng hồ và ảnh bàn giao phòng.', '+ Tải tệp lên', () => onAction('add_file'));
     return null;
   };
 
@@ -2789,7 +2963,11 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
 
         <div className="detail-body-v2">
           <nav className="room-op-tabs">
-            {tabs.map(([id, text]) => <button key={id} className={`tab-link ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{text}</button>)}
+            {tabs.map(([id, text, badge]) => (
+              <button key={id} className={`tab-link ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>
+                {text}{badge !== '' && <span className={`tab-badge ${badge === '!' || badge === 'Nợ' ? 'warn' : ''}`}>{badge}</span>}
+              </button>
+            ))}
           </nav>
 
           <div className="tab-content" style={{ minHeight: '300px' }}>
@@ -2804,11 +2982,21 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                 <button className="primary-btn" onClick={() => onAction('create_receipt')}>⚡ Lập phiếu tháng</button>
                 {currentReceipt && <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => onAction('pay_receipt', currentReceipt)}>Ghi nhận thanh toán</button>}
                 {currentReceipt && <button className="secondary-btn" onClick={() => onAction('view_qr', currentReceipt)}>Xem QR</button>}
-                <button className="secondary-btn" onClick={() => onAction('edit_contract')}>✏️ Sửa HĐ</button>
-                <button className="secondary-btn" onClick={() => onAction('renew_contract')}>🔄 Gia hạn</button>
-                <button className="secondary-btn" onClick={() => onAction('transfer_room')}>↔ Đổi phòng</button>
-                <button className="secondary-btn warning" style={{ flex: 1 }} onClick={() => onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice')}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : '⚠️ Báo chuyển'}</button>
-                <button className="secondary-btn danger" style={{ flex: 1 }} onClick={() => onAction('moving_out')}>💸 Tất toán</button>
+                <div style={{ position: 'relative' }}>
+                  <button className="secondary-btn" onClick={() => setShowMoreActions(!showMoreActions)}>⋯ Thao tác khác</button>
+                  {showMoreActions && (
+                    <div className="more-actions-menu">
+                      <button onClick={() => { setShowMoreActions(false); onAction('edit_contract'); }}>Sửa hợp đồng</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('renew_contract'); }}>Gia hạn hợp đồng</button>
+                      <button className="warning" onClick={() => { setShowMoreActions(false); onAction('transfer_room'); }}>Đổi phòng</button>
+                      <button className="warning" onClick={() => { setShowMoreActions(false); onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice'); }}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : 'Báo chuyển'}</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>Xuất PDF</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>In hợp đồng</button>
+                      <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Tất toán</button>
+                      <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Kết thúc thuê</button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -2819,7 +3007,13 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
 }
 
 function EditContractModal({ contract, data, onClose, onSave }) {
-  const [form, setForm] = useState({ ...contract });
+  const [form, setForm] = useState({
+    ...contract,
+    signedDate: formatDateForInput(contract.signedDate),
+    startDate: formatDateForInput(contract.startDate),
+    endDate: formatDateForInput(contract.endDate)
+  });
+  const dateWarning = !form.startDate || !form.endDate || !isValidContractRange(form.startDate, form.endDate);
   return (
     <div className="modal" onClick={onClose}>
       <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
@@ -2837,6 +3031,7 @@ function EditContractModal({ contract, data, onClose, onSave }) {
             <label>Tiền đặt cọc <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} /></label>
             <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note || ''} onChange={e => setForm({...form, note: e.target.value})} /></label>
           </div>
+          {dateWarning && <div className="warning-box" style={{ marginTop: '16px' }}>Hợp đồng thiếu ngày bắt đầu/kết thúc hợp lệ. Vui lòng cập nhật để tính đúng thời hạn thuê và phụ lục gia hạn.</div>}
           <button className="primary-btn wide" style={{ marginTop: '24px' }} onClick={() => onSave(form)}>Cập nhật hợp đồng</button>
         </div>
       </div>
@@ -3310,18 +3505,22 @@ function RenewalModal({ contract, data, onClose, onSave }) {
   const room = data.rooms.find(r => r.id === contract.roomId);
   const tenant = getPrimaryTenantByContract(data, contract.id) || { name: 'N/A', phone: 'N/A' };
   const [showAppendix, setShowAppendix] = useState(false);
+  const hasValidCurrentEndDate = isValidBusinessDate(contract.endDate);
+  const currentEndDateText = formatBusinessDate(contract.endDate);
+  const currentStartDateText = formatBusinessDate(contract.startDate);
+  const defaultStartDate = hasValidCurrentEndDate ? contract.endDate : new Date().toISOString().slice(0, 10);
   
   const [form, setForm] = useState({
     signedDate: new Date().toISOString().slice(0, 10),
-    newStartDate: contract.endDate || new Date().toISOString().slice(0, 10),
-    newEndDate: addMonthsToDate(contract.endDate, 12) || '',
+    newStartDate: defaultStartDate,
+    newEndDate: hasValidCurrentEndDate ? addMonthsToDate(contract.endDate, 12) : '',
     keepPricing: true,
     newRent: contract.rent,
     newDeposit: contract.deposit,
     note: ''
   });
 
-  const isValid = form.newEndDate && (!contract.endDate || form.newEndDate > contract.endDate);
+  const isValid = form.newEndDate && (!hasValidCurrentEndDate || form.newEndDate > contract.endDate);
   const rentChanged = !form.keepPricing && Number(form.newRent) !== Number(contract.rent);
   const depositChanged = !form.keepPricing && Number(form.newDeposit) !== Number(contract.deposit);
 
@@ -3392,7 +3591,7 @@ function RenewalModal({ contract, data, onClose, onSave }) {
               <p>Hai bên thống nhất gia hạn thời hạn thuê phòng ${contract.roomId} như sau:</p>
               <ul>
                 <li>Ngày bắt đầu gia hạn: <b>${form.newStartDate.split('-').reverse().join('/')}</b></li>
-                <li>Ngày hết hạn cũ: <b>${contract.endDate?.split('-').reverse().join('/') || '—'}</b></li>
+                <li>Ngày hết hạn cũ: <b>${currentEndDateText}</b></li>
                 <li>Ngày hết hạn mới: <b>${form.newEndDate.split('-').reverse().join('/')}</b></li>
               </ul>
               <p>Sau thời hạn trên, nếu Bên B tiếp tục có nhu cầu thuê, hai bên sẽ thỏa thuận gia hạn tiếp hoặc ký hợp đồng/phụ lục mới.</p>
@@ -3468,7 +3667,7 @@ function RenewalModal({ contract, data, onClose, onSave }) {
         <div className="modal-header">
           <div>
             <h2 style={{ fontSize: '24px' }}>Gia hạn hợp đồng • Phòng {contract.roomId}</h2>
-            <p className="muted">{tenant.name} • Hết hạn hiện tại: {contract.endDate?.split('-').reverse().join('/') || 'Chưa có'}</p>
+            <p className="muted">{tenant.name} • Hết hạn hiện tại: {currentEndDateText}</p>
           </div>
           <button className="secondary-btn" onClick={onClose}>✕</button>
         </div>
@@ -3478,11 +3677,14 @@ function RenewalModal({ contract, data, onClose, onSave }) {
           <section className="op-card" style={{ background: '#f8fafc', borderStyle: 'dashed' }}>
             <h3 className="op-card-title">📌 Thông tin hiện tại</h3>
             <div className="op-grid">
-              <div className="op-item"><span className="op-label">Ngày bắt đầu</span><span className="op-value">{contract.startDate?.split('-').reverse().join('/')}</span></div>
-              <div className="op-item"><span className="op-label">Hết hạn hiện tại</span><span className="op-value">{contract.endDate?.split('-').reverse().join('/') || 'N/A'}</span></div>
+              <div className="op-item"><span className="op-label">Ngày bắt đầu</span><span className="op-value">{currentStartDateText}</span></div>
+              <div className="op-item"><span className="op-label">Hết hạn hiện tại</span><span className="op-value">{currentEndDateText}</span></div>
               <div className="op-item"><span className="op-label">Giá thuê</span><span className="op-value">{formatMoney(contract.rent)}</span></div>
               <div className="op-item"><span className="op-label">Tiền cọc</span><span className="op-value">{formatMoney(contract.deposit)}</span></div>
             </div>
+            {(!isValidBusinessDate(contract.startDate) || !hasValidCurrentEndDate) && (
+              <div className="warning-box" style={{ marginTop: '12px' }}>Hợp đồng thiếu ngày bắt đầu/kết thúc hợp lệ. Vui lòng cập nhật dữ liệu hợp đồng trước khi gia hạn.</div>
+            )}
           </section>
 
           {/* Form gia hạn */}
@@ -3494,8 +3696,8 @@ function RenewalModal({ contract, data, onClose, onSave }) {
               <label style={{ gridColumn: 'span 2' }}>
                 Ngày hết hạn mới
                 <input type="date" value={form.newEndDate} onChange={e => setForm({...form, newEndDate: e.target.value})} />
-                {!contract.endDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Chưa có ngày hết hạn cũ. Vui lòng chọn ngày mới.</p>}
-                {contract.endDate && form.newEndDate <= contract.endDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Ngày hết hạn mới phải sau ngày {contract.endDate.split('-').reverse().join('/')}</p>}
+                {!hasValidCurrentEndDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Chưa có ngày hết hạn cũ hợp lệ. Vui lòng chọn ngày mới.</p>}
+                {hasValidCurrentEndDate && form.newEndDate <= contract.endDate && <p className="danger small" style={{ marginTop: '4px' }}>⚠ Ngày hết hạn mới phải sau ngày {currentEndDateText}</p>}
               </label>
             </div>
 
@@ -3529,8 +3731,8 @@ function RenewalModal({ contract, data, onClose, onSave }) {
 
           <div className="btn-group">
             <button className="secondary-btn" onClick={onClose}>Hủy</button>
-            <button className="secondary-btn" onClick={() => setShowAppendix(!showAppendix)}>
-              {showAppendix ? '👁️ Ẩn phụ lục' : '📄 Xem phụ lục'}
+            <button className="secondary-btn" onClick={() => setShowAppendix(!showAppendix)} disabled={!isValid}>
+              {!isValid ? 'Chưa có phụ lục' : showAppendix ? 'Ẩn phụ lục' : 'Xem phụ lục'}
             </button>
             <button className="primary-btn" onClick={() => onSave(form)} disabled={!isValid} style={{ flex: 2 }}>
               🚀 Gia hạn hợp đồng
@@ -3602,7 +3804,7 @@ function AppendixContent({ contract, tenant, form, room }) {
         <p>Hai bên thống nhất gia hạn thời hạn thuê phòng {contract.roomId} như sau:</p>
         <ul style={{ paddingLeft: '25px', margin: '10px 0' }}>
           <li>Ngày bắt đầu gia hạn: <b>{form.newStartDate.split('-').reverse().join('/')}</b></li>
-          <li>Ngày hết hạn cũ: <b>{contract.endDate?.split('-').reverse().join('/') || '—'}</b></li>
+          <li>Ngày hết hạn cũ: <b>{formatBusinessDate(contract.endDate)}</b></li>
           <li>Ngày hết hạn mới: <b>{form.newEndDate.split('-').reverse().join('/')}</b></li>
         </ul>
         <p>Sau thời hạn trên, nếu Bên B tiếp tục có nhu cầu thuê, hai bên sẽ thỏa thuận gia hạn tiếp hoặc ký hợp đồng/phụ lục mới.</p>
@@ -3999,6 +4201,167 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
       </table>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div style={{ textAlign: 'center', width: '200px' }}><p><b>QUÉT MÃ THANH TOÁN</b></p><img src={buildVietQrUrl(bankInfo, receipt)} alt="QR" style={{ width: '120px', border: '1px solid #eee', padding: '5px' }} /><p style={{ fontSize: '10px' }}>{bankInfo.bankName} - {bankInfo.accountNo}</p></div><div style={{ textAlign: 'center', width: '200px' }}><p><b>CHỦ NHÀ KÝ TÊN</b></p><div style={{ height: '80px' }}></div><p><b>DIỆM THỊ BÌNH</b></p></div></div>
       <p style={{ fontStyle: 'italic', fontSize: '12px', marginTop: '20px', textAlign: 'center' }}>Quý khách vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Trân trọng!</p>
+    </div>
+  );
+}
+
+function RoomOpsModal({ mode, room, onClose, onSave }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const oldElectric = room.electricNew ?? room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0;
+  const oldWater = room.waterNew ?? room.waterOld ?? room.waterStart ?? room.initialWater ?? 0;
+  const configs = {
+    asset: {
+      title: `Thêm tài sản • Phòng ${room.id}`,
+      submit: '+ Thêm tài sản',
+      initial: {
+        name: '',
+        category: 'Nội thất',
+        quantity: 1,
+        handoverStatus: 'Tốt',
+        currentStatus: 'Tốt',
+        handoverDate: today,
+        value: 0,
+        deductDeposit: false,
+        note: ''
+      }
+    },
+    maintenance: {
+      title: `Tạo yêu cầu bảo trì • Phòng ${room.id}`,
+      submit: '+ Tạo bảo trì',
+      initial: {
+        title: '',
+        category: 'Thiết bị',
+        priority: 'Trung bình',
+        reporter: 'Khách thuê',
+        assignee: '',
+        cost: 0,
+        costOwner: 'Chủ trọ',
+        status: 'Mới tạo',
+        createdDate: today,
+        note: ''
+      }
+    },
+    file: {
+      title: `Tải tệp lên • Phòng ${room.id}`,
+      submit: '+ Lưu tệp',
+      initial: {
+        name: '',
+        group: 'Hợp đồng',
+        size: '',
+        uploader: 'Admin',
+        uploadedAt: today,
+        note: ''
+      }
+    },
+    meter: {
+      title: `Ghi chỉ số điện nước • Phòng ${room.id}`,
+      submit: 'Lưu chỉ số',
+      initial: {
+        electricOld: oldElectric,
+        electricNew: oldElectric,
+        waterOld: oldWater,
+        waterNew: oldWater,
+        readingDate: today,
+        reader: 'Admin',
+        electricPhoto: '',
+        waterPhoto: '',
+        note: ''
+      }
+    }
+  };
+  const config = configs[mode];
+  const [form, setForm] = useState(config.initial);
+  const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const handleSubmit = () => {
+    if (mode === 'asset' && !form.name.trim()) return alert('Vui lòng nhập tên tài sản.');
+    if (mode === 'maintenance' && !form.title.trim()) return alert('Vui lòng nhập tiêu đề sự cố.');
+    if (mode === 'file' && !form.name.trim()) return alert('Vui lòng nhập tên tệp.');
+    if (mode === 'meter' && (Number(form.electricNew) < Number(form.electricOld) || Number(form.waterNew) < Number(form.waterOld))) {
+      return alert('Chỉ số mới không được nhỏ hơn chỉ số cũ.');
+    }
+    onSave({
+      ...form,
+      id: uid(mode),
+      roomId: room.id,
+      quantity: Number(form.quantity || 0),
+      value: Number(form.value || 0),
+      cost: Number(form.cost || 0),
+      electricOld: Number(form.electricOld || 0),
+      electricNew: Number(form.electricNew || 0),
+      waterOld: Number(form.waterOld || 0),
+      waterNew: Number(form.waterNew || 0),
+      createdAt: new Date().toISOString()
+    });
+  };
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '680px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>{config.title}</h2>
+            <p className="muted small">Dữ liệu được lưu trực tiếp vào hồ sơ phòng và cập nhật badge tương ứng.</p>
+          </div>
+          <button className="secondary-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="detail-body-v2 stack" style={{ gap: '18px' }}>
+          {mode === 'asset' && (
+            <div className="form-grid-v2">
+              <label style={{ gridColumn: 'span 2' }}>Tên tài sản <input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Giường, tủ, máy lạnh..." /></label>
+              <label>Loại <input value={form.category} onChange={e => update('category', e.target.value)} /></label>
+              <label>Số lượng <input type="number" value={form.quantity} onChange={e => update('quantity', e.target.value)} /></label>
+              <label>Tình trạng bàn giao <input value={form.handoverStatus} onChange={e => update('handoverStatus', e.target.value)} /></label>
+              <label>Tình trạng hiện tại <input value={form.currentStatus} onChange={e => update('currentStatus', e.target.value)} /></label>
+              <label>Ngày bàn giao <input type="date" value={form.handoverDate} onChange={e => update('handoverDate', e.target.value)} /></label>
+              <label>Giá trị ước tính <input type="number" value={form.value} onChange={e => update('value', e.target.value)} /></label>
+              <label style={{ gridColumn: 'span 2', flexDirection: 'row', alignItems: 'center' }}><input type="checkbox" checked={form.deductDeposit} onChange={e => update('deductDeposit', e.target.checked)} /> Có trừ cọc nếu hỏng</label>
+              <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
+            </div>
+          )}
+          {mode === 'maintenance' && (
+            <div className="form-grid-v2">
+              <label style={{ gridColumn: 'span 2' }}>Tiêu đề sự cố <input value={form.title} onChange={e => update('title', e.target.value)} placeholder="Máy lạnh không lạnh, rò nước..." /></label>
+              <label>Loại sự cố <select value={form.category} onChange={e => update('category', e.target.value)}><option>Điện</option><option>Nước</option><option>Thiết bị</option><option>Vệ sinh</option><option>Khác</option></select></label>
+              <label>Mức độ <select value={form.priority} onChange={e => update('priority', e.target.value)}><option>Thấp</option><option>Trung bình</option><option>Khẩn cấp</option></select></label>
+              <label>Người báo <input value={form.reporter} onChange={e => update('reporter', e.target.value)} /></label>
+              <label>Người xử lý <input value={form.assignee} onChange={e => update('assignee', e.target.value)} /></label>
+              <label>Chi phí <input type="number" value={form.cost} onChange={e => update('cost', e.target.value)} /></label>
+              <label>Bên chịu phí <select value={form.costOwner} onChange={e => update('costOwner', e.target.value)}><option>Chủ trọ</option><option>Khách thuê</option><option>Chia sẻ</option></select></label>
+              <label>Trạng thái <select value={form.status} onChange={e => update('status', e.target.value)}><option>Mới tạo</option><option>Đang xử lý</option><option>Chờ linh kiện</option><option>Hoàn tất</option><option>Đã hủy</option></select></label>
+              <label>Ngày tạo <input type="date" value={form.createdDate} onChange={e => update('createdDate', e.target.value)} /></label>
+              <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
+            </div>
+          )}
+          {mode === 'file' && (
+            <div className="form-grid-v2">
+              <label style={{ gridColumn: 'span 2' }}>Tên tệp <input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Hop-dong-P202.pdf" /></label>
+              <label>Nhóm tệp <select value={form.group} onChange={e => update('group', e.target.value)}><option>Hợp đồng</option><option>CCCD</option><option>Thanh toán</option><option>Điện nước</option><option>Tài sản</option><option>Bảo trì</option><option>Khác</option></select></label>
+              <label>Dung lượng <input value={form.size} onChange={e => update('size', e.target.value)} placeholder="2.4 MB" /></label>
+              <label>Người tải lên <input value={form.uploader} onChange={e => update('uploader', e.target.value)} /></label>
+              <label>Ngày tải lên <input type="date" value={form.uploadedAt} onChange={e => update('uploadedAt', e.target.value)} /></label>
+              <label style={{ gridColumn: 'span 2' }}>Ghi chú/đường dẫn <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
+            </div>
+          )}
+          {mode === 'meter' && (
+            <div className="form-grid-v2">
+              <label>Điện cũ <input type="number" value={form.electricOld} onChange={e => update('electricOld', e.target.value)} /></label>
+              <label>Điện mới <input type="number" value={form.electricNew} onChange={e => update('electricNew', e.target.value)} /></label>
+              <label>Nước cũ <input type="number" value={form.waterOld} onChange={e => update('waterOld', e.target.value)} /></label>
+              <label>Nước mới <input type="number" value={form.waterNew} onChange={e => update('waterNew', e.target.value)} /></label>
+              <label>Ngày ghi <input type="date" value={form.readingDate} onChange={e => update('readingDate', e.target.value)} /></label>
+              <label>Người ghi <input value={form.reader} onChange={e => update('reader', e.target.value)} /></label>
+              <label>Ảnh đồng hồ điện <input value={form.electricPhoto} onChange={e => update('electricPhoto', e.target.value)} placeholder="Tên file hoặc đường dẫn" /></label>
+              <label>Ảnh đồng hồ nước <input value={form.waterPhoto} onChange={e => update('waterPhoto', e.target.value)} placeholder="Tên file hoặc đường dẫn" /></label>
+              <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
+            </div>
+          )}
+          <div className="btn-group">
+            <button className="secondary-btn" onClick={onClose}>Hủy</button>
+            <button className="primary-btn" onClick={handleSubmit}>{config.submit}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
