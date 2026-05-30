@@ -728,6 +728,7 @@ textarea {
 .room-op-tabs {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 24px;
   border-bottom: 1px solid #e2e8f0;
   padding-bottom: 8px;
@@ -743,6 +744,7 @@ textarea {
   cursor: pointer;
   border-radius: 8px;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .tab-link.active {

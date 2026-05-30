@@ -292,21 +292,22 @@ function parseLocaleNumber(value) {
 }
 
 function formatLocaleNumber(value) {
-  if (value === null || value === undefined || value === '' || value === '?') return String(value || '—');
+  if (value === null || value === undefined || value === '' || value === '?') return '—';
   const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/,/g, '.'));
   if (isNaN(num)) return '—';
   return new Intl.NumberFormat('vi-VN').format(num);
 }
 
 function DecimalInput({ value, onChange, style, className }) {
-  const [displayValue, setDisplayValue] = useState(String(value || ''));
+  const toDisplayValue = (val) => (val === null || val === undefined ? '' : String(val));
+  const [displayValue, setDisplayValue] = useState(toDisplayValue(value));
 
   useEffect(() => {
     // Update display value when prop value changes from outside (e.g. from recalculateReceipt)
     // but only if it's not the same number to avoid cursor jumping
     const currentNum = parseLocaleNumber(displayValue);
     if (value !== currentNum) {
-      setDisplayValue(String(value || ''));
+      setDisplayValue(toDisplayValue(value));
     }
   }, [value]);
 
@@ -378,18 +379,6 @@ function parseMonthValue(month) {
   return y * 12 + m;
 }
 
-function getPreviousReceipt(receipts, roomId, contractId, currentMonth) {
-  const currentValue = parseMonthValue(currentMonth);
-  return (receipts || [])
-    .filter(r =>
-      r.roomId === roomId &&
-      (contractId ? r.contractId === contractId : true) &&
-      r.type === 'monthly' &&
-      parseMonthValue(r.month) < currentValue
-    )
-    .sort((a, b) => parseMonthValue(b.month) - parseMonthValue(a.month))[0] || null;
-}
-
 function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
   const currentValue = parseMonthValue(currentMonth);
   return (receipts || [])
@@ -404,11 +393,11 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
 function createMonthlyReceipt(room, contract, previousReceipt, month) {
   const electricOld = previousReceipt
     ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
-    : Number(room.initialElectric || room.electricStart || 0);
+    : Number(room.electricNew ?? room.electricEnd ?? room.initialElectric ?? room.electricStart ?? 0);
 
   const waterOld = previousReceipt
     ? Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0)
-    : Number(room.initialWater || room.waterStart || 0);
+    : Number(room.waterNew ?? room.waterEnd ?? room.initialWater ?? room.waterStart ?? 0);
 
   const rent = Number(contract?.rent || room.rent || 0);
   const fixedServices = fixedServiceTotal(room);
@@ -1224,7 +1213,7 @@ function AppMain() {
         if (!window.confirm(`Phòng ${roomId} đã có phiếu tháng ${month}. Bạn có muốn ghi đè?`)) return;
         setData(old => ({ ...old, receipts: old.receipts.filter(r => r.id !== exists.id) }));
       }
-      const prev = getPreviousReceipt(data.receipts, roomId, activeContract.id, month);
+      const prev = getPreviousReceiptByRoom(data.receipts, roomId, month);
       const newRec = createMonthlyReceipt(roomOrTenant, activeContract, prev, month);
       setData(old => ({ ...old, receipts: [...(old.receipts || []), newRec] }));
       alert(`Đã tạo phiếu tháng ${month} cho phòng ${roomId}`);
@@ -1312,6 +1301,14 @@ function AppMain() {
                 return { ...old, receipts: mergedReceipts, rooms: newRooms };
               })}
               onView={(r) => setViewingReceipt(r)} onPrintBatch={(receipts) => setPrintingReceipts(receipts)} onPay={(r) => setPaymentReceipt(r)}
+              onDeleteReceipt={(receipt) => {
+                const message = receipt.isFinalized
+                  ? `Phiếu P${receipt.roomId} tháng ${receipt.month} đã lưu chính thức. Vẫn hủy phiếu này?`
+                  : `Hủy phiếu P${receipt.roomId} tháng ${receipt.month}?`;
+                if (window.confirm(message)) {
+                  setData(old => ({ ...old, receipts: (old.receipts || []).filter(r => r.id !== receipt.id) }));
+                }
+              }}
               onGoToPayment={(filters) => {
                 setPaymentFilters(filters);
                 setTab('payment_history');
@@ -2080,7 +2077,7 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
   );
 }
 
-function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onGoToPayment }) {
+function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onDeleteReceipt, onGoToPayment }) {
   const [selectedMonth, setSelectedMonth] = useState(INITIAL_MONTH);
   const [activeTab, setActiveTab] = useState('entry');
   const [saveModal, setSaveModal] = useState(null);
@@ -2101,7 +2098,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
       const exists = (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === selectedMonth && r.type === 'monthly');
       
       if (!exists) {
-        const prev = getPreviousReceipt(data.receipts, room.id, contract.id, selectedMonth);
+        const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth);
         newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth));
         createdCount++;
       } else {
@@ -2117,6 +2114,37 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
     } else {
       alert(`Tất cả phòng đều đã có phiếu tháng ${selectedMonth}. Bỏ qua ${skippedCount} phiếu.`);
     }
+  }
+
+  function handleRefreshMonthReadings() {
+    const refreshedReceipts = monthlyReceipts
+      .filter(r => !r.isFinalized)
+      .map(receipt => {
+        const room = data.rooms.find(r => r.id === receipt.roomId);
+        const contract = data.contracts.find(c => c.id === receipt.contractId);
+        if (!room || !contract) return null;
+        const previousReceipt = getPreviousReceiptByRoom(
+          (data.receipts || []).filter(r => r.id !== receipt.id),
+          receipt.roomId,
+          selectedMonth
+        );
+        return {
+          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth),
+          id: receipt.id,
+          paidAmount: receipt.paidAmount || 0,
+          status: receipt.status || 'Chưa thanh toán',
+          note: receipt.note || ''
+        };
+      })
+      .filter(Boolean);
+
+    if (refreshedReceipts.length === 0) {
+      alert('Không có phiếu chưa lưu nào để làm mới chỉ số.');
+      return;
+    }
+
+    onBatchCreate(refreshedReceipts);
+    alert(`Đã làm mới chỉ số cho ${refreshedReceipts.length} phiếu tháng ${selectedMonth}.`);
   }
 
   function handleFinalizeMonth() {
@@ -2174,6 +2202,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px', margin: 0 }}>Tháng: <input type="month" value={`${selectedMonth.split('/')[1]}-${selectedMonth.split('/')[0]}`} onChange={e => { const [y, m] = e.target.value.split('-'); setSelectedMonth(`${m}/${y}`); }} style={{ height: '40px' }} /></label>
             <button className="primary-btn" onClick={handleBatchCreate}>⚡ Tạo hàng loạt</button>
+            <button className="secondary-btn" onClick={handleRefreshMonthReadings}>🔄 Làm mới chỉ số</button>
             <button className="secondary-btn" onClick={() => onPrintBatch(monthlyReceipts)}>🖨️ In tất cả ({monthlyReceipts.length})</button>
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -2309,6 +2338,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button className="secondary-btn sm" title="In phiếu" onClick={() => onPrintBatch([r])}>🖨️</button>
                           <button className="secondary-btn sm" title="Xem QR" onClick={() => onView(r)}>📱</button>
+                          <button className="secondary-btn sm" title="Hủy phiếu" style={{ color: '#ef4444' }} onClick={() => onDeleteReceipt(r)}>✕</button>
                         </div>
                       </td>
                     </tr>
@@ -2341,7 +2371,17 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
 }
 
 function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
-  const [tempIndices, setTempIndices] = useState(data.rooms.map(r => ({ id: r.id, electric: r.initialElectric || r.electricStart || 0, water: r.initialWater || r.waterStart || 0 })));
+  const buildTempIndices = (rooms) => rooms.map(r => ({
+    id: r.id,
+    electric: r.initialElectric ?? r.electricStart ?? r.electricNew ?? 0,
+    water: r.initialWater ?? r.waterStart ?? r.waterNew ?? 0
+  }));
+  const [tempIndices, setTempIndices] = useState(() => buildTempIndices(data.rooms));
+  const [savedMessage, setSavedMessage] = useState('');
+
+  useEffect(() => {
+    setTempIndices(buildTempIndices(data.rooms));
+  }, [data.rooms]);
 
   const handleUpdateIndices = () => {
     setData(old => ({
@@ -2349,11 +2389,24 @@ function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
       rooms: old.rooms.map(r => {
         const found = tempIndices.find(ti => ti.id === r.id);
         if (found) {
-          return { ...r, initialElectric: parseLocaleNumber(found.electric), initialWater: parseLocaleNumber(found.water), electricStart: parseLocaleNumber(found.electric), waterStart: parseLocaleNumber(found.water) };
+          const electric = parseLocaleNumber(found.electric);
+          const water = parseLocaleNumber(found.water);
+          return {
+            ...r,
+            initialElectric: electric,
+            initialWater: water,
+            electricStart: electric,
+            waterStart: water,
+            electricOld: electric,
+            waterOld: water,
+            electricNew: r.electricNew ?? electric,
+            waterNew: r.waterNew ?? water
+          };
         }
         return r;
       })
     }));
+    setSavedMessage(`Đã lưu chỉ số đầu kỳ lúc ${new Date().toLocaleTimeString('vi-VN')}`);
   };
 
   return (
@@ -2415,6 +2468,7 @@ function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
             </table>
           </div>
           <button className="primary-btn wide" style={{ marginTop: '20px' }} onClick={handleUpdateIndices}>Lưu chỉ số đầu kỳ</button>
+          {savedMessage && <p className="small" style={{ marginTop: '10px', color: 'var(--success)', fontWeight: 700 }}>{savedMessage}</p>}
         </section>
       </div>
 
@@ -2434,46 +2488,124 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
   const primaryTenant = contract ? getPrimaryTenantByContract(data, contract.id) : null;
   const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
   const allMembers = contract ? (data.memberships || []).filter(m => m.contractId === contract.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) })) : [];
+  const activeMembers = allMembers.filter(m => m.status === 'active');
   const roomReceipts = (data.receipts || []).filter(r => r.roomId === room.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const roomTransfers = (data.roomTransfers || []).filter(t => t.oldRoomId === room.id || t.newRoomId === room.id);
+  const roomMoveOuts = (data.moveOutReports || []).filter(r => r.roomId === room.id);
+  const contractRenewals = contract ? (data.contractRenewals || []).filter(r => r.contractId === contract.id) : [];
+  const roomAssets = room.assets || [];
+  const maintenanceItems = room.maintenanceTickets || [];
+  const attachments = room.attachments || contract?.attachments || [];
+  const paymentDay = Number(contract?.paymentCycleDay || 5);
+  const dueDate = new Date();
+  dueDate.setDate(paymentDay);
+  dueDate.setHours(0, 0, 0, 0);
+  const receiptPaid = Number(currentReceipt?.paidAmount || 0);
+  const receiptTotal = Number(currentReceipt?.total || 0);
+  const receiptDebt = Math.max(0, receiptTotal - receiptPaid);
+  const isReceiptOverdue = currentReceipt && receiptDebt > 0 && new Date() > dueDate;
+  const latestReceipt = roomReceipts.find(r => r.type === 'monthly') || null;
+  const electricOld = latestReceipt ? getElectricOld(latestReceipt) : (room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0);
+  const electricNew = latestReceipt ? getElectricNew(latestReceipt) : (room.electricNew ?? electricOld);
+  const waterOld = latestReceipt ? getWaterOld(latestReceipt) : (room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
+  const waterNew = latestReceipt ? getWaterNew(latestReceipt) : (room.waterNew ?? waterOld);
+  const tenantInitial = primaryTenant?.name ? primaryTenant.name.trim().charAt(0).toUpperCase() : 'P';
+  const tabs = [
+    ['overview', 'Tổng quan'],
+    ['contract', 'Hợp đồng'],
+    ['residents', `Người ở${activeMembers.length ? ` (${activeMembers.length})` : ''}`],
+    ['payments', `Thanh toán${receiptDebt > 0 ? ' (!)' : ''}`],
+    ['meters', 'Điện nước'],
+    ['assets', 'Tài sản'],
+    ['maintenance', 'Bảo trì'],
+    ['history', 'Lịch sử'],
+    ['files', 'Tệp']
+  ];
+
+  const formatDate = (value) => value ? String(value).slice(0, 10).split('-').reverse().join('/') : '—';
+  const dateDiffDays = (value) => {
+    const date = parseDateFlexible(value);
+    if (!date) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.ceil((date.getTime() - today.getTime()) / 86400000);
+  };
+  const contractDaysLeft = dateDiffDays(contract?.endDate);
+  const contractStatus = !contract ? 'Chưa có hợp đồng' : contractDaysLeft === null ? 'Còn hạn' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
+  const contractStatusClass = !contract ? 'vacant' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
+  const receiptStatus = !currentReceipt ? 'Chưa có phiếu' : isReceiptOverdue ? 'Quá hạn' : currentReceipt.status;
+  const receiptStatusClass = receiptStatus === 'Đã thanh toán' ? 'active' : receiptStatus === 'Nợ một phần' ? 'notice' : receiptStatus === 'Quá hạn' ? 'debt' : 'debt';
+  const occupantLimit = room.maxPeople || room.capacity || '—';
+  const activityItems = [
+    ...roomReceipts.slice(0, 5).map(r => ({ id: r.id, date: r.savedAt || r.createdAt, title: `Phiếu ${r.month}`, detail: `${formatMoney(r.total)} - ${r.status}` })),
+    ...contractRenewals.map(r => ({ id: r.id, date: r.createdAt, title: 'Gia hạn hợp đồng', detail: `${formatDate(r.oldEndDate)} -> ${formatDate(r.newEndDate)}` })),
+    ...roomTransfers.map(t => ({ id: t.id, date: t.createdAt, title: 'Đổi phòng', detail: `P${t.oldRoomId} -> P${t.newRoomId}` })),
+    ...roomMoveOuts.map(r => ({ id: r.id, date: r.createdAt, title: 'Tất toán', detail: formatDate(r.actualEndDate) }))
+  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
+
+  const renderMetric = (labelText, value, note) => (
+    <div className="op-item">
+      <span className="op-label">{labelText}</span>
+      <span className="op-value">{value}</span>
+      {note && <span className="small muted">{note}</span>}
+    </div>
+  );
 
   const renderOverview = () => (
-    <div className="op-grid">
-      {/* Card 1: Người đứng tên */}
+    <div className="stack" style={{ gap: '16px' }}>
+      <div className="op-grid">
+        <div className="op-card" style={{ gridColumn: 'span 2', background: '#f8fafc' }}>
+          <h3 className="op-card-title">Tổng quan nhanh</h3>
+          <div className="op-grid">
+            {renderMetric('Tiền phải thu', currentReceipt ? formatMoney(receiptTotal) : 'Chưa có phiếu', currentReceipt ? `Đã thu ${formatMoney(receiptPaid)}` : null)}
+            {renderMetric('Còn nợ', formatMoney(receiptDebt), receiptDebt > 0 ? `Hạn thu ngày ${paymentDay}` : 'Không còn nợ')}
+            {renderMetric('Hợp đồng đến', contract ? formatDate(contract.endDate) : '—', contractStatus)}
+            {renderMetric('Số người ở', `${activeMembers.length}/${occupantLimit}`, 'Đang cư trú')}
+          </div>
+        </div>
+      </div>
+      <div className="op-grid">
       <div className="op-card">
-        <h3 className="op-card-title">👑 Người đứng tên</h3>
+        <h3 className="op-card-title">Người đại diện</h3>
         {primaryTenant ? (
-          <div className="stack" style={{ gap: '8px' }}>
-            <p className="op-value">{primaryTenant.name}</p>
-            <p className="op-label">📞 {primaryTenant.phone}</p>
-            <p className="op-label">💳 CCCD: {primaryTenant.cccd}</p>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#dbeafe', color: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>{tenantInitial}</div>
+            <div className="stack" style={{ gap: '4px' }}>
+              <p className="op-value">{primaryTenant.name}</p>
+              <a className="op-label" href={`tel:${primaryTenant.phone || ''}`}>{primaryTenant.phone || 'Chưa có SĐT'}</a>
+              <p className="op-label">CCCD: {primaryTenant.cccd || '—'}</p>
+            </div>
           </div>
         ) : <p className="muted small">Phòng đang trống</p>}
       </div>
 
-      {/* Card 2: Hợp đồng hiện tại */}
       <div className="op-card">
-        <h3 className="op-card-title">📄 Hợp đồng</h3>
+        <h3 className="op-card-title">Hợp đồng</h3>
         {contract ? (
           <div className="stack" style={{ gap: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Hết hạn:</span><span className="op-value" style={{ fontSize: '13px' }}>{contract.endDate?.split('-').reverse().join('/')}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Tiền thuê:</span><span className="op-value" style={{ fontSize: '13px' }}>{formatMoney(contract.rent)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Tiền cọc:</span><span className="op-value" style={{ fontSize: '13px' }}>{formatMoney(contract.deposit)}</span></div>
+            <span className={`status-badge-liquid ${contractStatusClass}`} style={{ alignSelf: 'flex-start' }}>{contractStatus}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Bắt đầu</span><span className="op-value" style={{ fontSize: '13px' }}>{formatDate(contract.startDate)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Hết hạn</span><span className="op-value" style={{ fontSize: '13px' }}>{formatDate(contract.endDate)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Tiền thuê</span><span className="op-value" style={{ fontSize: '13px' }}>{formatMoney(contract.rent)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Chu kỳ thu</span><span className="op-value" style={{ fontSize: '13px' }}>Ngày {paymentDay}</span></div>
           </div>
         ) : <p className="muted small">Chưa có hợp đồng</p>}
       </div>
 
-      {/* Card 3: Phiếu tháng hiện tại */}
       <div className="op-card" style={{ gridColumn: 'span 2' }}>
-        <h3 className="op-card-title">🧾 Phiếu tháng {INITIAL_MONTH}</h3>
+        <h3 className="op-card-title">Công nợ tháng {INITIAL_MONTH}</h3>
         {currentReceipt ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <p className="op-value">{formatMoney(currentReceipt.total)}</p>
-              <span className={`status-badge-liquid ${currentReceipt.status === 'Đã thanh toán' ? 'active' : currentReceipt.status === 'Nợ một phần' ? 'notice' : 'debt'}`} style={{ fontSize: '11px', marginTop: '4px' }}>{currentReceipt.status}</span>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                <span className={`status-badge-liquid ${receiptStatusClass}`}>{receiptStatus}</span>
+                <span className="small muted">Còn nợ {formatMoney(receiptDebt)}</span>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="primary-btn sm" onClick={() => onAction('pay_receipt', currentReceipt)}>Ghi nhận</button>
               <button className="secondary-btn sm" onClick={() => onAction('view_qr', currentReceipt)}>Xem QR</button>
-              {currentReceipt.status !== 'Đã thanh toán' && <button className="primary-btn sm" onClick={() => onAction('pay_receipt', currentReceipt)}>Thu tiền</button>}
             </div>
           </div>
         ) : <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2482,35 +2614,173 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
             </div>}
       </div>
 
-      {/* Card 4: Điện nước gần nhất (Lấy từ phiếu tháng mới nhất hoặc chỉ số đầu) */}
       <div className="op-card" style={{ gridColumn: 'span 2' }}>
-        <h3 className="op-card-title">⚡ Điện nước gần nhất</h3>
-        <div style={{ display: 'flex', gap: '32px' }}>
-          <div>
-            <p className="op-label">Điện: Chỉ số cũ → Chỉ số mới</p>
-            <p className="op-value" style={{ fontSize: '14px' }}>
-              {formatLocaleNumber(room.electricOld || room.electricStart || 0)} → {formatLocaleNumber(room.electricNew || '—')}
-            </p>
-          </div>
-          <div>
-            <p className="op-label">Nước: Chỉ số cũ → Chỉ số mới</p>
-            <p className="op-value" style={{ fontSize: '14px' }}>
-              {formatLocaleNumber(room.waterOld || room.waterStart || 0)} → {formatLocaleNumber(room.waterNew || '—')}
-            </p>
-          </div>
+        <h3 className="op-card-title">Điện nước gần nhất</h3>
+        <div className="op-grid">
+          {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, `Dùng ${formatLocaleNumber(Math.max(0, electricNew - electricOld))} kWh`)}
+          {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, `Dùng ${formatLocaleNumber(Math.max(0, waterNew - waterOld))} m3`)}
         </div>
+      </div>
       </div>
     </div>
   );
 
+  const renderReceiptBreakdown = (receipt) => {
+    if (!receipt) return <p className="muted center" style={{ padding: '24px' }}>Chưa có phiếu tháng hiện tại.</p>;
+    const rows = [
+      ['Tiền phòng', '1 tháng', contract?.rent || room.rent || 0, receipt.rent || 0],
+      ['Dịch vụ cố định', '1', 'Theo phòng', receipt.fixedServices || 0],
+      ['Tiền điện', `${formatLocaleNumber(receipt.electricUsed || 0)} số`, room.electricPrice || 0, receipt.electricAmount || 0],
+      ['Tiền nước', `${formatLocaleNumber(receipt.waterUsed || 0)} số`, room.waterPrice || 0, receipt.waterAmount || 0],
+      ['Phí phát sinh', '1', 'Khác', receipt.other || 0]
+    ];
+    return (
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Khoản thu</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead>
+          <tbody>
+            {rows.map((row, idx) => (
+              <tr key={idx}><td>{row[0]}</td><td>{row[1]}</td><td>{typeof row[2] === 'number' ? formatMoney(row[2]) : row[2]}</td><td style={{ fontWeight: 700 }}>{formatMoney(row[3])}</td></tr>
+            ))}
+            <tr><td colSpan="3" style={{ textAlign: 'right', fontWeight: 800 }}>Tổng phải thu</td><td style={{ fontWeight: 800, color: 'var(--primary)' }}>{formatMoney(receipt.total || 0)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderEmptyOps = (title, detail) => (
+    <div className="op-card" style={{ alignItems: 'center', textAlign: 'center', padding: '32px' }}>
+      <p className="op-value">{title}</p>
+      <p className="op-label">{detail}</p>
+    </div>
+  );
+
+  const renderTabContent = () => {
+    if (activeTab === 'overview') return renderOverview();
+    if (activeTab === 'contract') return (
+      <div className="stack" style={{ gap: '16px' }}>
+        {contract ? (
+          <>
+            <div className="op-card">
+              <h3 className="op-card-title">Thông tin hợp đồng</h3>
+              <div className="op-grid">
+                {renderMetric('Số hợp đồng', contract.contractNo || contract.id)}
+                {renderMetric('Trạng thái', contractStatus)}
+                {renderMetric('Ngày bắt đầu', formatDate(contract.startDate))}
+                {renderMetric('Ngày hết hạn', formatDate(contract.endDate))}
+                {renderMetric('Thời hạn thuê', `${diffMonths(contract.startDate, contract.endDate)} tháng`)}
+                {renderMetric('Chu kỳ thanh toán', `Ngày ${paymentDay} hằng tháng`)}
+                {renderMetric('Tiền thuê', formatMoney(contract.rent))}
+                {renderMetric('Tiền cọc', formatMoney(contract.deposit))}
+              </div>
+            </div>
+            <div className="op-card">
+              <h3 className="op-card-title">Lịch sử gia hạn</h3>
+              {contractRenewals.length ? contractRenewals.map(r => (
+                <div key={r.id} className="op-item"><span className="op-value">{formatDate(r.oldEndDate)} {'->'} {formatDate(r.newEndDate)}</span><span className="op-label">{r.note || 'Không có ghi chú'}</span></div>
+              )) : <p className="muted small">Chưa có lịch sử gia hạn.</p>}
+            </div>
+          </>
+        ) : renderEmptyOps('Chưa có hợp đồng', 'Phòng trống hoặc chưa tạo hợp đồng.')}
+      </div>
+    );
+    if (activeTab === 'residents') return (
+      <div className="stack" style={{ gap: '12px' }}>
+        {allMembers.map(m => (
+          <div key={m.id} className="op-card" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <p className="op-value">{m.tenant?.name || 'N/A'} {m.role === 'primary' ? '(Người đứng tên)' : '(Ở cùng)'}</p>
+              <p className="op-label">{m.tenant?.phone || '—'} • CCCD {m.tenant?.cccd || '—'} • Vào {formatDate(m.joinedDate || contract?.startDate)}</p>
+            </div>
+            <span className={`status-badge-liquid ${m.status === 'active' ? 'active' : 'vacant'}`}>{m.status === 'active' ? 'Đang ở' : 'Đã rời đi'}</span>
+          </div>
+        ))}
+        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }}>+ Thêm người ở cùng</button>}
+        {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.')}
+      </div>
+    );
+    if (activeTab === 'payments') return (
+      <div className="stack" style={{ gap: '16px' }}>
+        <div className="op-card">
+          <h3 className="op-card-title">Chi tiết phiếu tháng {INITIAL_MONTH}</h3>
+          {renderReceiptBreakdown(currentReceipt)}
+        </div>
+        <div className="op-card" style={{ padding: 0 }}>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Tháng</th><th>Tổng tiền</th><th>Đã thu</th><th>Còn nợ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+              <tbody>
+                {roomReceipts.map(r => {
+                  const debt = Math.max(0, Number(r.total || 0) - Number(r.paidAmount || 0));
+                  return (
+                    <tr key={r.id}>
+                      <td>{r.month}</td>
+                      <td>{formatMoney(r.total || 0)}</td>
+                      <td>{formatMoney(r.paidAmount || 0)}</td>
+                      <td style={{ color: debt > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>{formatMoney(debt)}</td>
+                      <td><span className={`status-badge-liquid ${r.status === 'Đã thanh toán' ? 'active' : r.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{r.status}</span></td>
+                      <td><div style={{ display: 'flex', gap: '4px' }}><button className="primary-btn sm" onClick={() => onAction('pay_receipt', r)}>Thu</button><button className="secondary-btn sm" onClick={() => onAction('view_qr', r)}>QR</button></div></td>
+                    </tr>
+                  );
+                })}
+                {!roomReceipts.length && <tr><td colSpan="6" className="center muted" style={{ padding: '20px' }}>Chưa có dữ liệu thanh toán.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+    if (activeTab === 'meters') return (
+      <div className="stack" style={{ gap: '16px' }}>
+        <div className="op-card">
+          <h3 className="op-card-title">Chỉ số hiện tại</h3>
+          <div className="op-grid">
+            {renderMetric('Điện', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, `Tiêu thụ ${formatLocaleNumber(Math.max(0, electricNew - electricOld))} kWh`)}
+            {renderMetric('Nước', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, `Tiêu thụ ${formatLocaleNumber(Math.max(0, waterNew - waterOld))} m3`)}
+            {renderMetric('Đơn giá điện', formatMoney(room.electricPrice || 0))}
+            {renderMetric('Đơn giá nước', formatMoney(room.waterPrice || 0))}
+          </div>
+        </div>
+        <div className="op-card" style={{ padding: 0 }}>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Tháng</th><th>Điện cũ</th><th>Điện mới</th><th>Dùng</th><th>Nước cũ</th><th>Nước mới</th><th>Dùng</th></tr></thead>
+              <tbody>
+                {roomReceipts.filter(r => r.type === 'monthly').map(r => (
+                  <tr key={r.id}><td>{r.month}</td><td>{formatLocaleNumber(getElectricOld(r))}</td><td>{formatLocaleNumber(getElectricNew(r))}</td><td>{formatLocaleNumber(r.electricUsed || 0)}</td><td>{formatLocaleNumber(getWaterOld(r))}</td><td>{formatLocaleNumber(getWaterNew(r))}</td><td>{formatLocaleNumber(r.waterUsed || 0)}</td></tr>
+                ))}
+                {!roomReceipts.length && <tr><td colSpan="7" className="center muted" style={{ padding: '20px' }}>Chưa có lịch sử chỉ số.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+    if (activeTab === 'assets') return roomAssets.length ? (
+      <div className="op-grid">{roomAssets.map((asset, idx) => <div key={idx} className="op-card"><h3 className="op-card-title">{asset.name}</h3><p className="op-value">{asset.status || 'Đang dùng'}</p><p className="op-label">{asset.note || 'Chưa có ghi chú'}</p></div>)}</div>
+    ) : renderEmptyOps('Chưa có danh sách tài sản', 'Có thể bổ sung giường, tủ, máy lạnh, đồng hồ và ảnh bàn giao ở bước tiếp theo.');
+    if (activeTab === 'maintenance') return maintenanceItems.length ? (
+      <div className="stack" style={{ gap: '12px' }}>{maintenanceItems.map((item, idx) => <div key={idx} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{item.status || 'Mới'} • {item.note || ''}</p></div>)}</div>
+    ) : renderEmptyOps('Chưa có sự cố bảo trì', 'Các sự cố điện, nước, khóa cửa và thiết bị sẽ được ghi tại đây.');
+    if (activeTab === 'history') return activityItems.length ? (
+      <div className="stack" style={{ gap: '12px' }}>{activityItems.map(item => <div key={`${item.title}-${item.id}`} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{formatDate(String(item.date || '').slice(0, 10))} • {item.detail}</p></div>)}</div>
+    ) : renderEmptyOps('Chưa có lịch sử hoạt động', 'Các lần lập phiếu, đổi phòng, gia hạn và tất toán sẽ hiển thị tại đây.');
+    if (activeTab === 'files') return attachments.length ? (
+      <div className="stack" style={{ gap: '12px' }}>{attachments.map((file, idx) => <div key={idx} className="op-card"><p className="op-value">{file.name || `Tệp ${idx + 1}`}</p><p className="op-label">{file.type || 'Tệp đính kèm'}</p></div>)}</div>
+    ) : renderEmptyOps('Chưa có tệp đính kèm', 'Có thể thêm hợp đồng, CCCD, ảnh đồng hồ và ảnh bàn giao ở bước tiếp theo.');
+    return null;
+  };
+
   return (
     <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '800px' }} onClick={e => e.stopPropagation()}>
+      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '980px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <h2 style={{ fontSize: '28px' }}>Phòng {room.id}</h2>
               <span className={`status-badge-liquid ${color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{label}</span>
+              {receiptDebt > 0 && <span className="status-badge-liquid debt">Nợ {formatMoney(receiptDebt)}</span>}
             </div>
             <p className="muted">{primaryTenant ? `${primaryTenant.name} • ${primaryTenant.phone}` : 'Chưa có hợp đồng hiện tại'}</p>
           </div>
@@ -2519,66 +2789,11 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
 
         <div className="detail-body-v2">
           <nav className="room-op-tabs">
-            <button className={`tab-link ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>Tổng quan</button>
-            <button className={`tab-link ${activeTab === 'contract' ? 'active' : ''}`} onClick={() => setActiveTab('contract')}>Hợp đồng</button>
-            <button className={`tab-link ${activeTab === 'residents' ? 'active' : ''}`} onClick={() => setActiveTab('residents')}>Người ở</button>
-            <button className={`tab-link ${activeTab === 'payments' ? 'active' : ''}`} onClick={() => setActiveTab('payments')}>Thanh toán</button>
+            {tabs.map(([id, text]) => <button key={id} className={`tab-link ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{text}</button>)}
           </nav>
 
           <div className="tab-content" style={{ minHeight: '300px' }}>
-            {activeTab === 'overview' && renderOverview()}
-            {activeTab === 'contract' && (
-              <div className="stack" style={{ gap: '16px' }}>
-                {contract ? (
-                  <div className="op-card">
-                    <div className="op-grid">
-                      <div className="op-item"><span className="op-label">Ngày bắt đầu</span><span className="op-value">{contract.startDate?.split('-').reverse().join('/')}</span></div>
-                      <div className="op-item"><span className="op-label">Ngày hết hạn</span><span className="op-value">{contract.endDate?.split('-').reverse().join('/')}</span></div>
-                      <div className="op-item"><span className="op-label">Tiền thuê</span><span className="op-value">{formatMoney(contract.rent)}</span></div>
-                      <div className="op-item"><span className="op-label">Tiền cọc</span><span className="op-value">{formatMoney(contract.deposit)}</span></div>
-                    </div>
-                  </div>
-                ) : <p className="muted center" style={{ padding: '40px' }}>Không có hợp đồng hoạt động.</p>}
-              </div>
-            )}
-            {activeTab === 'residents' && (
-              <div className="stack" style={{ gap: '12px' }}>
-                {allMembers.map(m => (
-                  <div key={m.id} className="op-card" style={{ padding: '12px 20px', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <p className="op-value">{m.tenant?.name} {m.role === 'primary' && '👑'}</p>
-                      <p className="op-label">{m.tenant?.phone} • {m.role === 'primary' ? 'Đại diện' : 'Ở cùng'}</p>
-                    </div>
-                    <button className="secondary-btn sm" onClick={() => onAction('detail_tenant', m.tenant)}>Chi tiết</button>
-                  </div>
-                ))}
-                {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }}>+ Thêm người ở cùng</button>}
-                {!contract && <p className="muted center" style={{ padding: '40px' }}>Phòng đang trống.</p>}
-              </div>
-            )}
-            {activeTab === 'payments' && (
-              <div className="table-wrap" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                <table>
-                  <thead><tr><th>Tháng</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-                  <tbody>
-                    {roomReceipts.map(r => (
-                      <tr key={r.id}>
-                        <td>{r.month}</td>
-                        <td style={{ fontWeight: '700' }}>{formatMoney(r.total)}</td>
-                        <td><span className={`status-badge-liquid ${r.status === 'Đã thanh toán' ? 'active' : r.status === 'Nợ một phần' ? 'notice' : 'debt'}`} style={{ fontSize: '10px' }}>{r.status}</span></td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            <button className="secondary-btn sm" onClick={() => onAction('view_qr', r)}>📱</button>
-                            <button className="secondary-btn sm" style={{ color: '#ef4444' }} onClick={() => onAction('delete_receipt', r)}>🗑️</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {roomReceipts.length === 0 && <tr><td colSpan="4" className="center muted" style={{ padding: '20px' }}>Chưa có dữ liệu thanh toán.</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {renderTabContent()}
           </div>
 
           <div className="op-action-footer">
@@ -2587,6 +2802,8 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
             ) : (
               <>
                 <button className="primary-btn" onClick={() => onAction('create_receipt')}>⚡ Lập phiếu tháng</button>
+                {currentReceipt && <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => onAction('pay_receipt', currentReceipt)}>Ghi nhận thanh toán</button>}
+                {currentReceipt && <button className="secondary-btn" onClick={() => onAction('view_qr', currentReceipt)}>Xem QR</button>}
                 <button className="secondary-btn" onClick={() => onAction('edit_contract')}>✏️ Sửa HĐ</button>
                 <button className="secondary-btn" onClick={() => onAction('renew_contract')}>🔄 Gia hạn</button>
                 <button className="secondary-btn" onClick={() => onAction('transfer_room')}>↔ Đổi phòng</button>
