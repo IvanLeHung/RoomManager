@@ -292,21 +292,22 @@ function parseLocaleNumber(value) {
 }
 
 function formatLocaleNumber(value) {
-  if (value === null || value === undefined || value === '' || value === '?') return String(value || '—');
+  if (value === null || value === undefined || value === '' || value === '?') return '—';
   const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/,/g, '.'));
   if (isNaN(num)) return '—';
   return new Intl.NumberFormat('vi-VN').format(num);
 }
 
 function DecimalInput({ value, onChange, style, className }) {
-  const [displayValue, setDisplayValue] = useState(String(value || ''));
+  const toDisplayValue = (val) => (val === null || val === undefined ? '' : String(val));
+  const [displayValue, setDisplayValue] = useState(toDisplayValue(value));
 
   useEffect(() => {
     // Update display value when prop value changes from outside (e.g. from recalculateReceipt)
     // but only if it's not the same number to avoid cursor jumping
     const currentNum = parseLocaleNumber(displayValue);
     if (value !== currentNum) {
-      setDisplayValue(String(value || ''));
+      setDisplayValue(toDisplayValue(value));
     }
   }, [value]);
 
@@ -2477,13 +2478,13 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
           <div>
             <p className="op-label">Điện: Chỉ số cũ → Chỉ số mới</p>
             <p className="op-value" style={{ fontSize: '14px' }}>
-              {formatLocaleNumber(room.electricOld || room.electricStart || 0)} → {formatLocaleNumber(room.electricNew || '—')}
+              {formatLocaleNumber(room.electricOld ?? room.electricStart ?? 0)} → {formatLocaleNumber(room.electricNew ?? '—')}
             </p>
           </div>
           <div>
             <p className="op-label">Nước: Chỉ số cũ → Chỉ số mới</p>
             <p className="op-value" style={{ fontSize: '14px' }}>
-              {formatLocaleNumber(room.waterOld || room.waterStart || 0)} → {formatLocaleNumber(room.waterNew || '—')}
+              {formatLocaleNumber(room.waterOld ?? room.waterStart ?? 0)} → {formatLocaleNumber(room.waterNew ?? '—')}
             </p>
           </div>
         </div>
