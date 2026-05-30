@@ -42,6 +42,7 @@ const DEFAULT_DATA = {
   receipts: [],
   moveOutReports: [],
   contractRenewals: [],
+  roomTransfers: [],
   suppliers: [
     { id: 'sup_evn', name: 'Điện lực', group: 'Điện', defaultCategory: 'cat_elec' },
     { id: 'sup_water', name: 'Cấp nước', group: 'Nước', defaultCategory: 'cat_water' },
@@ -773,6 +774,7 @@ function AppMain() {
       expenseCategories: loaded.expenseCategories || DEFAULT_DATA.expenseCategories,
       expensePayments: loaded.expensePayments || [],
       contractRenewals: loaded.contractRenewals || [],
+      roomTransfers: loaded.roomTransfers || [],
     };
   });
   const [bankInfo, setBankInfo] = useState(() => safeRead(BANK_KEY, DEFAULT_BANK));
@@ -783,6 +785,7 @@ function AppMain() {
   const [detailTenant, setDetailTenant] = useState(null);
   const [newRentalRoom, setNewRentalRoom] = useState(null);
   const [settlingRoom, setSettlingRoom] = useState(null);
+  const [transferringContract, setTransferringContract] = useState(null);
   const [viewingContract, setViewingContract] = useState(null);
   const [renewingContract, setRenewingContract] = useState(null);
   const [viewingReceipt, setViewingReceipt] = useState(null);
@@ -816,6 +819,7 @@ function AppMain() {
             expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
             expensePayments: cloudData.expensePayments || prev.expensePayments || [],
             contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
+            roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
           }));
           setLastSynced(new Date());
         }
@@ -903,8 +907,11 @@ function AppMain() {
       const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
       if (activeContract) setSettlingRoom({ room, contract: activeContract });
     } else if (type === 'view_contract') {
-      const roomId = roomOrTenant.id || roomOrTenant.roomId;
-      const contractId = roomOrTenant.contractId;
+      const tenantMembership = roomOrTenant && !roomOrTenant.roomId
+        ? (data.memberships || []).find(m => m.tenantId === roomOrTenant.id && m.status === 'active')
+        : null;
+      const roomId = roomOrTenant.roomId || tenantMembership?.roomId || roomOrTenant.id;
+      const contractId = roomOrTenant.contractId || tenantMembership?.contractId;
       const targetContract = contractId 
         ? data.contracts.find(c => c.id === contractId)
         : data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'));
@@ -938,6 +945,10 @@ function AppMain() {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
       if (activeContract) setRenewingContract(activeContract);
+    } else if (type === 'transfer_room') {
+      const roomId = roomOrTenant.id || roomOrTenant.roomId;
+      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
+      if (activeContract) setTransferringContract(activeContract);
     } else if (type === 'view_tenants') {
       setQuery(`P${roomOrTenant.id}`);
       setTab('tenants');
@@ -1125,16 +1136,16 @@ function AppMain() {
           'Mã hợp đồng': rep.contractId,
           'Người đứng tên': getPrimaryTenantByContract(data, rep.contractId)?.name || '',
           'Ngày trả phòng': rep.actualEndDate || '',
-          'Điện đầu': rep.electricStart,
-          'Điện chốt': rep.electricEnd,
-          'Tiền điện': rep.electricCharge,
-          'Nước đầu': rep.waterStart,
-          'Nước chốt': rep.waterEnd,
-          'Tiền nước': rep.waterCharge,
-          'Tiền phòng còn nợ': rep.rentCharge,
-          'Phí hư hỏng': rep.damages || 0,
+          'Điện đầu': rep.electricOld,
+          'Điện chốt': rep.electricNew,
+          'Tiền điện': rep.electricAmount,
+          'Nước đầu': rep.waterOld,
+          'Nước chốt': rep.waterNew,
+          'Tiền nước': rep.waterAmount,
+          'Tiền phòng còn nợ': rep.unpaidRent,
+          'Phí hư hỏng': rep.damageFee || 0,
           'Phí vệ sinh': rep.cleaningFee || 0,
-          'Phí khác': rep.otherCharges || 0,
+          'Phí khác': rep.otherFee || 0,
           'Tiền cọc đối trừ': rep.depositUsed,
           'Tổng phát sinh': rep.totalIncurred,
           'Khách còn phải trả': rep.mustCollect,
@@ -1145,8 +1156,8 @@ function AppMain() {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(moveOutData), "Lich su tra phong");
 
         // 9. Sheet Lich su nguoi thue
-        const pastTenantsData = data.tenants.filter(t => (data.memberships || []).some(m => m.tenantId === t.id && m.status === 'moved_out')).map(t => {
-          const m = data.memberships.find(m => m.tenantId === t.id && m.status === 'moved_out');
+        const pastTenantsData = data.tenants.filter(t => (data.memberships || []).some(m => m.tenantId === t.id && (m.status === 'ended' || m.status === 'moved_out'))).map(t => {
+          const m = data.memberships.find(m => m.tenantId === t.id && (m.status === 'ended' || m.status === 'moved_out'));
           return {
             'Mã người thuê': t.id,
             'Họ tên': t.name,
@@ -1164,7 +1175,25 @@ function AppMain() {
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pastTenantsData), "Lich su nguoi thue");
 
-        // 10. Sheet Cau hinh
+        // 10. Sheet Lich su doi phong
+        const transferData = (data.roomTransfers || []).map(tr => ({
+          'Mã chuyển phòng': tr.id,
+          'Ngày chuyển': tr.transferDate || '',
+          'Người đứng tên': (data.tenants || []).find(t => t.id === tr.tenantId)?.name || '',
+          'Phòng cũ': tr.oldRoomId,
+          'Phòng mới': tr.newRoomId,
+          'HĐ cũ': tr.oldContractId,
+          'HĐ mới': tr.newContractId,
+          'Giá thuê cũ': tr.oldRent,
+          'Giá thuê mới': tr.newRent,
+          'Cọc cũ': tr.oldDeposit,
+          'Cọc mới': tr.newDeposit,
+          'Ghi chú': tr.note || '',
+          'Ngày tạo': tr.createdAt ? new Date(tr.createdAt).toLocaleDateString('vi-VN') : ''
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transferData), "Lich su doi phong");
+
+        // 11. Sheet Cau hinh
         const configData = [
           ['Thông tin', 'Giá trị'],
           ['Tên chủ nhà', 'DIỆM THỊ BÌNH'],
@@ -1208,7 +1237,18 @@ function AppMain() {
   }
 
   function updateContractStatus(roomId, status) {
-    setData(old => ({ ...old, contracts: old.contracts.map(c => (c.roomId === roomId && (c.status === 'active' || c.status === 'notice')) ? { ...c, status } : c) }));
+    setData(old => ({
+      ...old,
+      contracts: old.contracts.map(c => {
+        if (c.roomId !== roomId || !(c.status === 'active' || c.status === 'notice')) return c;
+        return {
+          ...c,
+          status,
+          noticeDate: status === 'notice' ? (c.noticeDate || new Date().toISOString().slice(0, 10)) : '',
+          expectedMoveOutDate: status === 'notice' ? c.expectedMoveOutDate : ''
+        };
+      })
+    }));
   }
 
   return (
@@ -1368,7 +1408,7 @@ function AppMain() {
         <SettlementModal room={settlingRoom.room} contract={settlingRoom.contract} data={data} onClose={() => setSettlingRoom(null)} onSave={(report) => {
             setData(old => {
               const updatedContracts = old.contracts.map(c => c.id === report.contractId ? { ...c, status: 'ended', actualEndDate: report.actualEndDate, endedAt: new Date().toISOString() } : c);
-              const updatedMemberships = old.memberships.map(m => m.contractId === report.contractId ? { ...m, status: 'ended' } : m);
+              const updatedMemberships = old.memberships.map(m => m.contractId === report.contractId ? { ...m, status: 'ended', leftDate: report.actualEndDate } : m);
               const affectedTenantIds = old.memberships.filter(m => m.contractId === report.contractId).map(m => m.tenantId);
               const updatedTenants = old.tenants.map(t => affectedTenantIds.includes(t.id) ? { ...t, status: 'moved_out', lastRoomId: report.roomId } : t);
               
@@ -1381,8 +1421,20 @@ function AppMain() {
                   contractId: report.contractId,
                   type: 'move_out_settlement',
                   month: report.actualEndDate.split('-').slice(0, 2).reverse().join('/'),
+                  rent: 0,
+                  fixedServices: 0,
+                  electricOld: report.electricOld,
+                  electricNew: report.electricNew,
+                  electricUsed: report.electricUsed,
+                  electricAmount: report.electricAmount,
+                  waterOld: report.waterOld,
+                  waterNew: report.waterNew,
+                  waterUsed: report.waterUsed,
+                  waterAmount: report.waterAmount,
+                  other: Number(report.unpaidRent || 0) + Number(report.cleaningFee || 0) + Number(report.damageFee || 0) + Number(report.otherFee || 0),
                   total: report.mustCollect,
                   paidAmount: 0,
+                  debt: report.mustCollect,
                   status: 'Chưa thanh toán',
                   note: 'Phiếu chốt trả phòng',
                   createdAt: new Date().toISOString()
@@ -1435,6 +1487,93 @@ function AppMain() {
           }}
         />
       )}
+      {transferringContract && (
+        <TransferRoomModal
+          contract={transferringContract}
+          data={data}
+          onClose={() => setTransferringContract(null)}
+          onSave={(form) => {
+            setData(old => {
+              const targetRoom = old.rooms.find(r => r.id === form.newRoomId);
+              if (!targetRoom) return old;
+
+              const oldContract = transferringContract;
+              const primaryMembership = (old.memberships || []).find(m => m.contractId === oldContract.id && m.role === 'primary');
+              const activeMembers = (old.memberships || []).filter(m => m.contractId === oldContract.id && m.status === 'active');
+              const newContractId = uid('contract');
+              const transferDate = form.transferDate;
+              const transferRecord = {
+                id: uid('transfer'),
+                tenantId: primaryMembership?.tenantId || '',
+                oldContractId: oldContract.id,
+                newContractId,
+                oldRoomId: oldContract.roomId,
+                newRoomId: targetRoom.id,
+                transferDate,
+                oldRent: Number(oldContract.rent || 0),
+                newRent: Number(form.rent || 0),
+                oldDeposit: Number(oldContract.deposit || 0),
+                newDeposit: Number(form.deposit || 0),
+                note: form.note,
+                createdAt: new Date().toISOString()
+              };
+
+              const newContract = {
+                ...oldContract,
+                id: newContractId,
+                roomId: targetRoom.id,
+                contractNo: form.contractNo,
+                signedDate: transferDate,
+                startDate: transferDate,
+                endDate: form.endDate,
+                rent: Number(form.rent || 0),
+                deposit: Number(form.deposit || 0),
+                status: 'active',
+                noticeDate: '',
+                expectedMoveOutDate: '',
+                actualEndDate: '',
+                endedAt: '',
+                previousEndDate: '',
+                renewedAt: '',
+                renewalHistory: [],
+                note: form.note,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+
+              const updatedContracts = [
+                ...old.contracts.map(c => c.id === oldContract.id ? {
+                  ...c,
+                  status: 'ended',
+                  actualEndDate: transferDate,
+                  endedAt: new Date().toISOString(),
+                  note: [c.note, `Chuyển sang phòng ${targetRoom.id} ngày ${transferDate}`].filter(Boolean).join('\n')
+                } : c),
+                newContract
+              ];
+
+              const endedMemberships = old.memberships.map(m => m.contractId === oldContract.id ? { ...m, status: 'ended', leftDate: transferDate } : m);
+              const newMemberships = activeMembers.map(m => ({
+                ...m,
+                id: uid('membership'),
+                contractId: newContractId,
+                roomId: targetRoom.id,
+                status: 'active',
+                joinedDate: transferDate,
+                leftDate: ''
+              }));
+
+              return {
+                ...old,
+                contracts: updatedContracts,
+                memberships: [...endedMemberships, ...newMemberships],
+                roomTransfers: [transferRecord, ...(old.roomTransfers || [])]
+              };
+            });
+            setTransferringContract(null);
+          }}
+        />
+      )}
       {detailTenant && <TenantDetailModal tenant={detailTenant} data={data} onClose={() => setDetailTenant(null)} />}
       {editingTenant && (
         <EditTenantModal 
@@ -1459,7 +1598,13 @@ function AppMain() {
           onSave={(updated) => {
             setData(old => ({
               ...old,
-              contracts: old.contracts.map(c => c.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : c)
+              contracts: old.contracts.map(c => c.id === updated.id ? {
+                ...updated,
+                rent: Number(updated.rent),
+                deposit: Number(updated.deposit),
+                paymentCycleDay: updated.paymentCycleDay ? Number(updated.paymentCycleDay) : updated.paymentCycleDay,
+                updatedAt: new Date().toISOString()
+              } : c)
             }));
             setEditingContract(null);
           }} 
@@ -2444,7 +2589,8 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                 <button className="primary-btn" onClick={() => onAction('create_receipt')}>⚡ Lập phiếu tháng</button>
                 <button className="secondary-btn" onClick={() => onAction('edit_contract')}>✏️ Sửa HĐ</button>
                 <button className="secondary-btn" onClick={() => onAction('renew_contract')}>🔄 Gia hạn</button>
-                <button className="secondary-btn warning" style={{ flex: 1 }}>⚠️ Báo chuyển</button>
+                <button className="secondary-btn" onClick={() => onAction('transfer_room')}>↔ Đổi phòng</button>
+                <button className="secondary-btn warning" style={{ flex: 1 }} onClick={() => onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice')}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : '⚠️ Báo chuyển'}</button>
                 <button className="secondary-btn danger" style={{ flex: 1 }} onClick={() => onAction('moving_out')}>💸 Tất toán</button>
               </>
             )}
@@ -2533,7 +2679,7 @@ function RentalFlowModal({ room, onClose, onSave }) {
       cccdDate: form.tenantCCCDDate,
       cccdPlace: form.tenantCCCDPlace,
       address: form.tenantAddress,
-      vehicle: form.tenantVehicle,
+      licensePlate: form.tenantVehicle,
       birthday: form.tenantBirthday,
       role: 'primary',
       status: 'active',
@@ -2550,7 +2696,7 @@ function RentalFlowModal({ room, onClose, onSave }) {
       endDate: form.endDate,
       rent: Number(form.rent),
       deposit: Number(form.deposit),
-      paymentCycleDay: form.paymentCycleDay,
+      paymentCycleDay: Number(form.paymentCycleDay),
       note: form.note,
       terms: {
         electricPrice: form.electricPrice,
@@ -2693,6 +2839,106 @@ function RentalFlowModal({ room, onClose, onSave }) {
   );
 }
 
+function TransferRoomModal({ contract, data, onClose, onSave }) {
+  const oldRoom = data.rooms.find(r => r.id === contract.roomId);
+  const tenant = getPrimaryTenantByContract(data, contract.id) || { name: 'N/A', phone: '' };
+  const vacantRooms = (data.rooms || []).filter(r => r.id !== contract.roomId && getRoomStatusInfo(data, r.id).label === 'Trống');
+  const firstRoom = vacantRooms[0] || null;
+  const [form, setForm] = useState({
+    newRoomId: firstRoom?.id || '',
+    transferDate: new Date().toISOString().slice(0, 10),
+    endDate: contract.endDate || addMonthsToDate(new Date().toISOString().slice(0, 10), 12),
+    rent: firstRoom?.rent ?? contract.rent,
+    deposit: contract.deposit,
+    contractNo: `HĐ-${firstRoom?.id || 'ROOM'}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+    note: `Chuyển từ phòng ${contract.roomId}`
+  });
+
+  const selectedRoom = data.rooms.find(r => r.id === form.newRoomId);
+
+  const handleRoomChange = (roomId) => {
+    const room = data.rooms.find(r => r.id === roomId);
+    setForm(prev => ({
+      ...prev,
+      newRoomId: roomId,
+      rent: room?.rent ?? prev.rent,
+      contractNo: `HĐ-${roomId}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`
+    }));
+  };
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '720px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>Đổi phòng • {tenant.name}</h2>
+            <p className="muted">Kết thúc hợp đồng phòng cũ và tạo hợp đồng mới cho phòng trống.</p>
+          </div>
+          <button className="secondary-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="detail-body-v2 stack" style={{ gap: '20px' }}>
+          <div className="op-card">
+            <div className="op-grid">
+              <div className="op-item"><span className="op-label">Phòng hiện tại</span><span className="op-value">P{oldRoom?.id}</span></div>
+              <div className="op-item"><span className="op-label">Người đứng tên</span><span className="op-value">{tenant.name}</span></div>
+              <div className="op-item"><span className="op-label">Giá thuê cũ</span><span className="op-value">{formatMoney(contract.rent)}</span></div>
+              <div className="op-item"><span className="op-label">Cọc đang giữ</span><span className="op-value">{formatMoney(contract.deposit)}</span></div>
+            </div>
+          </div>
+
+          {vacantRooms.length === 0 ? (
+            <div className="warning-box">Hiện không có phòng trống để chuyển. Cần tất toán hoặc tạo phòng trống trước.</div>
+          ) : (
+            <>
+              <div className="form-grid-v2">
+                <label>Phòng mới
+                  <select value={form.newRoomId} onChange={e => handleRoomChange(e.target.value)}>
+                    {vacantRooms.map(r => <option key={r.id} value={r.id}>P{r.id} - {formatMoney(r.rent)}</option>)}
+                  </select>
+                </label>
+                <label>Ngày chuyển phòng
+                  <input type="date" value={form.transferDate} onChange={e => setForm({...form, transferDate: e.target.value})} />
+                </label>
+                <label>Số hợp đồng mới
+                  <input value={form.contractNo} onChange={e => setForm({...form, contractNo: e.target.value})} />
+                </label>
+                <label>Ngày hết hạn mới
+                  <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
+                </label>
+                <label>Giá thuê mới
+                  <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} />
+                </label>
+                <label>Tiền cọc áp dụng
+                  <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} />
+                </label>
+              </div>
+              <label>Ghi chú
+                <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} />
+              </label>
+
+              <div className="warning-box">
+                Sau khi xác nhận, phòng {contract.roomId} sẽ chuyển về trống, toàn bộ người đang ở sẽ sang P{selectedRoom?.id}, và phiếu tháng mới sẽ dùng chỉ số đầu kỳ của phòng mới.
+              </div>
+            </>
+          )}
+
+          <div className="op-action-footer">
+            <button className="secondary-btn" onClick={onClose}>Hủy</button>
+            <button className="primary-btn" disabled={vacantRooms.length === 0} onClick={() => {
+              if (!form.newRoomId) return alert('Vui lòng chọn phòng mới.');
+              if (!form.transferDate || !form.endDate) return alert('Vui lòng nhập ngày chuyển và ngày hết hạn mới.');
+              if (form.endDate < form.transferDate) return alert('Ngày hết hạn mới phải sau ngày chuyển phòng.');
+              if (window.confirm(`Xác nhận chuyển ${tenant.name} từ P${contract.roomId} sang P${form.newRoomId}?`)) {
+                onSave(form);
+              }
+            }}>Xác nhận đổi phòng</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettlementModal({ room, contract, data, onClose, onSave }) {
   const [form, setForm] = useState({
     actualEndDate: new Date().toISOString().split('T')[0],
@@ -2810,8 +3056,17 @@ function SettlementModal({ room, contract, data, onClose, onSave }) {
                     if (window.confirm('Xác nhận hoàn tất mọi thủ tục trả phòng và chốt công nợ?')) {
                       onSave({
                         ...form,
+                        id: uid('moveout'),
+                        unpaidRent: Number(form.unpaidRent || 0),
+                        cleaningFee: Number(form.cleaningFee || 0),
+                        damageFee: Number(form.damageFee || 0),
+                        otherFee: Number(form.otherFee || 0),
+                        electricOld,
+                        electricNew: Number(form.electricNew || 0),
                         electricUsed,
                         electricAmount,
+                        waterOld,
+                        waterNew: Number(form.waterNew || 0),
                         waterUsed,
                         waterAmount,
                         totalIncurred,
@@ -3208,7 +3463,7 @@ function EditTenantModal({ tenant, onClose, onSave }) {
             <label style={{ gridColumn: 'span 2' }}>Họ tên <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></label>
             <label>SĐT <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></label>
             <label>CCCD <input value={form.cccd} onChange={e => setForm({...form, cccd: e.target.value})} /></label>
-            <label>Biển số xe <input value={form.vehicle || ''} onChange={e => setForm({...form, vehicle: e.target.value})} /></label>
+            <label>Biển số xe <input value={form.licensePlate || form.vehicle || ''} onChange={e => setForm({...form, licensePlate: e.target.value})} /></label>
             <label>Vai trò 
               <select value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
                 <option value="primary">Người đứng tên</option>

@@ -1,4 +1,5 @@
 {
+  "name": "quan-ly-phong-app",
   "scripts": {
     "dev": "vite",
     "build": "prisma generate && vite build",

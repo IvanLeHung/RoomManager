@@ -3,7 +3,7 @@ const prisma = require('./lib/prisma');
 module.exports = async (req, res) => {
   if (req.method === 'GET') {
     try {
-      const [rooms, tenants, memberships, contracts, receipts, moveOutReports, contractRenewals, suppliers, expenseCategories, expensePayments] = await Promise.all([
+      const [rooms, tenants, memberships, contracts, receipts, moveOutReports, contractRenewals, roomTransfers, suppliers, expenseCategories, expensePayments] = await Promise.all([
         prisma.room.findMany(),
         prisma.tenant.findMany(),
         prisma.membership.findMany(),
@@ -11,6 +11,7 @@ module.exports = async (req, res) => {
         prisma.receipt.findMany(),
         prisma.moveOutReport.findMany(),
         prisma.contractRenewal.findMany(),
+        prisma.roomTransfer.findMany(),
         prisma.supplier.findMany(),
         prisma.expenseCategory.findMany(),
         prisma.expensePayment.findMany(),
@@ -24,6 +25,7 @@ module.exports = async (req, res) => {
         receipts,
         moveOutReports,
         contractRenewals,
+        roomTransfers,
         suppliers,
         expenseCategories,
         expensePayments,
@@ -47,7 +49,7 @@ module.exports = async (req, res) => {
     
     try {
       if (type === 'full_sync') {
-        const { rooms = [], tenants = [], memberships = [], contracts = [], receipts = [], moveOutReports = [], contractRenewals = [] } = payload;
+        const { rooms = [], tenants = [], memberships = [], contracts = [], receipts = [], moveOutReports = [], contractRenewals = [], roomTransfers = [] } = payload;
 
         const pick = (obj, keys) => {
           const res = {};
@@ -58,16 +60,35 @@ module.exports = async (req, res) => {
         };
 
         const roomKeys = ['id', 'rent', 'deposit', 'cleaning', 'elevator', 'laundry', 'internet', 'electricPrice', 'waterPrice', 'initialElectric', 'initialWater', 'note', 'createdAt'];
-        const tenantKeys = ['id', 'name', 'phone', 'cccd', 'cccdDate', 'cccdPlace', 'address', 'licensePlate', 'note', 'createdAt'];
+        const tenantKeys = ['id', 'name', 'phone', 'cccd', 'cccdDate', 'cccdPlace', 'address', 'licensePlate', 'birthday', 'status', 'lastRoomId', 'note', 'createdAt'];
         const membershipKeys = ['id', 'contractId', 'tenantId', 'roomId', 'role', 'status', 'joinedDate', 'leftDate', 'createdAt'];
-        const contractKeys = ['id', 'roomId', 'startDate', 'endDate', 'signedDate', 'deposit', 'rent', 'status', 'noticeDate', 'expectedMoveOutDate', 'actualEndDate', 'endedAt', 'note', 'createdAt'];
+        const contractKeys = ['id', 'roomId', 'contractNo', 'startDate', 'endDate', 'signedDate', 'deposit', 'rent', 'paymentCycleDay', 'status', 'noticeDate', 'expectedMoveOutDate', 'actualEndDate', 'endedAt', 'previousEndDate', 'renewedAt', 'terms', 'renewalHistory', 'note', 'createdAt'];
         const receiptKeys = ['id', 'type', 'roomId', 'contractId', 'month', 'rent', 'fixedServices', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'other', 'total', 'paidAmount', 'debt', 'status', 'note', 'createdAt', 'savedAt'];
-        const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'mustCollect', 'mustRefund', 'createdAt'];
+        const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'otherFee', 'totalIncurred', 'mustCollect', 'mustRefund', 'note', 'createdAt'];
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
+        const transferKeys = ['id', 'tenantId', 'oldContractId', 'newContractId', 'oldRoomId', 'newRoomId', 'transferDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
         const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
         const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
         const expenseKeys = ['id', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
+
+        const ids = (items) => items.filter(i => i && i.id).map(i => i.id);
+
+        // full_sync is a snapshot: records missing from the payload should be removed too.
+        // Run deletes only after all upserts succeed so a partial sync cannot wipe existing data.
+        const deleteOperations = [
+          prisma.expensePayment.deleteMany({ where: { id: { notIn: ids(payload.expensePayments || []) } } }),
+          prisma.expenseCategory.deleteMany({ where: { id: { notIn: ids(payload.expenseCategories || []) } } }),
+          prisma.supplier.deleteMany({ where: { id: { notIn: ids(payload.suppliers || []) } } }),
+          prisma.roomTransfer.deleteMany({ where: { id: { notIn: ids(roomTransfers) } } }),
+          prisma.contractRenewal.deleteMany({ where: { id: { notIn: ids(contractRenewals) } } }),
+          prisma.moveOutReport.deleteMany({ where: { id: { notIn: ids(moveOutReports) } } }),
+          prisma.receipt.deleteMany({ where: { id: { notIn: ids(receipts) } } }),
+          prisma.membership.deleteMany({ where: { id: { notIn: ids(memberships) } } }),
+          prisma.contract.deleteMany({ where: { id: { notIn: ids(contracts) } } }),
+          prisma.tenant.deleteMany({ where: { id: { notIn: ids(tenants) } } }),
+          prisma.room.deleteMany({ where: { id: { notIn: ids(rooms) } } }),
+        ];
 
         // Sử dụng Promise.all thay cho $transaction để tránh lỗi "Unable to start a transaction" trên môi trường Serverless
         const operations = [
@@ -78,6 +99,7 @@ module.exports = async (req, res) => {
           ...receipts.filter(i => i && i.id).map(item => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...moveOutReports.filter(i => i && i.id).map(item => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...contractRenewals.filter(i => i && i.id).map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...roomTransfers.filter(i => i && i.id).map(item => { const data = pick(item, transferKeys); return prisma.roomTransfer.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...(payload.suppliers || []).filter(i => i && i.id).map(item => { const data = pick(item, supplierKeys); return prisma.supplier.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...(payload.expenseCategories || []).filter(i => i && i.id).map(item => { const data = pick(item, categoryKeys); return prisma.expenseCategory.upsert({ where: { id: data.id }, update: data, create: data }); }),
           ...(payload.expensePayments || []).filter(i => i && i.id).map(item => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
@@ -101,6 +123,8 @@ module.exports = async (req, res) => {
             }
           }
         }
+
+        await Promise.all(deleteOperations);
         
         return res.status(200).json({ success: true });
       }
