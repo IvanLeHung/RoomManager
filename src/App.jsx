@@ -1301,6 +1301,14 @@ function AppMain() {
                 return { ...old, receipts: mergedReceipts, rooms: newRooms };
               })}
               onView={(r) => setViewingReceipt(r)} onPrintBatch={(receipts) => setPrintingReceipts(receipts)} onPay={(r) => setPaymentReceipt(r)}
+              onDeleteReceipt={(receipt) => {
+                const message = receipt.isFinalized
+                  ? `Phiếu P${receipt.roomId} tháng ${receipt.month} đã lưu chính thức. Vẫn hủy phiếu này?`
+                  : `Hủy phiếu P${receipt.roomId} tháng ${receipt.month}?`;
+                if (window.confirm(message)) {
+                  setData(old => ({ ...old, receipts: (old.receipts || []).filter(r => r.id !== receipt.id) }));
+                }
+              }}
               onGoToPayment={(filters) => {
                 setPaymentFilters(filters);
                 setTab('payment_history');
@@ -2069,7 +2077,7 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
   );
 }
 
-function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onGoToPayment }) {
+function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onDeleteReceipt, onGoToPayment }) {
   const [selectedMonth, setSelectedMonth] = useState(INITIAL_MONTH);
   const [activeTab, setActiveTab] = useState('entry');
   const [saveModal, setSaveModal] = useState(null);
@@ -2330,6 +2338,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button className="secondary-btn sm" title="In phiếu" onClick={() => onPrintBatch([r])}>🖨️</button>
                           <button className="secondary-btn sm" title="Xem QR" onClick={() => onView(r)}>📱</button>
+                          <button className="secondary-btn sm" title="Hủy phiếu" style={{ color: '#ef4444' }} onClick={() => onDeleteReceipt(r)}>✕</button>
                         </div>
                       </td>
                     </tr>
