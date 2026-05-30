@@ -2108,6 +2108,37 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
     }
   }
 
+  function handleRefreshMonthReadings() {
+    const refreshedReceipts = monthlyReceipts
+      .filter(r => !r.isFinalized)
+      .map(receipt => {
+        const room = data.rooms.find(r => r.id === receipt.roomId);
+        const contract = data.contracts.find(c => c.id === receipt.contractId);
+        if (!room || !contract) return null;
+        const previousReceipt = getPreviousReceiptByRoom(
+          (data.receipts || []).filter(r => r.id !== receipt.id),
+          receipt.roomId,
+          selectedMonth
+        );
+        return {
+          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth),
+          id: receipt.id,
+          paidAmount: receipt.paidAmount || 0,
+          status: receipt.status || 'Chưa thanh toán',
+          note: receipt.note || ''
+        };
+      })
+      .filter(Boolean);
+
+    if (refreshedReceipts.length === 0) {
+      alert('Không có phiếu chưa lưu nào để làm mới chỉ số.');
+      return;
+    }
+
+    onBatchCreate(refreshedReceipts);
+    alert(`Đã làm mới chỉ số cho ${refreshedReceipts.length} phiếu tháng ${selectedMonth}.`);
+  }
+
   function handleFinalizeMonth() {
     if (monthlyReceipts.length === 0) return alert('Không có phiếu nào để lưu.');
     
@@ -2163,6 +2194,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px', margin: 0 }}>Tháng: <input type="month" value={`${selectedMonth.split('/')[1]}-${selectedMonth.split('/')[0]}`} onChange={e => { const [y, m] = e.target.value.split('-'); setSelectedMonth(`${m}/${y}`); }} style={{ height: '40px' }} /></label>
             <button className="primary-btn" onClick={handleBatchCreate}>⚡ Tạo hàng loạt</button>
+            <button className="secondary-btn" onClick={handleRefreshMonthReadings}>🔄 Làm mới chỉ số</button>
             <button className="secondary-btn" onClick={() => onPrintBatch(monthlyReceipts)}>🖨️ In tất cả ({monthlyReceipts.length})</button>
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
