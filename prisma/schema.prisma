@@ -32,6 +32,9 @@ model Tenant {
   cccdPlace    String?
   address      String?
   licensePlate String?
+  birthday     String?
+  status       String?
+  lastRoomId   String?
   note         String?
   createdAt    DateTime @default(now())
 }
@@ -51,16 +54,22 @@ model Membership {
 model Contract {
   id                  String   @id
   roomId              String
+  contractNo          String?
   startDate           String
   endDate             String
   signedDate          String?
   deposit             Int
   rent                Int
+  paymentCycleDay     Int?
   status              String   // 'active' | 'notice' | 'moving_out' | 'ended'
   noticeDate          String?
   expectedMoveOutDate String?
   actualEndDate       String?
   endedAt             String?
+  previousEndDate     String?
+  renewedAt           String?
+  terms               Json?
+  renewalHistory      Json?
   note                String?
   createdAt           DateTime @default(now())
 }
@@ -108,8 +117,11 @@ model MoveOutReport {
   unpaidRent     Int
   cleaningFee    Int
   damageFee      Int
+  otherFee       Int?
+  totalIncurred  Float?
   mustCollect    Int
   mustRefund     Int
+  note           String?
   createdAt      DateTime @default(now())
 }
 
@@ -127,6 +139,22 @@ model ContractRenewal {
   newDeposit   Int
   note         String?
   createdAt    String
+}
+
+model RoomTransfer {
+  id             String   @id
+  tenantId       String
+  oldContractId  String
+  newContractId  String
+  oldRoomId      String
+  newRoomId      String
+  transferDate   String
+  oldRent        Int
+  newRent        Int
+  oldDeposit     Int
+  newDeposit     Int
+  note           String?
+  createdAt      String
 }
 
 model Supplier {
