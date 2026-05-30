@@ -560,9 +560,15 @@ function LoginScreen({ onUnlock }) {
 function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'main', onClose }) {
   const primaryTenant = tenants.find(t => t.role === 'primary') || tenants[0] || {};
   const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const signedDay = formatDisplayDate(contract.signedDate, today);
   const startDay = formatBusinessDate(contract.startDate);
   const endDay = formatBusinessDate(contract.endDate);
   const duration = calculateRentalDuration(contract.startDate, contract.endDate);
+  const rentAmount = Number(contract.rent || room.rent || 0);
+  const depositAmount = Number(contract.deposit || room.deposit || rentAmount || 0);
+  const electricPrice = Number(contract.terms?.electricPrice || room.electricPrice || 3800);
+  const waterPrice = Number(contract.terms?.waterPrice || room.waterPrice || 32000);
+  const fixedServiceTotal = Number(room.internet || 0) + Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0);
   const isMain = type === 'main';
   const isLiquidation = type === 'liquidation';
   const isRenewal = type === 'renewal';
@@ -586,7 +592,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
               <div className="contract-header-text">
                 <h1>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</h1>
                 <h2>Độc lập – Tự do – Hạnh phúc</h2>
-                <p style={{ fontStyle: 'italic' }}>Hà Nội, ngày 01 tháng 03 năm 2026</p>
+                <p style={{ fontStyle: 'italic' }}>Hà Nội, ngày {signedDay}</p>
               </div>
               <h1 style={{ textAlign: 'center', margin: '30px 0 20px' }}>HỢP ĐỒNG THUÊ PHÒNG</h1>
               {isMain && (
@@ -594,7 +600,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                   <p>- Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24/11/2015;</p>
                   <p>- Căn cứ Luật Thương mại số 36/2005/QH11 ngày 14/06/2005;</p>
                   <p>- Căn cứ nhu cầu và sự thỏa thuận của các Bên.</p>
-                  <p style={{ marginTop: '10px' }}>Hôm nay, ngày 01 tháng 11 năm 2025, chúng tôi gồm:</p>
+                  <p style={{ marginTop: '10px' }}>Hôm nay, ngày {signedDay}, chúng tôi gồm:</p>
                 </div>
               )}
               <div className="contract-section">
@@ -622,28 +628,28 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <p>1.6. Nếu phát hiện vi phạm các quy định 1.5, Bên A có quyền yêu cầu di chuyển xe ngay và áp dụng mức phạt 300.000 đồng cho mỗi xe/mỗi lần (hoặc mỗi đêm) vi phạm.</p>
                 <p>1.7. Nhằm đảm bảo PCCC tại tòa nhà, Bên A cấm tuyệt đối sạc mọi loại xe máy điện/xe đạp điện/scooter điện và pin, ắc-quy rời của các phương tiện này trong mọi khu vực tòa nhà (phòng, hành lang, cầu thang, khu kỹ thuật, bãi để xe, khu vực chung). Bên A được quyền ngắt nguồn, yêu cầu dừng sạc/di chuyển ngay; vi phạm bị phạt từ 300.000 – 500.000 đồng/lần, tái phạm có thể chấm dứt quyền gửi xe hoặc chấm dứt Hợp đồng. Mọi rủi ro, thiệt hại phát sinh do sạc trái quy định do Bên B tự chịu và bồi thường.</p>
                 <h3>ĐIỀU 2. BÀN GIAO VÀ HIỆN TRẠNG</h3>
-                <p>2.1. Thời điểm bàn giao: <b>{startDay}</b></p>
-                <p>2.2. Hai Bên lập Phụ lục 01 – Biên bản bàn giao (kèm ảnh/video), ghi rõ thiết bị – hiện trạng – chỉ số điện/nước đầu kỳ – số thẻ/vân tay.</p>
-                <p>2.3. Kể từ thời điểm bàn giao, Bên B có toàn quyền sử dụng Phòng thuê theo Hợp đồng.</p>
+                <p>2.1. Ngày ký Hợp đồng: <b>{signedDay}</b>. Ngày bàn giao dự kiến/thực tế: <b>{startDay}</b>.</p>
+                <p>2.2. Hai Bên lập Phụ lục 01 – Biên bản bàn giao kèm ảnh/video, ghi rõ từng thiết bị, tình trạng thiết bị, hiện trạng phòng, chỉ số điện/nước đầu kỳ, số chìa khóa/thẻ/vân tay đã bàn giao.</p>
+                <p>2.3. Kể từ thời điểm bàn giao thực tế theo Phụ lục 01, Bên B có toàn quyền sử dụng Phòng thuê theo Hợp đồng.</p>
                 <h3>ĐIỀU 3. THỜI HẠN THUÊ</h3>
-                <p>3.1. Thời hạn thuê: <b>{duration}</b> kể từ ngày bàn giao.</p>
-                <p>3.2. Từ ngày <b>{startDay}</b> Đến hết ngày <b>{endDay}</b></p>
-                <p>3.3. Hết thời hạn thuê, Hợp đồng tự động gia hạn theo tháng với điều khoản không đổi, trừ khi một Bên thông báo chấm dứt trước ≥30 ngày bằng văn bản/tin nhắn (Zalo/SMS).</p>
+                <p>3.1. Thời hạn thuê: <b>{duration}</b>.</p>
+                <p>3.2. Thời hạn được tính từ ngày <b>{startDay}</b> đến hết ngày <b>{endDay}</b>. Nếu ngày bàn giao thực tế khác ngày bắt đầu thuê, Hai Bên ghi nhận bằng Phụ lục 01 hoặc tin nhắn xác nhận.</p>
+                <p>3.3. Hết thời hạn thuê, Hợp đồng tự động gia hạn theo tháng với điều khoản không đổi, trừ khi một Bên thông báo chấm dứt trước ít nhất 30 ngày bằng văn bản/tin nhắn (Zalo/SMS).</p>
                 <h3>ĐIỀU 4. TIỀN ĐẶT CỌC</h3>
-                <p>4.1. Mức đặt cọc: 01 tháng tiền thuê, tương đương <b>{formatMoney(contract.deposit)}</b> (bằng chữ: <b>{numberToWords(contract.deposit)}</b>), nộp ngay khi ký.</p>
+                <p>4.1. Mức đặt cọc: <b>{formatMoney(depositAmount)}</b> (bằng chữ: <b>{numberToWords(depositAmount)}</b>), nộp ngay khi ký hoặc theo thỏa thuận thanh toán của Hai Bên.</p>
                 <p>4.2. Không dùng cọc để trừ tiền thuê trừ khi Hai Bên đồng ý bằng văn bản/tin nhắn.</p>
-                <p>4.3. Nếu Bên B đơn phương chấm dứt trái thỏa thuận báo trước theo Điều 9, mất cọc. Nếu Bên A đơn phương chấm dứt trái thỏa thuận báo trước, hoàn cọc và bồi thường thêm số tiền bằng đúng tiền cọc.</p>
-                <p>4.4. Khi trả phòng, Hai Bên lập Biên bản kiểm tra hiện trạng. Bên A chỉ được khấu trừ cọc đối với hư hỏng do lỗi Bên B có bảng kê chi phí/hóa đơn. Bên B Hoàn cọc trong 07 (bảy) ngày làm việc kể từ khi nhận đủ chìa khóa/thẻ, bàn giao xong và quyết toán công nợ từ Bên B.</p>
+                <p>4.3. Nếu Bên B muốn chấm dứt trước hạn nhưng đã báo trước ít nhất 30 ngày, bàn giao đúng hiện trạng và thanh toán đủ công nợ, Bên A hoàn lại tiền cọc sau khi khấu trừ các khoản hợp lệ nếu có. Nếu Bên B tự ý rời phòng hoặc chấm dứt trái thỏa thuận báo trước, Bên B mất cọc. Nếu Bên A đơn phương chấm dứt trái thỏa thuận báo trước, Bên A hoàn cọc và bồi thường thêm số tiền bằng đúng tiền cọc.</p>
+                <p>4.4. Khi trả phòng, Hai Bên lập Biên bản kiểm tra hiện trạng. Bên A chỉ được khấu trừ cọc đối với công nợ, hư hỏng do lỗi Bên B hoặc chi phí có bảng kê/hóa đơn/chứng từ hợp lệ. Bên A hoàn cọc trong 07 (bảy) ngày làm việc kể từ khi nhận đủ chìa khóa/thẻ, bàn giao xong và quyết toán công nợ với Bên B.</p>
                 <h3>ĐIỀU 5. GIÁ THUÊ VÀ PHÍ DỊCH VỤ</h3>
-                <p>5.1. Tiền thuê: <b>{formatMoney(contract.rent)}</b>/tháng (bằng chữ: <b>{numberToWords(contract.rent)}</b>).</p>
-                <p>5.2. Phí dịch vụ (chưa gồm trong tiền thuê), thanh toán theo thực tế sử dụng:</p>
-                <p>- Điện: 3.800đ/kWh, theo chỉ số công tơ (ghi đầu/cuối kỳ trong phiếu thu).</p>
-                <p>- Nước: 32.000đ/m³, theo chỉ số công tơ (ghi đầu/cuối kỳ trong phiếu thu).</p>
+                <p>5.1. Tiền thuê: <b>{formatMoney(rentAmount)}</b>/tháng (bằng chữ: <b>{numberToWords(rentAmount)}</b>).</p>
+                <p>5.2. Phí dịch vụ chưa gồm trong tiền thuê. Tổng phí dịch vụ cố định hiện tại: <b>{formatMoney(fixedServiceTotal)}</b>/tháng, gồm:</p>
+                <p>- Điện: <b>{formatMoney(electricPrice)}</b>/kWh, theo chỉ số công tơ (ghi đầu/cuối kỳ trong phiếu thu).</p>
+                <p>- Nước: <b>{formatMoney(waterPrice)}</b>/m³, theo chỉ số công tơ (ghi đầu/cuối kỳ trong phiếu thu).</p>
                 <p>- Mạng internet: <b>{formatMoney(room.internet)}</b>/phòng/tháng.</p>
                 <p>- Vệ sinh rác & dịch vụ chung: <b>{formatMoney(room.cleaning)}</b>/phòng/tháng.</p>
                 <p>- Phí bảo trì thang máy: <b>{formatMoney(room.elevator)}</b>/phòng/tháng.</p>
                 <p>- Phí sử dụng máy giặt chung: <b>{formatMoney(room.laundry)}</b>/phòng/tháng.</p>
-                <p>5.3. Khi đơn giá đầu vào (điện/nước/dịch vụ) thay đổi, Bên A báo trước ≥15 ngày và gửi bảng tính kèm chứng từ.</p>
+                <p>5.3. Khi đơn giá đầu vào hoặc phí dịch vụ thay đổi, Bên A báo trước ít nhất 15 ngày và gửi bảng tính kèm căn cứ/chứng từ nếu có.</p>
                 <h3>ĐIỀU 6. PHƯƠNG THỨC VÀ HẠN THANH TOÁN</h3>
                 <p>6.1. Kỳ thanh toán: 01 (một) tháng/lần.</p>
                 <p>6.2. Hạn thanh toán thống nhất: chậm nhất ngày 10 của tháng thuê.</p>
@@ -661,7 +667,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <p>8.1. Quyền: Nhận bàn giao đúng thời gian/hiện trạng; sử dụng Phòng thuê để ở; yêu cầu Bên A sửa chữa sự cố không do lỗi mình; được gia hạn theo Điều 3; được hoàn cọc theo Điều 4; tháo dỡ tài sản cá nhân khi chấm dứt.</p>
                 <p>8.2. Nghĩa vụ: Thanh toán đủ, đúng hạn tiền thuê và dịch vụ. Sử dụng đúng mục đích; không dùng làm nơi kinh doanh, kho tập kết hàng, hoặc mục đích trái pháp luật. Bảo quản tài sản; bồi thường hư hỏng do lỗi mình. Không đục phá kết cấu khi chưa được đồng ý. Trả phòng đúng nguyên trạng. Cung cấp hồ sơ (CCCD/hộ chiếu) trong 24 giờ để khai báo tạm trú.</p>
                 <h3>ĐIỀU 9. GIA HẠN – CHẤM DỨT HỢP ĐỒNG</h3>
-                <p>9.1. Hợp đồng chấm dứt khi hết hạn và có thông báo chấm dứt trước ≥30 ngày theo Điều 3; nếu không, gia hạn theo tháng.</p>
+                <p>9.1. Hợp đồng chấm dứt khi hết hạn và có thông báo chấm dứt trước ít nhất 30 ngày theo Điều 3; nếu không, gia hạn theo tháng.</p>
                 <p>9.2. Hợp đồng chấm dứt trước hạn nếu căn nhà hư hỏng nặng do bất khả kháng (hỏa hoạn, thiên tai, dịch bệnh, cưỡng chế nhà nước…) khiến Bên B không thể tiếp tục ở bình thường.</p>
                 <p>9.3. Một Bên vi phạm hợp đồng, Bên còn lại có quyền đơn phương chấm dứt sau khi thông báo nêu rõ lý do; Bên vi phạm bồi thường cho Bên còn lại số tiền tương đương tiền cọc.</p>
                 <p>9.4. Nếu các Bên chấm dứt trước hạn không thuộc 9.1–9.3, Bên đơn phương phải bồi thường số tiền tương đương tiền cọc.</p>
@@ -684,8 +690,9 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
             <div className="appendix-container">
               <div className="appendix-page">
                 <h1 style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}>PHỤ LỤC 01 – BIÊN BẢN BÀN GIAO</h1>
-                <p>Ngày bàn giao: <b>{startDay}</b>; Phòng số: <b>{room.id}</b></p>
+                <p>Ngày ký hợp đồng: <b>{signedDay}</b>; Ngày bàn giao: <b>{startDay}</b>; Phòng số: <b>{room.id}</b></p>
                 <p>Chỉ số điện cũ: <b>{room.electricOld || room.electricStart || room.initialElectric || '.......'}</b> kWh; Chỉ số nước cũ: <b>{room.waterOld || room.waterStart || room.initialWater || '.......'}</b> m³</p>
+                <p>Hai Bên thống nhất chụp ảnh/quay video hiện trạng phòng, thiết bị, công tơ điện/nước và lưu kèm biên bản này. Ảnh/video là căn cứ đối chiếu khi trả phòng và hoàn cọc.</p>
                 <table className="contract-table">
                   <thead>
                     <tr><th>STT</th><th>DANH MỤC THIẾT BỊ</th><th>SỐ LƯỢNG</th><th>HIỆN TRẠNG</th></tr>
@@ -700,7 +707,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                         <td style={{ textAlign: 'center' }}>{i + 1}</td>
                         <td>{item}</td>
                         <td style={{ textAlign: 'center' }}>01</td>
-                        <td>☐ tốt &nbsp; ☐ xước &nbsp; ☐ hỏng</td>
+                        <td>☐ Tốt &nbsp; ☐ Trầy/xước &nbsp; ☐ Cần kiểm tra &nbsp; ☐ Hỏng &nbsp; Ghi chú: ............</td>
                       </tr>
                     ))}
                   </tbody>
@@ -715,8 +722,8 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                     '3. Khai báo tạm trú: Cung cấp giấy tờ trong 24 giờ để làm thủ tục.',
                     '4. Thoát nước: Không đổ rác, thức ăn thừa xuống bồn cầu/thoát sàn.',
                     '5. Vệ sinh: Không để rác hành lang, cầu thang. Bỏ rác đúng nơi quy định.',
-                    '6. Tiếng ồn: Giữ trật tự sau 22:00. Tắt máy xe khi vào sau 22:30.',
-                    '7. Ra vào: Đóng cửa cổng cẩn thận. Không mở cửa cho người lạ.',
+                    '6. Tiếng ồn: Giữ trật tự trong khung giờ 22:00–06:00. Tắt máy xe, hạn chế nói chuyện lớn khi vào nhà sau 22:30.',
+                    '7. Ra vào: Đóng cửa cổng cẩn thận. Không mở cửa cho người lạ. Giờ tiếp khách thông thường 06:00–22:30.',
                     '8. Kết cấu: Không tự ý khoan, đục, vẽ lên tường khi chưa đồng ý.',
                     '9. Bồi thường: Chịu trách nhiệm hư hại do mình gây ra.',
                     '10. Tài sản: Tự bảo quản tài sản cá nhân.',
@@ -725,7 +732,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                     '13. Kinh doanh: Không làm nơi buôn bán, kho hàng.',
                     '14. Vận chuyển: Không chở quá tải thang máy.',
                     '15. Kỹ thuật: Không tự ý vào phòng kỹ thuật, tủ điện.',
-                    '16. Khách: Tiếp khách 06:00–22:30. Không để khách qua đêm không báo.',
+                    '16. Khách: Tiếp khách trong khung giờ 06:00–22:30. Khách ở lại qua đêm phải báo trước và được Bên A đồng ý.',
                     '17. Ở ghép: Không cho thuê lại khi chưa có chấp thuận.',
                     '18. Cam kết: Tuân thủ nghiêm túc, tái phạm sẽ chấm dứt hợp đồng.'
                   ].map((rule, idx) => (
@@ -768,7 +775,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <h2>Độc lập – Tự do – Hạnh phúc</h2>
               </div>
               <h1 style={{ textAlign: 'center', margin: '30px 0' }}>PHỤ LỤC 02 – BIÊN BẢN KIỂM TRA KHI TRẢ PHÒNG</h1>
-              <p>Hôm nay, ngày {report.actualEndDate.split('-').reverse().join('/')}, chúng tôi tiến hành chốt dọn đi cho phòng <b>{room.id}</b>:</p>
+              <p>Hôm nay, ngày {formatDisplayDate(report.actualEndDate)}, chúng tôi tiến hành chốt dọn đi cho phòng <b>{room.id}</b>:</p>
               <table className="contract-table" style={{ margin: '20px 0' }}>
                 <tbody>
                   <tr><td>Chỉ số điện mới: <b>{report.electricNew || report.electricEnd}</b> kWh</td><td>Chỉ số nước mới: <b>{report.waterNew || report.waterEnd}</b> m³</td></tr>
