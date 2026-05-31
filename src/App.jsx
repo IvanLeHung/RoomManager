@@ -402,8 +402,11 @@ function buildVietQrUrl(bankInfo, receipt) {
   return `https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNo}-compact2.png?${params.toString()}`;
 }
 
-function getContractOccupantCount(data, contractId) {
-  return (data.memberships || []).filter(m => m.contractId === contractId && m.status === 'active').length;
+function getContractOccupantCount(data, contract) {
+  if (!contract) return 0;
+  const byContract = (data.memberships || []).filter(m => m.contractId === contract.id && m.status === 'active').length;
+  const byRoom = (data.memberships || []).filter(m => m.roomId === contract.roomId && m.status === 'active').length;
+  return Math.max(byContract, byRoom);
 }
 
 function fixedServiceTotal(room, occupantCount = null) {
@@ -478,7 +481,7 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
 }
 
 function getTransferBillingContext(data, contract, month) {
-  const occupantCount = getContractOccupantCount(data, contract?.id);
+  const occupantCount = getContractOccupantCount(data, contract);
   const transfer = (data.roomTransfers || []).find(t =>
     isTransferOldRoomBillingMonth(t.transferDate, month) &&
     (t.oldContractId === contract?.id || t.newContractId === contract?.id)
@@ -610,22 +613,28 @@ function enrichReceiptWithTransferUtility(receipt, data) {
   const contract = (data.contracts || []).find(c => c.id === receipt.contractId);
   if (!contract) return receipt;
   const billingContext = getTransferBillingContext(data, contract, receipt.month);
+  const expectedFixedServices = billingContext.mode === 'transfer_old_room' ? 0 : fixedServiceTotal(
+    (data.rooms || []).find(r => r.id === receipt.roomId),
+    billingContext.occupantCount
+  );
+  const fixedDelta = expectedFixedServices - Number(receipt.fixedServices || 0);
   const transferOldUtility = billingContext.mode === 'transfer_new_room' ? billingContext.oldRoomUtility : null;
-  if (!transferOldUtility || transferOldUtility.total <= 0) return receipt;
-  const alreadyIncluded = receipt.transferId === billingContext.transfer?.id && receipt.transferOldRoomUtility;
-  if (alreadyIncluded) return receipt;
-  const extra = Number(transferOldUtility.total || 0);
-  const total = Number(receipt.total || 0) + extra;
+  const transferExtra = transferOldUtility && transferOldUtility.total > 0 && !(receipt.transferId === billingContext.transfer?.id && receipt.transferOldRoomUtility)
+    ? Number(transferOldUtility.total || 0)
+    : 0;
+  if (fixedDelta === 0 && transferExtra === 0) return receipt;
+  const total = Number(receipt.total || 0) + fixedDelta + transferExtra;
   const paidAmount = Number(receipt.paidAmount || 0);
   return {
     ...receipt,
-    other: Number(receipt.other || 0) + extra,
+    fixedServices: expectedFixedServices,
+    other: Number(receipt.other || 0) + transferExtra,
     total,
     debt: Math.max(0, total - paidAmount),
     status: paidAmount >= total && total > 0 ? 'Đã thanh toán' : paidAmount > 0 ? 'Nợ một phần' : receipt.status,
-    billingMode: 'transfer_new_room',
+    billingMode: billingContext.mode,
     transferId: billingContext.transfer?.id || receipt.transferId || '',
-    transferOldRoomUtility: transferOldUtility,
+    transferOldRoomUtility: transferOldUtility || receipt.transferOldRoomUtility,
     note: receipt.note || `Phòng mới nhận khách từ P${billingContext.transfer?.oldRoomId || ''}: điện nước phòng cũ được cộng riêng trong phiếu này.`
   };
 }
