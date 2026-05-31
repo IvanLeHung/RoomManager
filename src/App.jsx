@@ -3566,6 +3566,7 @@ function TransferRoomModal({ contract, data, onClose, onSave }) {
 function SettlementModal({ room, contract, data, onClose, onSave }) {
   const [form, setForm] = useState({
     actualEndDate: new Date().toISOString().split('T')[0],
+    settlementMode: 'offset_deposit',
     electricNew: room.electricNew || room.electricEnd || 0,
     waterNew: room.waterNew || room.waterEnd || 0,
     unpaidRent: 0,
@@ -3591,11 +3592,12 @@ function SettlementModal({ room, contract, data, onClose, onSave }) {
                         Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
   
   const deposit = Number(contract.deposit || 0);
-  const finalBalance = totalIncurred - deposit;
-
-  const isRefund = finalBalance < 0;
-  const isDebt = finalBalance > 0;
-  const absBalance = Math.abs(finalBalance);
+  const isOffsetDeposit = form.settlementMode === 'offset_deposit';
+  const depositUsed = isOffsetDeposit ? Math.min(deposit, totalIncurred) : 0;
+  const mustCollect = isOffsetDeposit ? Math.max(0, totalIncurred - deposit) : totalIncurred;
+  const mustRefund = isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : deposit;
+  const isRefund = mustRefund > 0;
+  const isDebt = mustCollect > 0;
 
   return (
     <div className="modal" onClick={onClose}>
@@ -3618,6 +3620,20 @@ function SettlementModal({ room, contract, data, onClose, onSave }) {
                   <label>Ngày trả phòng <input type="date" value={form.actualEndDate} onChange={e => setForm({...form, actualEndDate: e.target.value})} /></label>
                   <label>Người đứng tên <input value={tenant.name} readOnly style={{ background: '#f1f5f9' }} /></label>
                   <label style={{ gridColumn: 'span 2' }}>Tiền cọc đang giữ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="form-section-title">💳 Cách xử lý công nợ & tiền cọc</h3>
+                <div className="stack" style={{ gap: '10px' }}>
+                  <label className="option-row">
+                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'offset_deposit'} onChange={() => setForm({...form, settlementMode: 'offset_deposit'})} />
+                    <span><b>Đối trừ vào cọc</b><small>Điện nước, phí phát sinh được trừ vào tiền cọc; chỉ hoàn phần cọc còn lại.</small></span>
+                  </label>
+                  <label className="option-row">
+                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'pay_separately'} onChange={() => setForm({...form, settlementMode: 'pay_separately'})} />
+                    <span><b>Khách thanh toán điện nước/phí riêng, hoàn nguyên cọc</b><small>Tạo khoản khách cần trả cho phát sinh và hoàn lại toàn bộ tiền cọc.</small></span>
+                  </label>
                 </div>
               </section>
 
@@ -3654,15 +3670,19 @@ function SettlementModal({ room, contract, data, onClose, onSave }) {
                 <h3 className="summary-label-main">Kết quả tất toán</h3>
                 
                 <div className="summary-row"><span>Tổng phát sinh</span><b>{formatMoney(totalIncurred)}</b></div>
-                <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(deposit)}</b></div>
+                <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>
+                {!isOffsetDeposit && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
+                {mustCollect > 0 && <div className="summary-row"><span>Khách thanh toán phát sinh</span><b style={{ color: 'var(--danger)' }}>{formatMoney(mustCollect)}</b></div>}
                 
                 <div className="summary-total">
-                  <span className="summary-label-main">{isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm'}</span>
+                  <span className="summary-label-main">{isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
                   <p className="summary-amount" style={{ color: isRefund ? 'var(--success)' : isDebt ? 'var(--danger)' : 'var(--text-main)' }}>
-                    {formatMoney(absBalance)}
+                    {isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
                   </p>
                   <p style={{ fontSize: '13px', fontWeight: '500' }}>
-                    {isRefund ? '✨ Cần hoàn trả tiền cọc cho khách' : isDebt ? '⚠️ Khách thuê cần đóng thêm tiền' : '✅ Công nợ đã được tất toán đủ'}
+                    {isOffsetDeposit
+                      ? isRefund ? '✨ Cần hoàn phần cọc còn lại cho khách' : isDebt ? '⚠️ Khách thuê cần đóng thêm tiền sau khi trừ cọc' : '✅ Công nợ đã được tất toán đủ'
+                      : '✨ Hoàn toàn bộ cọc, đồng thời thu riêng điện nước/phí phát sinh'}
                   </p>
                 </div>
 
@@ -3694,9 +3714,10 @@ function SettlementModal({ room, contract, data, onClose, onSave }) {
                         waterUsed,
                         waterAmount,
                         totalIncurred,
-                        depositUsed: deposit,
-                        mustCollect: isDebt ? absBalance : 0,
-                        mustRefund: isRefund ? absBalance : 0,
+                        depositUsed,
+                        mustCollect,
+                        mustRefund,
+                        settlementMode: form.settlementMode,
                         contractId: contract.id,
                         roomId: room.id
                       });

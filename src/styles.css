@@ -828,6 +828,35 @@ textarea {
   flex-wrap: wrap;
 }
 
+.option-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.option-row input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.option-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option-row small {
+  color: #64748b;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .op-value {
   font-size: 15px;
   font-weight: 700;
