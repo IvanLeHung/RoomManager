@@ -1004,6 +1004,7 @@ function AppMain() {
   const [transferringContract, setTransferringContract] = useState(null);
   const [viewingContract, setViewingContract] = useState(null);
   const [renewingContract, setRenewingContract] = useState(null);
+  const [viewingAppendix, setViewingAppendix] = useState(null);
   const [viewingReceipt, setViewingReceipt] = useState(null);
   const [printingReceipts, setPrintingReceipts] = useState(null);
   const [paymentReceipt, setPaymentReceipt] = useState(null);
@@ -1186,6 +1187,49 @@ function AppMain() {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
       if (activeContract) setRenewingContract(activeContract);
+    } else if (type === 'print_appendix') {
+      const roomId = roomOrTenant.id || roomOrTenant.roomId;
+      const contractId = roomOrTenant.contractId;
+      const targetContract = contractId
+        ? data.contracts.find(c => c.id === contractId)
+        : data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'));
+      if (!targetContract) {
+        alert('Không tìm thấy hợp đồng phù hợp.');
+        return;
+      }
+      const renewalRows = [
+        ...(data.contractRenewals || []),
+        ...(targetContract.renewalHistory || [])
+      ]
+        .filter(r => r.contractId === targetContract.id)
+        .filter((r, idx, arr) => arr.findIndex(x => x.id === r.id) === idx)
+        .sort((a, b) => new Date(b.createdAt || b.signedDate || 0) - new Date(a.createdAt || a.signedDate || 0));
+      const renewal = renewalRows[0];
+      if (!renewal) {
+        alert('Hợp đồng này chưa có phụ lục gia hạn để in.');
+        return;
+      }
+      const oldRent = renewal.oldRent ?? targetContract.rent;
+      const oldDeposit = renewal.oldDeposit ?? targetContract.deposit;
+      const newRent = renewal.newRent ?? targetContract.rent;
+      const newDeposit = renewal.newDeposit ?? targetContract.deposit;
+      const oldEndDate = renewal.oldEndDate || targetContract.previousEndDate || targetContract.endDate;
+      const appendixContract = {
+        ...targetContract,
+        endDate: oldEndDate,
+        rent: oldRent,
+        deposit: oldDeposit
+      };
+      const form = {
+        signedDate: formatDateForInput(renewal.signedDate || renewal.createdAt || new Date().toISOString()),
+        newStartDate: renewal.newStartDate || (isValidBusinessDate(oldEndDate) ? addDaysToDate(oldEndDate, 1) : ''),
+        newEndDate: renewal.newEndDate || targetContract.endDate,
+        keepPricing: Number(newRent || 0) === Number(oldRent || 0) && Number(newDeposit || 0) === Number(oldDeposit || 0),
+        newRent,
+        newDeposit,
+        note: renewal.note || ''
+      };
+      setViewingAppendix({ contract: appendixContract, form });
     } else if (type === 'transfer_room') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
@@ -1711,6 +1755,14 @@ function AppMain() {
         />
       )}
       {viewingContract && <ContractPreview {...viewingContract} tenants={data.tenants.filter(t => data.memberships.some(m => m.contractId === viewingContract.contract.id && m.tenantId === t.id))} bankInfo={bankInfo} onClose={() => setViewingContract(null)} />}
+      {viewingAppendix && (
+        <RenewalAppendixPreviewModal
+          contract={viewingAppendix.contract}
+          form={viewingAppendix.form}
+          data={data}
+          onClose={() => setViewingAppendix(null)}
+        />
+      )}
       {renewingContract && (
         <RenewalModal contract={renewingContract} data={data} onClose={() => setRenewingContract(null)} onSave={(form) => {
             setData(old => {
@@ -3019,6 +3071,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
               <button className="secondary-btn" onClick={() => onAction('edit_contract')}>Sửa hợp đồng</button>
               <button className="secondary-btn" onClick={() => onAction('renew_contract')}>Gia hạn</button>
               <button className="secondary-btn" onClick={() => onAction('view_contract')}>In hợp đồng</button>
+              {contractRenewals.length > 0 && <button className="secondary-btn" onClick={() => onAction('print_appendix')}>In phụ lục</button>}
               <button className="secondary-btn danger" onClick={() => onAction('moving_out')}>Kết thúc thuê</button>
             </div>
           </>
@@ -3198,6 +3251,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                       <button className="warning" onClick={() => { setShowMoreActions(false); onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice'); }}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : 'Báo chuyển'}</button>
                       <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>Xuất PDF</button>
                       <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>In hợp đồng</button>
+                      <button onClick={() => { setShowMoreActions(false); onAction('print_appendix'); }}>In phụ lục</button>
                       <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Tất toán</button>
                       <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Kết thúc thuê</button>
                     </div>
@@ -4022,9 +4076,78 @@ function RenewalModal({ contract, data, onClose, onSave }) {
   );
 }
 
-function AppendixContent({ contract, tenant, form, room }) {
+function printAppendixFromElement(elementId, title = 'Phụ lục gia hạn') {
+  const content = document.getElementById(elementId);
+  if (!content) {
+    alert('Chưa tìm thấy nội dung phụ lục để in.');
+    return;
+  }
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow.document;
+  doc.write(`
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { margin: 0; background: white; }
+          @page { size: A4; margin: 0; }
+          table { width: 100%; border-collapse: collapse; }
+          table th, table td { border: 1px solid #111; padding: 8px; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        </style>
+      </head>
+      <body>${content.outerHTML}</body>
+    </html>
+  `);
+  doc.close();
+  iframe.contentWindow.focus();
+  setTimeout(() => {
+    iframe.contentWindow.print();
+    document.body.removeChild(iframe);
+  }, 300);
+}
+
+function RenewalAppendixPreviewModal({ contract, form, data, onClose }) {
+  const room = data.rooms.find(r => r.id === contract.roomId) || {};
+  const tenant = getPrimaryTenantByContract(data, contract.id) || { name: 'N/A', phone: 'N/A' };
+  const printId = 'saved-renewal-appendix';
+
   return (
-    <div className="appendix-content-v1" style={{ 
+    <div className="modal" onClick={onClose}>
+      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '900px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2 style={{ fontSize: '24px' }}>Phụ lục gia hạn • Phòng {contract.roomId}</h2>
+            <p className="muted">Ngày ký phụ lục: {formatDisplayDate(form.signedDate)} • Hết hạn mới: {formatDisplayDate(form.newEndDate)}</p>
+          </div>
+          <div className="btn-group">
+            <button className="primary-btn" onClick={() => printAppendixFromElement(printId, `Phụ lục gia hạn P${contract.roomId}`)}>🖨️ In phụ lục</button>
+            <button className="secondary-btn" onClick={onClose}>Đóng</button>
+          </div>
+        </div>
+        <div className="detail-body-v2">
+          <div className="appendix-container-scroll" style={{ maxHeight: '70vh', overflowY: 'auto', background: 'rgba(0,0,0,0.06)', padding: '20px', borderRadius: '12px' }}>
+            <div className="appendix-paper-a4" style={{ transform: 'scale(0.86)', transformOrigin: 'top center', margin: '0 auto', marginBottom: '-100px' }}>
+              <AppendixContent contract={contract} tenant={tenant} form={form} room={room} printId={printId} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppendixContent({ contract, tenant, form, room, printId }) {
+  return (
+    <div id={printId} className="appendix-content-v1" style={{
       width: '210mm', 
       minHeight: '297mm', 
       padding: '20mm 25mm', 
