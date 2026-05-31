@@ -471,23 +471,52 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
 
 function getTransferBillingContext(data, contract, month) {
   const transfer = (data.roomTransfers || []).find(t =>
-    (isTransferOldRoomBillingMonth(t.transferDate, month) || isSameBillingMonth(t.transferDate, month)) &&
+    isTransferOldRoomBillingMonth(t.transferDate, month) &&
     (t.oldContractId === contract?.id || t.newContractId === contract?.id)
   );
   if (!transfer) return { mode: 'normal', transfer: null };
   if (transfer.oldContractId === contract?.id) return { mode: 'transfer_old_room', transfer };
-  if (transfer.newContractId === contract?.id) return { mode: 'transfer_new_room', transfer };
+  if (transfer.newContractId === contract?.id) return { mode: 'transfer_new_room', transfer, oldRoomUtility: buildTransferOldRoomUtility(data, transfer, month) };
   return { mode: 'normal', transfer: null };
 }
 
 function getBillableContractsForMonth(data, month) {
   const contracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
-  const oldTransferContracts = (data.roomTransfers || [])
-    .filter(t => isTransferOldRoomBillingMonth(t.transferDate, month))
-    .map(t => (data.contracts || []).find(c => c.id === t.oldContractId))
-    .filter(Boolean);
-  const byId = new Map([...contracts, ...oldTransferContracts].map(c => [c.id, c]));
+  const byId = new Map(contracts.map(c => [c.id, c]));
   return [...byId.values()];
+}
+
+function buildTransferOldRoomUtility(data, transfer, month) {
+  const oldRoom = (data.rooms || []).find(r => r.id === transfer.oldRoomId);
+  if (!oldRoom) return null;
+  const previousReceipt = getPreviousReceiptByRoom(data.receipts, transfer.oldRoomId, month);
+  const electricOld = previousReceipt
+    ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
+    : Number(oldRoom.electricOld ?? oldRoom.electricStart ?? oldRoom.initialElectric ?? 0);
+  const electricNew = Number(oldRoom.electricNew ?? oldRoom.electricEnd ?? electricOld);
+  const waterOld = previousReceipt
+    ? Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0)
+    : Number(oldRoom.waterOld ?? oldRoom.waterStart ?? oldRoom.initialWater ?? 0);
+  const waterNew = Number(oldRoom.waterNew ?? oldRoom.waterEnd ?? waterOld);
+  const electricUsed = Math.round(Math.max(0, electricNew - electricOld) * 100) / 100;
+  const waterUsed = Math.round(Math.max(0, waterNew - waterOld) * 100) / 100;
+  const electricAmount = electricUsed * Number(oldRoom.electricPrice || 0);
+  const waterAmount = waterUsed * Number(oldRoom.waterPrice || 0);
+  const total = electricAmount + waterAmount;
+  if (total <= 0) return null;
+  return {
+    oldRoomId: transfer.oldRoomId,
+    transferDate: transfer.transferDate,
+    electricOld,
+    electricNew,
+    electricUsed,
+    electricAmount,
+    waterOld,
+    waterNew,
+    waterUsed,
+    waterAmount,
+    total
+  };
 }
 
 function createMonthlyReceipt(room, contract, previousReceipt, month, billingContext = { mode: 'normal' }) {
@@ -502,10 +531,12 @@ function createMonthlyReceipt(room, contract, previousReceipt, month, billingCon
   const isOldTransferRoom = billingContext.mode === 'transfer_old_room';
   const rent = isOldTransferRoom ? 0 : Number(contract?.rent || room.rent || 0);
   const fixedServices = isOldTransferRoom ? 0 : fixedServiceTotal(room);
+  const transferOldUtility = billingContext.mode === 'transfer_new_room' ? billingContext.oldRoomUtility : null;
+  const other = Number(transferOldUtility?.total || 0);
   const transferNote = isOldTransferRoom
     ? `Phòng cũ đã chuyển sang P${billingContext.transfer?.newRoomId || ''} trong tháng ${month}: chỉ chốt điện nước, không tính tiền phòng và dịch vụ phòng cũ.`
     : billingContext.mode === 'transfer_new_room'
-      ? `Phòng mới nhận khách từ P${billingContext.transfer?.oldRoomId || ''} trong tháng ${month}: tính tiền phòng và dịch vụ theo phòng mới.`
+      ? `Phòng mới nhận khách từ P${billingContext.transfer?.oldRoomId || ''}: tiền phòng và dịch vụ tính theo phòng mới; điện nước phòng cũ được cộng riêng trong phiếu này.`
       : "Vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Xin cảm ơn!";
 
   return recalculateReceipt({
@@ -524,14 +555,15 @@ function createMonthlyReceipt(room, contract, previousReceipt, month, billingCon
     waterNew: waterOld,
     waterUsed: 0,
     waterAmount: 0,
-    other: 0,
-    total: rent + fixedServices,
+    other,
+    total: rent + fixedServices + other,
     paidAmount: 0,
-    debt: rent + fixedServices,
+    debt: rent + fixedServices + other,
     status: "Chưa thanh toán",
     note: transferNote,
     billingMode: billingContext.mode,
     transferId: billingContext.transfer?.id || '',
+    transferOldRoomUtility: transferOldUtility,
     createdAt: new Date().toISOString()
   }, room);
 }
@@ -4125,6 +4157,8 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
   const eNew = getElectricNew(receipt);
   const wOld = getWaterOld(receipt);
   const wNew = getWaterNew(receipt);
+  const transferOldUtility = receipt.transferOldRoomUtility;
+  const extraOther = Math.max(0, Number(receipt.other || 0) - Number(transferOldUtility?.total || 0));
   
   const statusColor = receipt.status === 'Đã thanh toán' ? '#166534' : receipt.status === 'Nợ một phần' ? '#92400e' : '#991b1b';
   const statusBg = receipt.status === 'Đã thanh toán' ? '#dcfce7' : receipt.status === 'Nợ một phần' ? '#fef3c7' : '#fee2e2';
@@ -4189,9 +4223,19 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
                 </div>
               </div>
 
-              {receipt.other > 0 && (
+              {transferOldUtility && (
                 <div className="charge-row-v4">
-                  <div className="row-main"><span className="name">➕ Phụ phí khác</span><span className="amount">{formatMoney(receipt.other)}</span></div>
+                  <div className="row-main"><span className="name">↔️ Tiền điện nước phòng P{transferOldUtility.oldRoomId} cũ</span><span className="amount">{formatMoney(transferOldUtility.total)}</span></div>
+                  <div className="details">
+                    <span>Điện: <b>{transferOldUtility.electricOld}</b> → <b>{transferOldUtility.electricNew}</b> = <b>{transferOldUtility.electricUsed}</b> kWh ({formatMoney(transferOldUtility.electricAmount)})</span>
+                    <span>Nước: <b>{transferOldUtility.waterOld}</b> → <b>{transferOldUtility.waterNew}</b> = <b>{transferOldUtility.waterUsed}</b> m³ ({formatMoney(transferOldUtility.waterAmount)})</span>
+                  </div>
+                </div>
+              )}
+
+              {extraOther > 0 && (
+                <div className="charge-row-v4">
+                  <div className="row-main"><span className="name">➕ Phụ phí khác</span><span className="amount">{formatMoney(extraOther)}</span></div>
                 </div>
               )}
             </>
@@ -4259,6 +4303,8 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
 function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
   const tenant = getPrimaryTenantByContract(data, receipt.contractId) || { name: 'N/A' };
   const isMonthly = receipt.type === 'monthly';
+  const transferOldUtility = receipt.transferOldRoomUtility;
+  const extraOther = Math.max(0, Number(receipt.other || 0) - Number(transferOldUtility?.total || 0));
   return (
     <div className="receipt-page" style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'serif', position: 'relative', borderBottom: '1px dashed #eee' }}>
       <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${receipt.month}` : 'Quyết toán trả phòng'}</p></div>
@@ -4286,7 +4332,17 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
                 </td>
                 <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.waterAmount)}</td>
               </tr>
-              {receipt.other > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phụ phí khác</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.other)}</td></tr>}
+              {transferOldUtility && (
+                <tr>
+                  <td style={{ border: '1px solid black', padding: '8px' }}>Tiền điện nước phòng {transferOldUtility.oldRoomId} cũ</td>
+                  <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>
+                    Điện: {transferOldUtility.electricOld} → {transferOldUtility.electricNew} ({transferOldUtility.electricUsed} kWh)<br/>
+                    Nước: {transferOldUtility.waterOld} → {transferOldUtility.waterNew} ({transferOldUtility.waterUsed} m³)
+                  </td>
+                  <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(transferOldUtility.total)}</td>
+                </tr>
+              )}
+              {extraOther > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phụ phí khác</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
             </>
           ) : (
             <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phí chốt tất toán trả phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.total)}</td></tr>
