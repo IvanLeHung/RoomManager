@@ -242,6 +242,13 @@ function addMonthsToDate(value, months) {
   return date.toISOString().slice(0, 10);
 }
 
+function addDaysToDate(value, days) {
+  if (!isValidDateString(value)) return '';
+  const date = new Date(value + 'T00:00:00');
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function getDaysUntil(dateStr) {
   const date = parseDateFlexible(dateStr);
   if (!date) return null;
@@ -428,6 +435,16 @@ function parseMonthValue(month) {
   return y * 12 + m;
 }
 
+function monthFromDate(value) {
+  const date = parseDateFlexible(value);
+  if (!date) return '';
+  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
+function isSameBillingMonth(dateValue, month) {
+  return monthFromDate(dateValue) === month;
+}
+
 function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
   const currentValue = parseMonthValue(currentMonth);
   return (receipts || [])
@@ -439,7 +456,28 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
     .sort((a, b) => parseMonthValue(b.month) - parseMonthValue(a.month))[0] || null;
 }
 
-function createMonthlyReceipt(room, contract, previousReceipt, month) {
+function getTransferBillingContext(data, contract, month) {
+  const transfer = (data.roomTransfers || []).find(t =>
+    isSameBillingMonth(t.transferDate, month) &&
+    (t.oldContractId === contract?.id || t.newContractId === contract?.id)
+  );
+  if (!transfer) return { mode: 'normal', transfer: null };
+  if (transfer.oldContractId === contract?.id) return { mode: 'transfer_old_room', transfer };
+  if (transfer.newContractId === contract?.id) return { mode: 'transfer_new_room', transfer };
+  return { mode: 'normal', transfer: null };
+}
+
+function getBillableContractsForMonth(data, month) {
+  const contracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
+  const oldTransferContracts = (data.roomTransfers || [])
+    .filter(t => isSameBillingMonth(t.transferDate, month))
+    .map(t => (data.contracts || []).find(c => c.id === t.oldContractId))
+    .filter(Boolean);
+  const byId = new Map([...contracts, ...oldTransferContracts].map(c => [c.id, c]));
+  return [...byId.values()];
+}
+
+function createMonthlyReceipt(room, contract, previousReceipt, month, billingContext = { mode: 'normal' }) {
   const electricOld = previousReceipt
     ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
     : Number(room.electricNew ?? room.electricEnd ?? room.initialElectric ?? room.electricStart ?? 0);
@@ -448,8 +486,14 @@ function createMonthlyReceipt(room, contract, previousReceipt, month) {
     ? Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0)
     : Number(room.waterNew ?? room.waterEnd ?? room.initialWater ?? room.waterStart ?? 0);
 
-  const rent = Number(contract?.rent || room.rent || 0);
-  const fixedServices = fixedServiceTotal(room);
+  const isOldTransferRoom = billingContext.mode === 'transfer_old_room';
+  const rent = isOldTransferRoom ? 0 : Number(contract?.rent || room.rent || 0);
+  const fixedServices = isOldTransferRoom ? 0 : fixedServiceTotal(room);
+  const transferNote = isOldTransferRoom
+    ? `Phòng cũ đã chuyển sang P${billingContext.transfer?.newRoomId || ''} trong tháng ${month}: chỉ chốt điện nước, không tính tiền phòng và dịch vụ phòng cũ.`
+    : billingContext.mode === 'transfer_new_room'
+      ? `Phòng mới nhận khách từ P${billingContext.transfer?.oldRoomId || ''} trong tháng ${month}: tính tiền phòng và dịch vụ theo phòng mới.`
+      : "Vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Xin cảm ơn!";
 
   return recalculateReceipt({
     id: uid("receipt"),
@@ -472,7 +516,9 @@ function createMonthlyReceipt(room, contract, previousReceipt, month) {
     paidAmount: 0,
     debt: rent + fixedServices,
     status: "Chưa thanh toán",
-    note: "Vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Xin cảm ơn!",
+    note: transferNote,
+    billingMode: billingContext.mode,
+    transferId: billingContext.transfer?.id || '',
     createdAt: new Date().toISOString()
   }, room);
 }
@@ -559,8 +605,7 @@ function LoginScreen({ onUnlock }) {
 
 function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'main', onClose }) {
   const primaryTenant = tenants.find(t => t.role === 'primary') || tenants[0] || {};
-  const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const signedDay = formatDisplayDate(contract.signedDate, today);
+  const signedDay = formatContractDate(contract.signedDate);
   const startDay = formatBusinessDate(contract.startDate);
   const endDay = formatBusinessDate(contract.endDate);
   const duration = calculateRentalDuration(contract.startDate, contract.endDate);
@@ -1278,18 +1323,24 @@ function AppMain() {
       }
     } else if (type === 'create_receipt') {
       const roomId = roomOrTenant.id;
-      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
-      if (!activeContract) return alert('Phòng trống hoặc không có hợp đồng.');
       const month = INITIAL_MONTH;
-      const exists = (data.receipts || []).find(r => r.roomId === roomId && r.contractId === activeContract.id && r.month === month);
+      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
+      const oldTransferContract = (data.roomTransfers || [])
+        .filter(t => t.oldRoomId === roomId && isSameBillingMonth(t.transferDate, month))
+        .map(t => data.contracts.find(c => c.id === t.oldContractId))
+        .find(Boolean);
+      const targetContract = activeContract || oldTransferContract;
+      if (!targetContract) return alert('Phòng trống hoặc không có hợp đồng cần lập phiếu.');
+      const exists = (data.receipts || []).find(r => r.roomId === roomId && r.contractId === targetContract.id && r.month === month);
       if (exists) {
         if (!window.confirm(`Phòng ${roomId} đã có phiếu tháng ${month}. Bạn có muốn ghi đè?`)) return;
         setData(old => ({ ...old, receipts: old.receipts.filter(r => r.id !== exists.id) }));
       }
       const prev = getPreviousReceiptByRoom(data.receipts, roomId, month);
-      const newRec = createMonthlyReceipt(roomOrTenant, activeContract, prev, month);
+      const billingContext = getTransferBillingContext(data, targetContract, month);
+      const newRec = createMonthlyReceipt(roomOrTenant, targetContract, prev, month, billingContext);
       setData(old => ({ ...old, receipts: [...(old.receipts || []), newRec] }));
-      alert(`Đã tạo phiếu tháng ${month} cho phòng ${roomId}`);
+      alert(`Đã tạo phiếu tháng ${month} cho phòng ${roomId}${billingContext.mode === 'transfer_old_room' ? ' (chỉ điện nước phòng cũ)' : ''}`);
       setTab('receipts');
     } else if (type === 'delete_receipt') {
       if (window.confirm('Bạn có chắc chắn muốn xóa phiếu thu này?')) {
@@ -2192,20 +2243,22 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
   const isFinalized = monthlyReceipts.length > 0 && monthlyReceipts.every(r => r.isFinalized);
 
   function handleBatchCreate() {
-    const activeContracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
-    if (activeContracts.length === 0) return alert('Không có hợp đồng nào đang hoạt động.');
+    const billableContracts = getBillableContractsForMonth(data, selectedMonth);
+    if (billableContracts.length === 0) return alert('Không có hợp đồng nào cần lập phiếu trong tháng này.');
     
     let createdCount = 0;
     let skippedCount = 0;
     const newReceipts = [];
 
-    activeContracts.forEach(contract => {
+    billableContracts.forEach(contract => {
       const room = data.rooms.find(r => r.id === contract.roomId);
+      if (!room) return;
       const exists = (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === selectedMonth && r.type === 'monthly');
       
       if (!exists) {
         const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth);
-        newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth));
+        const billingContext = getTransferBillingContext(data, contract, selectedMonth);
+        newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth, billingContext));
         createdCount++;
       } else {
         skippedCount++;
@@ -2234,8 +2287,9 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
           receipt.roomId,
           selectedMonth
         );
+        const billingContext = getTransferBillingContext(data, contract, selectedMonth);
         return {
-          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth),
+          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth, billingContext),
           id: receipt.id,
           paidAmount: receipt.paidAmount || 0,
           status: receipt.status || 'Chưa thanh toán',
@@ -2629,11 +2683,13 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
   };
   const contractStartValid = !contract || !isInvalidContractDate(contract.startDate);
   const contractEndValid = !contract || !isInvalidContractDate(contract.endDate);
+  const contractSignedValid = !contract || !isInvalidContractDate(contract.signedDate);
   const contractDateValid = !contract || isValidContractRange(contract.startDate, contract.endDate);
+  const contractRequiredDatesValid = !contract || (contractSignedValid && contractDateValid);
   const contractDuration = contract ? calculateRentalDuration(contract.startDate, contract.endDate) : '—';
   const contractDaysLeft = dateDiffDays(contract?.endDate);
-  const contractStatus = !contract ? 'Chưa có hợp đồng' : !contractDateValid ? 'Thiếu ngày hợp lệ' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
-  const contractStatusClass = !contract ? 'vacant' : !contractDateValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
+  const contractStatus = !contract ? 'Chưa có hợp đồng' : !contractRequiredDatesValid ? 'Thiếu ngày hợp lệ' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
+  const contractStatusClass = !contract ? 'vacant' : !contractRequiredDatesValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
   const receiptStatus = !currentReceipt ? 'Chưa có phiếu' : isReceiptOverdue ? 'Quá hạn' : currentReceipt.status;
   const receiptStatusClass = receiptStatus === 'Đã thanh toán' ? 'active' : receiptStatus === 'Nợ một phần' ? 'notice' : receiptStatus === 'Quá hạn' ? 'debt' : 'debt';
   const occupantLimit = room.maxPeople || room.capacity || '—';
@@ -2662,7 +2718,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
   const waterMeterNote = waterUsage === 0 ? 'Chưa ghi chỉ số mới' : `Tiêu thụ ${formatLocaleNumber(waterUsage)} m3`;
   const tabs = [
     ['overview', 'Tổng quan', ''],
-    ['contract', 'Hợp đồng', !contractDateValid ? '!' : ''],
+    ['contract', 'Hợp đồng', !contractRequiredDatesValid ? '!' : ''],
     ['residents', 'Người ở', activeMembers.length || ''],
     ['payments', 'Thanh toán', receiptDebt > 0 ? 'Nợ' : ''],
     ['meters', 'Điện nước', ''],
@@ -2799,6 +2855,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
               <div className="op-grid">
                 {renderMetric('Số hợp đồng', contract.contractNo || contract.id)}
                 {renderMetric('Trạng thái', contractStatus)}
+                {renderMetric('Ngày ký', formatDate(contract.signedDate), 'Ngày cố định dùng để in hợp đồng')}
                 {renderMetric('Ngày bắt đầu', formatDate(contract.startDate))}
                 {renderMetric('Ngày hết hạn', formatDate(contract.endDate))}
                 {renderMetric('Thời hạn thuê', contractDuration)}
@@ -2807,8 +2864,8 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                 {renderMetric('Tiền cọc', formatMoney(contract.deposit))}
               </div>
             </div>
-            {!contractDateValid && (
-              <div className="warning-box">Hợp đồng thiếu ngày bắt đầu hợp lệ. Vui lòng cập nhật để tính đúng thời hạn thuê và phụ lục gia hạn.</div>
+            {!contractRequiredDatesValid && (
+              <div className="warning-box">Hợp đồng thiếu ngày ký / ngày bắt đầu / ngày hết hạn hợp lệ. Vui lòng cập nhật để in hợp đồng, tính đúng thời hạn thuê và phụ lục gia hạn.</div>
             )}
             <div className="op-card">
               <h3 className="op-card-title">Lịch sử gia hạn</h3>
@@ -3020,7 +3077,19 @@ function EditContractModal({ contract, data, onClose, onSave }) {
     startDate: formatDateForInput(contract.startDate),
     endDate: formatDateForInput(contract.endDate)
   });
-  const dateWarning = !form.startDate || !form.endDate || !isValidContractRange(form.startDate, form.endDate);
+  const errors = {};
+  if (!form.signedDate) errors.signedDate = 'Vui lòng nhập ngày ký hợp đồng';
+  if (!form.startDate) errors.startDate = 'Vui lòng nhập ngày bắt đầu hợp đồng';
+  if (!form.endDate) errors.endDate = 'Vui lòng nhập ngày hết hạn hợp đồng';
+  if (form.startDate && form.endDate && form.endDate <= form.startDate) errors.endDate = 'Ngày hết hạn phải sau ngày bắt đầu';
+  const dateWarning = Object.keys(errors).length > 0;
+  const handleSave = () => {
+    if (dateWarning) {
+      alert(Object.values(errors).join('\n'));
+      return;
+    }
+    onSave(form);
+  };
   return (
     <div className="modal" onClick={onClose}>
       <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
@@ -3031,15 +3100,15 @@ function EditContractModal({ contract, data, onClose, onSave }) {
         <div className="detail-body-v2">
           <div className="form-grid-v2">
             <label>Số hợp đồng <input value={form.contractNo || ''} onChange={e => setForm({...form, contractNo: e.target.value})} /></label>
-            <label>Ngày ký <input type="date" value={form.signedDate || ''} onChange={e => setForm({...form, signedDate: e.target.value})} /></label>
+            <label>Ngày ký <input type="date" value={form.signedDate || ''} onChange={e => setForm({...form, signedDate: e.target.value})} /><span className="small muted">Ngày ký cố định, không tự cập nhật theo hôm nay.</span></label>
             <label>Ngày bắt đầu <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></label>
             <label>Ngày hết hạn <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} /></label>
             <label>Giá thuê <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} /></label>
             <label>Tiền đặt cọc <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} /></label>
             <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note || ''} onChange={e => setForm({...form, note: e.target.value})} /></label>
           </div>
-          {dateWarning && <div className="warning-box" style={{ marginTop: '16px' }}>Hợp đồng thiếu ngày bắt đầu/kết thúc hợp lệ. Vui lòng cập nhật để tính đúng thời hạn thuê và phụ lục gia hạn.</div>}
-          <button className="primary-btn wide" style={{ marginTop: '24px' }} onClick={() => onSave(form)}>Cập nhật hợp đồng</button>
+          {dateWarning && <div className="warning-box" style={{ marginTop: '16px' }}>Hợp đồng thiếu ngày ký / ngày bắt đầu / ngày hết hạn hợp lệ. Vui lòng cập nhật để in hợp đồng, tính đúng thời hạn thuê và phụ lục gia hạn.</div>}
+          <button className="primary-btn wide" style={{ marginTop: '24px' }} onClick={handleSave}>Cập nhật hợp đồng</button>
         </div>
       </div>
     </div>
@@ -3062,7 +3131,7 @@ function RentalFlowModal({ room, onClose, onSave }) {
     contractNo: `HĐ-${room.id}-${new Date().getFullYear()}${(new Date().getMonth()+1).toString().padStart(2,'0')}`,
     signedDate: new Date().toISOString().slice(0, 10),
     startDate: new Date().toISOString().slice(0, 10),
-    endDate: addMonthsToDate(new Date().toISOString().slice(0, 10), 12),
+    endDate: '',
     rent: room.rent,
     deposit: room.rent,
     paymentCycleDay: 10,
@@ -3079,8 +3148,12 @@ function RentalFlowModal({ room, onClose, onSave }) {
   });
 
   const handleNext = () => {
-    if (!form.tenantName || !form.startDate || !form.endDate) {
-      alert('Vui lòng nhập đầy đủ tên khách, ngày bắt đầu và ngày kết thúc!');
+    if (!form.tenantName || !form.signedDate || !form.startDate || !form.endDate) {
+      alert('Vui lòng nhập đầy đủ tên khách, ngày ký, ngày bắt đầu và ngày kết thúc!');
+      return;
+    }
+    if (form.endDate <= form.startDate) {
+      alert('Ngày hết hạn phải sau ngày bắt đầu hợp đồng!');
       return;
     }
     setStep('preview');
@@ -3229,7 +3302,7 @@ function RentalFlowModal({ room, onClose, onSave }) {
                 <h3 className="form-section-title">📄 Chi tiết hợp đồng</h3>
                 <div className="form-grid-v2">
                   <label>Số hợp đồng <input value={form.contractNo} onChange={e => setForm({...form, contractNo: e.target.value})} /></label>
-                  <label>Ngày ký <input type="date" value={form.signedDate} onChange={e => setForm({...form, signedDate: e.target.value})} /></label>
+                  <label>Ngày ký <input type="date" value={form.signedDate} onChange={e => setForm({...form, signedDate: e.target.value})} /><span className="small muted">Ngày ký cố định, không tự cập nhật theo hôm nay.</span></label>
                   <label>Ngày bắt đầu <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></label>
                   <label>Ngày hết hạn <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} /></label>
                   <label>Giá thuê <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} /></label>
@@ -3515,7 +3588,8 @@ function RenewalModal({ contract, data, onClose, onSave }) {
   const hasValidCurrentEndDate = isValidBusinessDate(contract.endDate);
   const currentEndDateText = formatBusinessDate(contract.endDate);
   const currentStartDateText = formatBusinessDate(contract.startDate);
-  const defaultStartDate = hasValidCurrentEndDate ? contract.endDate : new Date().toISOString().slice(0, 10);
+  const currentSignedDateText = formatContractDate(contract.signedDate);
+  const defaultStartDate = hasValidCurrentEndDate ? addDaysToDate(contract.endDate, 1) : new Date().toISOString().slice(0, 10);
   
   const [form, setForm] = useState({
     signedDate: new Date().toISOString().slice(0, 10),
@@ -3686,11 +3760,12 @@ function RenewalModal({ contract, data, onClose, onSave }) {
             <div className="op-grid">
               <div className="op-item"><span className="op-label">Ngày bắt đầu</span><span className="op-value">{currentStartDateText}</span></div>
               <div className="op-item"><span className="op-label">Hết hạn hiện tại</span><span className="op-value">{currentEndDateText}</span></div>
+              <div className="op-item"><span className="op-label">Ngày ký hợp đồng gốc</span><span className="op-value">{currentSignedDateText}</span></div>
               <div className="op-item"><span className="op-label">Giá thuê</span><span className="op-value">{formatMoney(contract.rent)}</span></div>
               <div className="op-item"><span className="op-label">Tiền cọc</span><span className="op-value">{formatMoney(contract.deposit)}</span></div>
             </div>
-            {(!isValidBusinessDate(contract.startDate) || !hasValidCurrentEndDate) && (
-              <div className="warning-box" style={{ marginTop: '12px' }}>Hợp đồng thiếu ngày bắt đầu/kết thúc hợp lệ. Vui lòng cập nhật dữ liệu hợp đồng trước khi gia hạn.</div>
+            {(isInvalidContractDate(contract.signedDate) || !isValidBusinessDate(contract.startDate) || !hasValidCurrentEndDate) && (
+              <div className="warning-box" style={{ marginTop: '12px' }}>Hợp đồng thiếu ngày ký / ngày bắt đầu / ngày hết hạn hợp lệ. Vui lòng cập nhật dữ liệu hợp đồng trước khi gia hạn.</div>
             )}
           </section>
 
@@ -3698,7 +3773,7 @@ function RenewalModal({ contract, data, onClose, onSave }) {
           <section className="stack" style={{ gap: '16px' }}>
             <h3 className="form-section-title">✍️ Chi tiết gia hạn</h3>
             <div className="form-grid-v2">
-              <label>Ngày ký phụ lục <input type="date" value={form.signedDate} onChange={e => setForm({...form, signedDate: e.target.value})} /></label>
+              <label>Ngày ký phụ lục <input type="date" value={form.signedDate} onChange={e => setForm({...form, signedDate: e.target.value})} /><span className="small muted">Chỉ dùng cho phụ lục gia hạn, không ghi đè ngày ký hợp đồng gốc.</span></label>
               <label>Bắt đầu gia hạn <input type="date" value={form.newStartDate} onChange={e => setForm({...form, newStartDate: e.target.value})} /></label>
               <label style={{ gridColumn: 'span 2' }}>
                 Ngày hết hạn mới
