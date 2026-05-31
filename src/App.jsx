@@ -402,6 +402,16 @@ function buildVietQrUrl(bankInfo, receipt) {
   return `https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNo}-compact2.png?${params.toString()}`;
 }
 
+function buildPaymentQrUrl(bankInfo, amount, addInfo) {
+  if (!bankInfo?.bankCode || !bankInfo?.accountNo || !amount) return '';
+  const params = new URLSearchParams({
+    amount: String(Math.round(Number(amount || 0))),
+    addInfo,
+    accountName: bankInfo.accountName || '',
+  });
+  return `https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNo}-compact2.png?${params.toString()}`;
+}
+
 function getContractOccupantCount(data, contract) {
   if (!contract) return 0;
   const byContract = (data.memberships || []).filter(m => m.contractId === contract.id && m.status === 'active').length;
@@ -1658,7 +1668,7 @@ function AppMain() {
         />
       )}
       {settlingRoom && (
-        <SettlementModal room={settlingRoom.room} contract={settlingRoom.contract} data={data} onClose={() => setSettlingRoom(null)} onSave={(report) => {
+        <SettlementModal room={settlingRoom.room} contract={settlingRoom.contract} data={data} bankInfo={bankInfo} onClose={() => setSettlingRoom(null)} onSave={(report) => {
             setData(old => {
               const updatedContracts = old.contracts.map(c => c.id === report.contractId ? { ...c, status: 'ended', actualEndDate: report.actualEndDate, endedAt: new Date().toISOString() } : c);
               const updatedMemberships = old.memberships.map(m => m.contractId === report.contractId ? { ...m, status: 'ended', leftDate: report.actualEndDate } : m);
@@ -3563,7 +3573,7 @@ function TransferRoomModal({ contract, data, onClose, onSave }) {
   );
 }
 
-function SettlementModal({ room, contract, data, onClose, onSave }) {
+function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const [form, setForm] = useState({
     actualEndDate: new Date().toISOString().split('T')[0],
     settlementMode: 'offset_deposit',
@@ -3598,6 +3608,13 @@ function SettlementModal({ room, contract, data, onClose, onSave }) {
   const mustRefund = isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : deposit;
   const isRefund = mustRefund > 0;
   const isDebt = mustCollect > 0;
+  const settlementTransferContent = `P${room.id} TRA PHONG ${formatDisplayDate(form.actualEndDate, '').replace(/\//g, '')}`;
+  const settlementQrUrl = buildPaymentQrUrl(bankInfo, mustCollect, settlementTransferContent);
+  const copySettlementTransfer = () => {
+    const text = `${bankInfo?.bankName || ''}\nSTK: ${bankInfo?.accountNo || ''}\nChủ TK: ${bankInfo?.accountName || ''}\nSố tiền: ${formatMoney(mustCollect)}\nNội dung: ${settlementTransferContent}`;
+    navigator.clipboard.writeText(text);
+    alert('Đã copy thông tin chuyển khoản tất toán.');
+  };
 
   return (
     <div className="modal" onClick={onClose}>
@@ -3685,6 +3702,18 @@ function SettlementModal({ room, contract, data, onClose, onSave }) {
                       : '✨ Hoàn toàn bộ cọc, đồng thời thu riêng điện nước/phí phát sinh'}
                   </p>
                 </div>
+
+                {mustCollect > 0 && (
+                  <div className="settlement-qr-card">
+                    <h4>QR khách chuyển khoản</h4>
+                    {settlementQrUrl ? <img src={settlementQrUrl} alt="QR tất toán" /> : <p className="small muted">Chưa cấu hình mã VietQR.</p>}
+                    <div className="payment-details-v4">
+                      <div className="row"><span className="label">Số tiền</span><span className="val">{formatMoney(mustCollect)}</span></div>
+                      <div className="row"><span className="label">Nội dung CK</span><span className="val" style={{ color: '#1e40af' }}>{settlementTransferContent}</span></div>
+                    </div>
+                    <button type="button" className="secondary-btn sm wide" onClick={copySettlementTransfer}>Copy nội dung CK</button>
+                  </div>
+                )}
 
                 <div className="warning-box">
                   <b>Lưu ý sau khi hoàn tất:</b>
