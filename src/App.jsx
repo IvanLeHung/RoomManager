@@ -888,26 +888,26 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <h1 style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}>PHỤ LỤC 03 – NỘI QUY TÒA NHÀ</h1>
                 <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
                   {[
-                    '1. Tuân thủ pháp luật: Nghiêm cấm đánh nhau, cờ bạc, mại dâm, ma túy...',
-                    '2. PCCC: CẤM TUYỆT ĐỐI SẠC XE ĐIỆN trong mọi khu vực tòa nhà.',
-                    '3. Khai báo tạm trú: Cung cấp giấy tờ trong 24 giờ để làm thủ tục.',
-                    '4. Thoát nước: Không đổ rác, thức ăn thừa xuống bồn cầu/thoát sàn.',
-                    '5. Vệ sinh: Không để rác hành lang, cầu thang. Bỏ rác đúng nơi quy định.',
-                    '6. Tiếng ồn: Giữ trật tự trong khung giờ 22:00–06:00. Tắt máy xe, hạn chế nói chuyện lớn khi vào nhà sau 22:30.',
-                    '7. Ra vào: Đóng cửa cổng cẩn thận. Không mở cửa cho người lạ. Giờ tiếp khách thông thường 06:00–22:30.',
-                    '8. Kết cấu: Không tự ý khoan, đục, vẽ lên tường khi chưa đồng ý.',
-                    '9. Bồi thường: Chịu trách nhiệm hư hại do mình gây ra.',
-                    '10. Tài sản: Tự bảo quản tài sản cá nhân.',
-                    '11. Trung thực: Không lấy đồ của người khác.',
-                    '12. Vật nuôi: Không nuôi động vật gây mất vệ sinh/an toàn.',
-                    '13. Kinh doanh: Không làm nơi buôn bán, kho hàng.',
-                    '14. Vận chuyển: Không chở quá tải thang máy.',
-                    '15. Kỹ thuật: Không tự ý vào phòng kỹ thuật, tủ điện.',
-                    '16. Khách: Tiếp khách trong khung giờ 06:00–22:30. Khách ở lại qua đêm phải báo trước và được Bên A đồng ý.',
-                    '17. Ở ghép: Không cho thuê lại khi chưa có chấp thuận.',
-                    '18. Cam kết: Tuân thủ nghiêm túc, tái phạm sẽ chấm dứt hợp đồng.'
-                  ].map((rule, idx) => (
-                    <p key={idx} style={{ marginBottom: '3px' }}><b>{rule.split(':')[0]}:</b> {rule.split(':')[1]}</p>
+                    ['1. Tuân thủ pháp luật', 'Nghiêm cấm đánh nhau, cờ bạc, mại dâm, ma túy, tàng trữ hoặc sử dụng chất cấm và các hành vi vi phạm pháp luật khác.'],
+                    ['2. PCCC', 'CẤM TUYỆT ĐỐI SẠC XE ĐIỆN, pin hoặc ắc-quy xe điện trong mọi khu vực tòa nhà, bao gồm phòng ở, hành lang, cầu thang, khu để xe và khu vực chung.'],
+                    ['3. Khai báo tạm trú', 'Cung cấp giấy tờ trong 24 giờ kể từ khi vào ở để Bên A hỗ trợ làm thủ tục khai báo tạm trú theo quy định.'],
+                    ['4. Thoát nước', 'Không đổ rác, thức ăn thừa, tóc, dầu mỡ hoặc vật cứng xuống bồn cầu, lavabo, chậu rửa và thoát sàn.'],
+                    ['5. Vệ sinh', 'Không để rác ở hành lang, cầu thang hoặc khu vực chung. Bỏ rác đúng nơi quy định và giữ gìn vệ sinh phòng ở, khu sinh hoạt chung.'],
+                    ['6. Tiếng ồn', 'Giữ trật tự trong khung giờ 22:00–06:00. Tắt máy xe khi vào nhà ban đêm, hạn chế nói chuyện lớn, mở nhạc, kéo đồ hoặc gây tiếng ồn sau 22:30.'],
+                    ['7. Ra vào', 'Đóng cửa cổng/cửa chính cẩn thận, không mở cửa cho người lạ. Giờ tiếp khách thông thường từ 06:00–22:30; khách ở lại qua đêm phải báo trước và được Bên A đồng ý.'],
+                    ['8. Kết cấu', 'Không tự ý khoan, đục, vẽ, dán, sửa chữa hoặc thay đổi kết cấu tường, trần, sàn, cửa, hệ thống điện nước khi chưa được Bên A đồng ý.'],
+                    ['9. Bồi thường', 'Chịu trách nhiệm bồi thường hoặc thanh toán chi phí sửa chữa đối với hư hỏng, mất mát tài sản, thiết bị do lỗi của mình hoặc khách của mình gây ra.'],
+                    ['10. Tài sản', 'Tự bảo quản tài sản cá nhân, tiền bạc, giấy tờ và phương tiện. Bên A không chịu trách nhiệm đối với mất mát do Bên B không khóa cửa hoặc tự quản lý sơ suất.'],
+                    ['11. Trung thực', 'Không lấy, sử dụng hoặc di chuyển tài sản của người khác khi chưa được đồng ý. Mọi tranh chấp phát sinh phải báo ngay cho Bên A để phối hợp xử lý.'],
+                    ['12. Vật nuôi', 'Không nuôi động vật gây mất vệ sinh, tiếng ồn, mùi hoặc nguy cơ mất an toàn. Trường hợp có vật nuôi phải được Bên A đồng ý trước bằng tin nhắn/văn bản.'],
+                    ['13. Kinh doanh', 'Không sử dụng phòng làm nơi kinh doanh, kho hàng, tập kết hàng hóa, livestream bán hàng gây ảnh hưởng cư dân hoặc mục đích trái pháp luật.'],
+                    ['14. Vận chuyển', 'Không chở quá tải thang máy, không kéo lê vật nặng gây hư hỏng sàn, tường, cửa hoặc thiết bị chung. Khi chuyển đồ lớn phải báo trước cho Bên A.'],
+                    ['15. Kỹ thuật', 'Không tự ý vào phòng kỹ thuật, tủ điện, khu máy bơm, mái, kho hoặc khu vực có biển cấm. Không tự ý đấu nối, sửa chữa điện nước trong tòa nhà.'],
+                    ['16. Khách', 'Tiếp khách trong khung giờ 06:00–22:30. Khách ở lại qua đêm phải báo trước và được Bên A đồng ý; Bên B chịu trách nhiệm về hành vi, tài sản và an ninh liên quan đến khách của mình.'],
+                    ['17. Ở ghép', 'Không cho thuê lại, chuyển nhượng, cho người khác ở ghép hoặc thay đổi người ở khi chưa có chấp thuận của Bên A và chưa bổ sung thông tin cư trú.'],
+                    ['18. Cam kết', 'Tuân thủ nghiêm túc nội quy tòa nhà, hợp đồng thuê phòng và các thông báo quản lý hợp lý của Bên A. Tái phạm nhiều lần hoặc vi phạm nghiêm trọng có thể bị chấm dứt hợp đồng theo thỏa thuận.']
+                  ].map(([title, content], idx) => (
+                    <p key={idx} style={{ marginBottom: '3px' }}><b>{title}:</b> {content}</p>
                   ))}
                 </div>
                 <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '15px' }}>CHẾ TÀI XỬ PHẠT</h3>
