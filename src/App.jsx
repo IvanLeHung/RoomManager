@@ -568,6 +568,31 @@ function createMonthlyReceipt(room, contract, previousReceipt, month, billingCon
   }, room);
 }
 
+function enrichReceiptWithTransferUtility(receipt, data) {
+  if (!receipt || receipt.type !== 'monthly') return receipt;
+  const contract = (data.contracts || []).find(c => c.id === receipt.contractId);
+  if (!contract) return receipt;
+  const billingContext = getTransferBillingContext(data, contract, receipt.month);
+  const transferOldUtility = billingContext.mode === 'transfer_new_room' ? billingContext.oldRoomUtility : null;
+  if (!transferOldUtility || transferOldUtility.total <= 0) return receipt;
+  const alreadyIncluded = receipt.transferId === billingContext.transfer?.id && receipt.transferOldRoomUtility;
+  if (alreadyIncluded) return receipt;
+  const extra = Number(transferOldUtility.total || 0);
+  const total = Number(receipt.total || 0) + extra;
+  const paidAmount = Number(receipt.paidAmount || 0);
+  return {
+    ...receipt,
+    other: Number(receipt.other || 0) + extra,
+    total,
+    debt: Math.max(0, total - paidAmount),
+    status: paidAmount >= total && total > 0 ? 'Đã thanh toán' : paidAmount > 0 ? 'Nợ một phần' : receipt.status,
+    billingMode: 'transfer_new_room',
+    transferId: billingContext.transfer?.id || receipt.transferId || '',
+    transferOldRoomUtility: transferOldUtility,
+    note: receipt.note || `Phòng mới nhận khách từ P${billingContext.transfer?.oldRoomId || ''}: điện nước phòng cũ được cộng riêng trong phiếu này.`
+  };
+}
+
 function recalculateReceipt(receipt, room) {
   const electricOld = Number(receipt.electricOld ?? receipt.electricStart ?? 0);
   const electricNew = Number(receipt.electricNew ?? receipt.electricEnd ?? electricOld);
@@ -4028,8 +4053,9 @@ function EditTenantModal({ tenant, onClose, onSave }) {
 
 function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }) {
   if (!receipt || !room) return null;
+  const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
   const isMonthly = receipt.type === 'monthly';
-  const tenant = getPrimaryTenantByContract(data, receipt.contractId) || { name: '—', phone: '—' };
+  const tenant = getPrimaryTenantByContract(data, displayReceipt.contractId) || { name: '—', phone: '—' };
 
   function handlePrintReceipt() {
     const content = document.getElementById('printable-receipt');
@@ -4112,7 +4138,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
   }
 
   const handleCopyTransfer = () => {
-    navigator.clipboard.writeText(transferContent(receipt));
+    navigator.clipboard.writeText(transferContent(displayReceipt));
     alert('Đã copy nội dung chuyển khoản!');
   };
 
@@ -4126,8 +4152,8 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
               <button className="secondary-btn" onClick={onNext} disabled={!onNext} style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0 }}>→</button>
             </div>
             <div>
-              <h2 style={{ fontSize: '18px', margin: 0 }}>Phiếu thu P{receipt.roomId}</h2>
-              <p className="muted small">Tháng {receipt.month}</p>
+              <h2 style={{ fontSize: '18px', margin: 0 }}>Phiếu thu P{displayReceipt.roomId}</h2>
+              <p className="muted small">Tháng {displayReceipt.month}</p>
             </div>
           </div>
           <button className="secondary-btn" onClick={onClose} style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0 }}>✕</button>
@@ -4135,7 +4161,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
 
         <div className="modal-body-v3 scrollable">
           <PrintableReceipt 
-            receipt={receipt} 
+            receipt={displayReceipt}
             room={room} 
             tenant={tenant} 
             bankInfo={bankInfo} 
@@ -4301,36 +4327,37 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
 }
 
 function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
-  const tenant = getPrimaryTenantByContract(data, receipt.contractId) || { name: 'N/A' };
-  const isMonthly = receipt.type === 'monthly';
-  const transferOldUtility = receipt.transferOldRoomUtility;
-  const extraOther = Math.max(0, Number(receipt.other || 0) - Number(transferOldUtility?.total || 0));
+  const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
+  const tenant = getPrimaryTenantByContract(data, displayReceipt.contractId) || { name: 'N/A' };
+  const isMonthly = displayReceipt.type === 'monthly';
+  const transferOldUtility = displayReceipt.transferOldRoomUtility;
+  const extraOther = Math.max(0, Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0));
   return (
     <div className="receipt-page" style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'serif', position: 'relative', borderBottom: '1px dashed #eee' }}>
-      <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${receipt.month}` : 'Quyết toán trả phòng'}</p></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><p>Phòng: <b>{receipt.roomId}</b></p><p>Khách thuê: <b>{tenant.name}</b></p><p>Ngày lập: {new Date(receipt.createdAt).toLocaleDateString('vi-VN')}</p></div><div style={{ textAlign: 'right' }}><p>Trạng thái: <b>{receipt.status}</b></p></div></div>
+      <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${displayReceipt.month}` : 'Quyết toán trả phòng'}</p></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><p>Phòng: <b>{displayReceipt.roomId}</b></p><p>Khách thuê: <b>{tenant.name}</b></p><p>Ngày lập: {new Date(displayReceipt.createdAt).toLocaleDateString('vi-VN')}</p></div><div style={{ textAlign: 'right' }}><p>Trạng thái: <b>{displayReceipt.status}</b></p></div></div>
       <table className="contract-table" style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
         <thead><tr style={{ background: '#f8fafc' }}><th style={{ border: '1px solid black', padding: '8px' }}>Nội dung</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Chỉ số</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Thành tiền</th></tr></thead>
         <tbody>
           {isMonthly ? (
             <>
-              <tr><td style={{ border: '1px solid black', padding: '8px' }}>Tiền phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.rent)}</td></tr>
-              <tr><td style={{ border: '1px solid black', padding: '8px' }}>Dịch vụ cố định</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.fixedServices)}</td></tr>
+              <tr><td style={{ border: '1px solid black', padding: '8px' }}>Tiền phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.rent)}</td></tr>
+              <tr><td style={{ border: '1px solid black', padding: '8px' }}>Dịch vụ cố định</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.fixedServices)}</td></tr>
               <tr>
                 <td style={{ border: '1px solid black', padding: '8px' }}>Tiền điện</td>
                 <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>
-                  CS cũ: {receipt.electricOld} → CS mới: {receipt.electricNew}<br/>
-                  (Sử dụng: {receipt.electricUsed} kWh)
+                  CS cũ: {displayReceipt.electricOld} → CS mới: {displayReceipt.electricNew}<br/>
+                  (Sử dụng: {displayReceipt.electricUsed} kWh)
                 </td>
-                <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.electricAmount)}</td>
+                <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.electricAmount)}</td>
               </tr>
               <tr>
                 <td style={{ border: '1px solid black', padding: '8px' }}>Tiền nước</td>
                 <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>
-                  CS cũ: {receipt.waterOld} → CS mới: {receipt.waterNew}<br/>
-                  (Sử dụng: {receipt.waterUsed} m³)
+                  CS cũ: {displayReceipt.waterOld} → CS mới: {displayReceipt.waterNew}<br/>
+                  (Sử dụng: {displayReceipt.waterUsed} m³)
                 </td>
-                <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.waterAmount)}</td>
+                <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.waterAmount)}</td>
               </tr>
               {transferOldUtility && (
                 <tr>
@@ -4345,12 +4372,12 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
               {extraOther > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phụ phí khác</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
             </>
           ) : (
-            <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phí chốt tất toán trả phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.total)}</td></tr>
+            <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phí chốt tất toán trả phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.total)}</td></tr>
           )}
-          <tr style={{ fontWeight: 'bold' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>TỔNG CỘNG</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.total)}</td></tr>
+          <tr style={{ fontWeight: 'bold' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>TỔNG CỘNG</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.total)}</td></tr>
         </tbody>
       </table>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div style={{ textAlign: 'center', width: '200px' }}><p><b>QUÉT MÃ THANH TOÁN</b></p><img src={buildVietQrUrl(bankInfo, receipt)} alt="QR" style={{ width: '120px', border: '1px solid #eee', padding: '5px' }} /><p style={{ fontSize: '10px' }}>{bankInfo.bankName} - {bankInfo.accountNo}</p></div><div style={{ textAlign: 'center', width: '200px' }}><p><b>CHỦ NHÀ KÝ TÊN</b></p><div style={{ height: '80px' }}></div><p><b>DIỆM THỊ BÌNH</b></p></div></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div style={{ textAlign: 'center', width: '200px' }}><p><b>QUÉT MÃ THANH TOÁN</b></p><img src={buildVietQrUrl(bankInfo, displayReceipt)} alt="QR" style={{ width: '120px', border: '1px solid #eee', padding: '5px' }} /><p style={{ fontSize: '10px' }}>{bankInfo.bankName} - {bankInfo.accountNo}</p></div><div style={{ textAlign: 'center', width: '200px' }}><p><b>CHỦ NHÀ KÝ TÊN</b></p><div style={{ height: '80px' }}></div><p><b>DIỆM THỊ BÌNH</b></p></div></div>
       <p style={{ fontStyle: 'italic', fontSize: '12px', marginTop: '20px', textAlign: 'center' }}>Quý khách vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Trân trọng!</p>
     </div>
   );
