@@ -1008,14 +1008,18 @@ function AppMain() {
   const [roomOpsModal, setRoomOpsModal] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
+  const [cloudEnabled, setCloudEnabled] = useState(true);
   const [lastSynced, setLastSynced] = useState(null);
   const fileInputRef = React.useRef(null);
+  const cloudFailureRef = React.useRef(0);
 
   // Initial Fetch from Cloud
   useEffect(() => {
     async function initCloud() {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
       try {
-        const res = await fetch('/api/data');
+        const res = await fetch('/api/data', { signal: controller.signal });
         if (!res.ok) throw new Error('Network response was not ok');
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
@@ -1029,10 +1033,13 @@ function AppMain() {
             roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
           }));
           setLastSynced(new Date());
+          setCloudEnabled(true);
         }
       } catch (err) {
-        console.log("Cloud mode inactive or not configured yet.");
+        setCloudEnabled(false);
+        console.info("Cloud sync inactive; using local storage only.", err?.message || err);
       } finally {
+        clearTimeout(timeout);
         setHasLoadedCloud(true);
       }
     }
@@ -1042,35 +1049,44 @@ function AppMain() {
   // Cloud Sync Logic (Debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!data || data === DEFAULT_DATA || !hasLoadedCloud) return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (!data || data === DEFAULT_DATA || !hasLoadedCloud || !cloudEnabled) return;
       
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
       setIsSyncing(true);
       fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'full_sync', payload: data })
+        body: JSON.stringify({ type: 'full_sync', payload: data }),
+        signal: controller.signal
       })
       .then(async res => {
         if (res.ok) {
+          cloudFailureRef.current = 0;
           setLastSynced(new Date());
         } else {
           const errData = await res.json().catch(() => ({}));
-          console.error("Server trả về lỗi khi đồng bộ:", errData);
-          alert("Lỗi đồng bộ: " + (errData.details || errData.error || "Không xác định"));
+          cloudFailureRef.current += 1;
+          console.info("Cloud sync failed; local data was saved.", errData);
+          if (res.status >= 500 || cloudFailureRef.current >= 2) {
+            setCloudEnabled(false);
+          }
         }
+        clearTimeout(timeout);
         setIsSyncing(false);
       })
       .catch(err => {
+        clearTimeout(timeout);
+        cloudFailureRef.current += 1;
         setIsSyncing(false);
-        console.error("Lỗi kết nối Server:", err);
-        // alert("Không thể lưu dữ liệu lên Cloud. Vui lòng kiểm tra cấu hình Database trên Vercel.");
+        console.info("Cloud sync unavailable; local data was saved.", err?.message || err);
+        setCloudEnabled(false);
       });
-      
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [data]);
+  }, [data, hasLoadedCloud, cloudEnabled]);
   useEffect(() => {
     if (!data || !data.contracts || !data.memberships) return;
     
@@ -2116,7 +2132,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
           <h2 style={{ fontSize: '24px' }}>Tổng quan hệ thống</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSyncing ? 'var(--warning)' : 'var(--success)' }}></span>
-            {isSyncing ? 'Đang đồng bộ...' : lastSynced ? `Đã lưu Cloud: ${lastSynced.toLocaleTimeString()}` : 'Chế độ Local'}
+            {isSyncing ? 'Đang đồng bộ...' : lastSynced && cloudEnabled ? `Đã lưu Cloud: ${lastSynced.toLocaleTimeString()}` : 'Chế độ Local'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
