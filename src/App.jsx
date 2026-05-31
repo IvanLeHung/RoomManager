@@ -441,8 +441,21 @@ function monthFromDate(value) {
   return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 }
 
+function addMonthsToBillingMonth(month, delta) {
+  if (!month) return '';
+  const [m, y] = month.split('/').map(Number);
+  if (!m || !y) return '';
+  const date = new Date(y, m - 1 + delta, 1);
+  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
 function isSameBillingMonth(dateValue, month) {
   return monthFromDate(dateValue) === month;
+}
+
+function isTransferOldRoomBillingMonth(dateValue, month) {
+  const transferMonth = monthFromDate(dateValue);
+  return transferMonth === month || addMonthsToBillingMonth(transferMonth, 1) === month;
 }
 
 function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
@@ -458,7 +471,7 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
 
 function getTransferBillingContext(data, contract, month) {
   const transfer = (data.roomTransfers || []).find(t =>
-    isSameBillingMonth(t.transferDate, month) &&
+    (isTransferOldRoomBillingMonth(t.transferDate, month) || isSameBillingMonth(t.transferDate, month)) &&
     (t.oldContractId === contract?.id || t.newContractId === contract?.id)
   );
   if (!transfer) return { mode: 'normal', transfer: null };
@@ -470,7 +483,7 @@ function getTransferBillingContext(data, contract, month) {
 function getBillableContractsForMonth(data, month) {
   const contracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
   const oldTransferContracts = (data.roomTransfers || [])
-    .filter(t => isSameBillingMonth(t.transferDate, month))
+    .filter(t => isTransferOldRoomBillingMonth(t.transferDate, month))
     .map(t => (data.contracts || []).find(c => c.id === t.oldContractId))
     .filter(Boolean);
   const byId = new Map([...contracts, ...oldTransferContracts].map(c => [c.id, c]));
@@ -1326,7 +1339,7 @@ function AppMain() {
       const month = INITIAL_MONTH;
       const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
       const oldTransferContract = (data.roomTransfers || [])
-        .filter(t => t.oldRoomId === roomId && isSameBillingMonth(t.transferDate, month))
+        .filter(t => t.oldRoomId === roomId && isTransferOldRoomBillingMonth(t.transferDate, month))
         .map(t => data.contracts.find(c => c.id === t.oldContractId))
         .find(Boolean);
       const targetContract = activeContract || oldTransferContract;
