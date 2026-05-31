@@ -435,6 +435,16 @@ function parseMonthValue(month) {
   return y * 12 + m;
 }
 
+function monthFromDate(value) {
+  const date = parseDateFlexible(value);
+  if (!date) return '';
+  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
+function isSameBillingMonth(dateValue, month) {
+  return monthFromDate(dateValue) === month;
+}
+
 function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
   const currentValue = parseMonthValue(currentMonth);
   return (receipts || [])
@@ -446,7 +456,28 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
     .sort((a, b) => parseMonthValue(b.month) - parseMonthValue(a.month))[0] || null;
 }
 
-function createMonthlyReceipt(room, contract, previousReceipt, month) {
+function getTransferBillingContext(data, contract, month) {
+  const transfer = (data.roomTransfers || []).find(t =>
+    isSameBillingMonth(t.transferDate, month) &&
+    (t.oldContractId === contract?.id || t.newContractId === contract?.id)
+  );
+  if (!transfer) return { mode: 'normal', transfer: null };
+  if (transfer.oldContractId === contract?.id) return { mode: 'transfer_old_room', transfer };
+  if (transfer.newContractId === contract?.id) return { mode: 'transfer_new_room', transfer };
+  return { mode: 'normal', transfer: null };
+}
+
+function getBillableContractsForMonth(data, month) {
+  const contracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
+  const oldTransferContracts = (data.roomTransfers || [])
+    .filter(t => isSameBillingMonth(t.transferDate, month))
+    .map(t => (data.contracts || []).find(c => c.id === t.oldContractId))
+    .filter(Boolean);
+  const byId = new Map([...contracts, ...oldTransferContracts].map(c => [c.id, c]));
+  return [...byId.values()];
+}
+
+function createMonthlyReceipt(room, contract, previousReceipt, month, billingContext = { mode: 'normal' }) {
   const electricOld = previousReceipt
     ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
     : Number(room.electricNew ?? room.electricEnd ?? room.initialElectric ?? room.electricStart ?? 0);
@@ -455,8 +486,14 @@ function createMonthlyReceipt(room, contract, previousReceipt, month) {
     ? Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0)
     : Number(room.waterNew ?? room.waterEnd ?? room.initialWater ?? room.waterStart ?? 0);
 
-  const rent = Number(contract?.rent || room.rent || 0);
-  const fixedServices = fixedServiceTotal(room);
+  const isOldTransferRoom = billingContext.mode === 'transfer_old_room';
+  const rent = isOldTransferRoom ? 0 : Number(contract?.rent || room.rent || 0);
+  const fixedServices = isOldTransferRoom ? 0 : fixedServiceTotal(room);
+  const transferNote = isOldTransferRoom
+    ? `Phòng cũ đã chuyển sang P${billingContext.transfer?.newRoomId || ''} trong tháng ${month}: chỉ chốt điện nước, không tính tiền phòng và dịch vụ phòng cũ.`
+    : billingContext.mode === 'transfer_new_room'
+      ? `Phòng mới nhận khách từ P${billingContext.transfer?.oldRoomId || ''} trong tháng ${month}: tính tiền phòng và dịch vụ theo phòng mới.`
+      : "Vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Xin cảm ơn!";
 
   return recalculateReceipt({
     id: uid("receipt"),
@@ -479,7 +516,9 @@ function createMonthlyReceipt(room, contract, previousReceipt, month) {
     paidAmount: 0,
     debt: rent + fixedServices,
     status: "Chưa thanh toán",
-    note: "Vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Xin cảm ơn!",
+    note: transferNote,
+    billingMode: billingContext.mode,
+    transferId: billingContext.transfer?.id || '',
     createdAt: new Date().toISOString()
   }, room);
 }
@@ -1284,18 +1323,24 @@ function AppMain() {
       }
     } else if (type === 'create_receipt') {
       const roomId = roomOrTenant.id;
-      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
-      if (!activeContract) return alert('Phòng trống hoặc không có hợp đồng.');
       const month = INITIAL_MONTH;
-      const exists = (data.receipts || []).find(r => r.roomId === roomId && r.contractId === activeContract.id && r.month === month);
+      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
+      const oldTransferContract = (data.roomTransfers || [])
+        .filter(t => t.oldRoomId === roomId && isSameBillingMonth(t.transferDate, month))
+        .map(t => data.contracts.find(c => c.id === t.oldContractId))
+        .find(Boolean);
+      const targetContract = activeContract || oldTransferContract;
+      if (!targetContract) return alert('Phòng trống hoặc không có hợp đồng cần lập phiếu.');
+      const exists = (data.receipts || []).find(r => r.roomId === roomId && r.contractId === targetContract.id && r.month === month);
       if (exists) {
         if (!window.confirm(`Phòng ${roomId} đã có phiếu tháng ${month}. Bạn có muốn ghi đè?`)) return;
         setData(old => ({ ...old, receipts: old.receipts.filter(r => r.id !== exists.id) }));
       }
       const prev = getPreviousReceiptByRoom(data.receipts, roomId, month);
-      const newRec = createMonthlyReceipt(roomOrTenant, activeContract, prev, month);
+      const billingContext = getTransferBillingContext(data, targetContract, month);
+      const newRec = createMonthlyReceipt(roomOrTenant, targetContract, prev, month, billingContext);
       setData(old => ({ ...old, receipts: [...(old.receipts || []), newRec] }));
-      alert(`Đã tạo phiếu tháng ${month} cho phòng ${roomId}`);
+      alert(`Đã tạo phiếu tháng ${month} cho phòng ${roomId}${billingContext.mode === 'transfer_old_room' ? ' (chỉ điện nước phòng cũ)' : ''}`);
       setTab('receipts');
     } else if (type === 'delete_receipt') {
       if (window.confirm('Bạn có chắc chắn muốn xóa phiếu thu này?')) {
@@ -2198,20 +2243,22 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
   const isFinalized = monthlyReceipts.length > 0 && monthlyReceipts.every(r => r.isFinalized);
 
   function handleBatchCreate() {
-    const activeContracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
-    if (activeContracts.length === 0) return alert('Không có hợp đồng nào đang hoạt động.');
+    const billableContracts = getBillableContractsForMonth(data, selectedMonth);
+    if (billableContracts.length === 0) return alert('Không có hợp đồng nào cần lập phiếu trong tháng này.');
     
     let createdCount = 0;
     let skippedCount = 0;
     const newReceipts = [];
 
-    activeContracts.forEach(contract => {
+    billableContracts.forEach(contract => {
       const room = data.rooms.find(r => r.id === contract.roomId);
+      if (!room) return;
       const exists = (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === selectedMonth && r.type === 'monthly');
       
       if (!exists) {
         const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth);
-        newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth));
+        const billingContext = getTransferBillingContext(data, contract, selectedMonth);
+        newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth, billingContext));
         createdCount++;
       } else {
         skippedCount++;
@@ -2240,8 +2287,9 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
           receipt.roomId,
           selectedMonth
         );
+        const billingContext = getTransferBillingContext(data, contract, selectedMonth);
         return {
-          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth),
+          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth, billingContext),
           id: receipt.id,
           paidAmount: receipt.paidAmount || 0,
           status: receipt.status || 'Chưa thanh toán',
