@@ -402,8 +402,16 @@ function buildVietQrUrl(bankInfo, receipt) {
   return `https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNo}-compact2.png?${params.toString()}`;
 }
 
-function fixedServiceTotal(room) {
+function getContractOccupantCount(data, contractId) {
+  return (data.memberships || []).filter(m => m.contractId === contractId && m.status === 'active').length;
+}
+
+function fixedServiceTotal(room, occupantCount = null) {
   if (!room) return 0;
+  if (occupantCount !== null && occupantCount !== undefined) {
+    if (Number(occupantCount) <= 0) return 0;
+    return Number(occupantCount) <= 1 ? 200000 : 400000;
+  }
   return Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0) + Number(room.internet || 0);
 }
 
@@ -470,14 +478,15 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
 }
 
 function getTransferBillingContext(data, contract, month) {
+  const occupantCount = getContractOccupantCount(data, contract?.id);
   const transfer = (data.roomTransfers || []).find(t =>
     isTransferOldRoomBillingMonth(t.transferDate, month) &&
     (t.oldContractId === contract?.id || t.newContractId === contract?.id)
   );
-  if (!transfer) return { mode: 'normal', transfer: null };
-  if (transfer.oldContractId === contract?.id) return { mode: 'transfer_old_room', transfer };
-  if (transfer.newContractId === contract?.id) return { mode: 'transfer_new_room', transfer, oldRoomUtility: buildTransferOldRoomUtility(data, transfer, month) };
-  return { mode: 'normal', transfer: null };
+  if (!transfer) return { mode: 'normal', transfer: null, occupantCount };
+  if (transfer.oldContractId === contract?.id) return { mode: 'transfer_old_room', transfer, occupantCount };
+  if (transfer.newContractId === contract?.id) return { mode: 'transfer_new_room', transfer, occupantCount, oldRoomUtility: buildTransferOldRoomUtility(data, transfer, month) };
+  return { mode: 'normal', transfer: null, occupantCount };
 }
 
 function getBillableContractsForMonth(data, month) {
@@ -489,6 +498,34 @@ function getBillableContractsForMonth(data, month) {
 function buildTransferOldRoomUtility(data, transfer, month) {
   const oldRoom = (data.rooms || []).find(r => r.id === transfer.oldRoomId);
   if (!oldRoom) return null;
+  const currentOldRoomReceipt = (data.receipts || []).find(r =>
+    r.roomId === transfer.oldRoomId &&
+    r.month === month &&
+    r.type === 'monthly'
+  );
+  if (currentOldRoomReceipt) {
+    const electricOld = getElectricOld(currentOldRoomReceipt);
+    const electricNew = getElectricNew(currentOldRoomReceipt);
+    const waterOld = getWaterOld(currentOldRoomReceipt);
+    const waterNew = getWaterNew(currentOldRoomReceipt);
+    const electricUsed = Math.round(Math.max(0, electricNew - electricOld) * 100) / 100;
+    const waterUsed = Math.round(Math.max(0, waterNew - waterOld) * 100) / 100;
+    const electricAmount = electricUsed * Number(oldRoom.electricPrice || 0);
+    const waterAmount = waterUsed * Number(oldRoom.waterPrice || 0);
+    return {
+      oldRoomId: transfer.oldRoomId,
+      transferDate: transfer.transferDate,
+      electricOld,
+      electricNew,
+      electricUsed,
+      electricAmount,
+      waterOld,
+      waterNew,
+      waterUsed,
+      waterAmount,
+      total: electricAmount + waterAmount
+    };
+  }
   const previousReceipt = getPreviousReceiptByRoom(data.receipts, transfer.oldRoomId, month);
   const electricOld = previousReceipt
     ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
@@ -530,7 +567,7 @@ function createMonthlyReceipt(room, contract, previousReceipt, month, billingCon
 
   const isOldTransferRoom = billingContext.mode === 'transfer_old_room';
   const rent = isOldTransferRoom ? 0 : Number(contract?.rent || room.rent || 0);
-  const fixedServices = isOldTransferRoom ? 0 : fixedServiceTotal(room);
+  const fixedServices = isOldTransferRoom ? 0 : fixedServiceTotal(room, billingContext.occupantCount);
   const transferOldUtility = billingContext.mode === 'transfer_new_room' ? billingContext.oldRoomUtility : null;
   const other = Number(transferOldUtility?.total || 0);
   const transferNote = isOldTransferRoom
@@ -2886,7 +2923,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
     if (!receipt) return <p className="muted center" style={{ padding: '24px' }}>Chưa có phiếu tháng hiện tại.</p>;
     const rows = [
       ['Tiền phòng', '1 tháng', contract?.rent || room.rent || 0, receipt.rent || 0],
-      ['Dịch vụ cố định', '1', 'Theo phòng', receipt.fixedServices || 0],
+      ['Dịch vụ cố định', '1', 'Theo số người', receipt.fixedServices || 0],
       ['Tiền điện', `${formatLocaleNumber(receipt.electricUsed || 0)} số`, room.electricPrice || 0, receipt.electricAmount || 0],
       ['Tiền nước', `${formatLocaleNumber(receipt.waterUsed || 0)} số`, room.waterPrice || 0, receipt.waterAmount || 0],
       ['Phí phát sinh', '1', 'Khác', receipt.other || 0]
@@ -4226,7 +4263,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
               
               <div className="charge-row-v4">
                 <div className="row-main"><span className="name">🛠️ Dịch vụ cố định</span><span className="amount">{formatMoney(receipt.fixedServices)}</span></div>
-                <p className="details">(Rác, internet, dọn dẹp, thang máy...)</p>
+                <p className="details">(1 người: 200.000đ/tháng; từ 2 người trở lên: 400.000đ/tháng)</p>
               </div>
 
               <div className="charge-row-v4">
