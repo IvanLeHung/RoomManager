@@ -857,6 +857,34 @@ textarea {
   line-height: 1.4;
 }
 
+.settlement-qr-card {
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settlement-qr-card h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.settlement-qr-card img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  align-self: center;
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+}
+
 .op-value {
   font-size: 15px;
   font-weight: 700;
