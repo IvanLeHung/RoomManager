@@ -498,6 +498,34 @@ function getBillableContractsForMonth(data, month) {
 function buildTransferOldRoomUtility(data, transfer, month) {
   const oldRoom = (data.rooms || []).find(r => r.id === transfer.oldRoomId);
   if (!oldRoom) return null;
+  const currentOldRoomReceipt = (data.receipts || []).find(r =>
+    r.roomId === transfer.oldRoomId &&
+    r.month === month &&
+    r.type === 'monthly'
+  );
+  if (currentOldRoomReceipt) {
+    const electricOld = getElectricOld(currentOldRoomReceipt);
+    const electricNew = getElectricNew(currentOldRoomReceipt);
+    const waterOld = getWaterOld(currentOldRoomReceipt);
+    const waterNew = getWaterNew(currentOldRoomReceipt);
+    const electricUsed = Math.round(Math.max(0, electricNew - electricOld) * 100) / 100;
+    const waterUsed = Math.round(Math.max(0, waterNew - waterOld) * 100) / 100;
+    const electricAmount = electricUsed * Number(oldRoom.electricPrice || 0);
+    const waterAmount = waterUsed * Number(oldRoom.waterPrice || 0);
+    return {
+      oldRoomId: transfer.oldRoomId,
+      transferDate: transfer.transferDate,
+      electricOld,
+      electricNew,
+      electricUsed,
+      electricAmount,
+      waterOld,
+      waterNew,
+      waterUsed,
+      waterAmount,
+      total: electricAmount + waterAmount
+    };
+  }
   const previousReceipt = getPreviousReceiptByRoom(data.receipts, transfer.oldRoomId, month);
   const electricOld = previousReceipt
     ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
