@@ -729,6 +729,68 @@ function LoginScreen({ onUnlock }) {
   );
 }
 
+function printDocumentElement(elementId, title = 'Tài liệu', pageSize = 'A4') {
+  const content = document.getElementById(elementId);
+  if (!content) {
+    alert('Chưa tìm thấy nội dung để in.');
+    return;
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(`
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          @page { size: ${pageSize}; margin: 12mm; }
+          html, body { margin: 0; padding: 0; background: white; color: black; }
+          body { font-family: "Times New Roman", Times, serif; font-size: 13px; line-height: 1.45; }
+          .contract-paper,
+          .appendix-content-v1 {
+            width: auto !important;
+            max-width: none !important;
+            min-height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            transform: none !important;
+          }
+          h1 { font-size: 18px; text-align: center; margin: 14px 0 10px; }
+          h2 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
+          h3, h4 { font-size: 13px; margin: 12px 0 6px; }
+          p { margin: 4px 0; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0; page-break-inside: avoid; }
+          th, td { border: 1px solid #111; padding: 5px 7px; vertical-align: top; }
+          .appendix-page { page-break-before: always; margin-top: 0 !important; border-top: 0 !important; padding-top: 0 !important; }
+          .signature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: center; margin-top: 30px; }
+          .signature-space { height: 80px; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        </style>
+      </head>
+      <body>${content.outerHTML}</body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    setTimeout(() => document.body.removeChild(iframe), 1500);
+  }, 500);
+}
+
 function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'main', onClose }) {
   const primaryTenant = tenants.find(t => t.role === 'primary') || tenants[0] || {};
   const signedDay = formatContractDate(contract.signedDate);
@@ -753,11 +815,11 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
             <p className="muted small">Tài liệu đầy đủ 12 Điều khoản & 3 Phụ lục (Khổ A4)</p>
           </div>
           <div className="btn-group">
-            <button className="primary-btn" onClick={() => window.print()}>🖨️ In tài liệu</button>
+            <button className="primary-btn" onClick={() => printDocumentElement('contract-preview-paper', `${isRenewal ? 'Phụ lục gia hạn' : isLiquidation ? 'Biên bản tất toán' : 'Hợp đồng thuê'} P${room.id}`)}>🖨️ In tài liệu</button>
             <button className="secondary-btn" onClick={onClose}>Đóng</button>
           </div>
         </div>
-        <div className="contract-paper">
+        <div id="contract-preview-paper" className="contract-paper">
           {(isMain || isRenewal) && (
             <>
               <div className="contract-header-text">
@@ -4077,42 +4139,7 @@ function RenewalModal({ contract, data, onClose, onSave }) {
 }
 
 function printAppendixFromElement(elementId, title = 'Phụ lục gia hạn') {
-  const content = document.getElementById(elementId);
-  if (!content) {
-    alert('Chưa tìm thấy nội dung phụ lục để in.');
-    return;
-  }
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow.document;
-  doc.write(`
-    <html>
-      <head>
-        <title>${title}</title>
-        <style>
-          body { margin: 0; background: white; }
-          @page { size: A4; margin: 0; }
-          table { width: 100%; border-collapse: collapse; }
-          table th, table td { border: 1px solid #111; padding: 8px; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        </style>
-      </head>
-      <body>${content.outerHTML}</body>
-    </html>
-  `);
-  doc.close();
-  iframe.contentWindow.focus();
-  setTimeout(() => {
-    iframe.contentWindow.print();
-    document.body.removeChild(iframe);
-  }, 300);
+  printDocumentElement(elementId, title);
 }
 
 function RenewalAppendixPreviewModal({ contract, form, data, onClose }) {
