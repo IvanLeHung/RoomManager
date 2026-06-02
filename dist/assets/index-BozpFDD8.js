@@ -105,21 +105,23 @@ Error generating stack: `+e.message+`
       <head>
         <title>${t}</title>
         <style>
-          @page { size: ${n}; margin: 12mm; }
+          @page { size: ${n}; margin: 0; }
           html, body { margin: 0; padding: 0; background: white; color: black; }
           body { font-family: "Times New Roman", Times, serif; font-size: 13px; line-height: 1.45; }
           .contract-paper,
           .appendix-content-v1 {
-            width: auto !important;
+            width: 210mm !important;
             max-width: none !important;
-            min-height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
+            min-height: 297mm !important;
+            margin: 0 auto !important;
+            padding: 18mm 20mm 20mm !important;
+            box-sizing: border-box !important;
             box-shadow: none !important;
             background: white !important;
             color: black !important;
             transform: none !important;
           }
+          .contract-header-text { text-align: center; margin-bottom: 18px; }
           h1 { font-size: 18px; text-align: center; margin: 14px 0 10px; }
           h2 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
           h3, h4 { font-size: 13px; margin: 12px 0 6px; }
