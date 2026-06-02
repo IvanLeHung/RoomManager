@@ -761,7 +761,7 @@ function printDocumentElement(elementId, title = 'Tài liệu', pageSize = 'A4')
             max-width: none !important;
             min-height: 297mm !important;
             margin: 0 auto !important;
-            padding: 18mm 20mm 20mm !important;
+            padding: 14mm 20mm 20mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             background: white !important;
@@ -775,7 +775,7 @@ function printDocumentElement(elementId, title = 'Tài liệu', pageSize = 'A4')
           p { margin: 4px 0; }
           table { width: 100%; border-collapse: collapse; margin: 10px 0; page-break-inside: avoid; }
           th, td { border: 1px solid #111; padding: 5px 7px; vertical-align: top; }
-          .appendix-page { page-break-before: always; margin-top: 0 !important; border-top: 0 !important; padding-top: 0 !important; }
+          .appendix-page { page-break-before: always; margin-top: 0 !important; border-top: 0 !important; padding-top: 10mm !important; }
           .signature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: center; margin-top: 30px; }
           .signature-space { height: 80px; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
