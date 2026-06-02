@@ -752,16 +752,16 @@ function printDocumentElement(elementId, title = 'Tài liệu', pageSize = 'A4')
       <head>
         <title>${title}</title>
         <style>
-          @page { size: ${pageSize}; margin: 0; }
+          @page { size: ${pageSize}; margin: 12mm 0 14mm; }
           html, body { margin: 0; padding: 0; background: white; color: black; }
           body { font-family: "Times New Roman", Times, serif; font-size: 13px; line-height: 1.38; }
           .contract-paper,
           .appendix-content-v1 {
             width: 210mm !important;
             max-width: none !important;
-            min-height: 297mm !important;
+            min-height: 273mm !important;
             margin: 0 auto !important;
-            padding: 14mm 20mm 20mm !important;
+            padding: 2mm 20mm 6mm !important;
             box-sizing: border-box !important;
             box-shadow: none !important;
             background: white !important;
