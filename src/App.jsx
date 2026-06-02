@@ -754,7 +754,7 @@ function printDocumentElement(elementId, title = 'Tài liệu', pageSize = 'A4')
         <style>
           @page { size: ${pageSize}; margin: 0; }
           html, body { margin: 0; padding: 0; background: white; color: black; }
-          body { font-family: "Times New Roman", Times, serif; font-size: 13px; line-height: 1.45; }
+          body { font-family: "Times New Roman", Times, serif; font-size: 13px; line-height: 1.38; }
           .contract-paper,
           .appendix-content-v1 {
             width: 210mm !important;
@@ -769,15 +769,17 @@ function printDocumentElement(elementId, title = 'Tài liệu', pageSize = 'A4')
             transform: none !important;
           }
           .contract-header-text { text-align: center; margin-bottom: 18px; }
-          h1 { font-size: 18px; text-align: center; margin: 14px 0 10px; }
-          h2 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
-          h3, h4 { font-size: 13px; margin: 12px 0 6px; }
-          p { margin: 4px 0; }
-          table { width: 100%; border-collapse: collapse; margin: 10px 0; page-break-inside: avoid; }
-          th, td { border: 1px solid #111; padding: 5px 7px; vertical-align: top; }
+          h1 { font-size: 18px; text-align: center; margin: 12px 0 8px; }
+          h2 { font-size: 15px; text-align: center; margin: 8px 0 5px; }
+          h3, h4 { font-size: 13px; margin: 10px 0 5px; break-after: avoid; page-break-after: avoid; }
+          p { margin: 3px 0; orphans: 3; widows: 3; }
+          table { width: 100%; border-collapse: collapse; margin: 8px 0; page-break-inside: avoid; break-inside: avoid; }
+          th, td { border: 1px solid #111; padding: 4px 6px; vertical-align: top; }
           .appendix-page { page-break-before: always; margin-top: 0 !important; border-top: 0 !important; padding-top: 10mm !important; }
-          .signature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: center; margin-top: 30px; }
-          .signature-space { height: 80px; }
+          .appendix-section { break-inside: avoid; page-break-inside: avoid; }
+          .signature-row,
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; text-align: center; margin-top: 18px; break-inside: avoid; page-break-inside: avoid; }
+          .signature-space { height: 58px; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         </style>
       </head>
@@ -3904,6 +3906,7 @@ function RenewalModal({ contract, data, onClose, onSave }) {
   const isValid = form.newEndDate && (!hasValidCurrentEndDate || form.newEndDate > contract.endDate);
   const rentChanged = !form.keepPricing && Number(form.newRent) !== Number(contract.rent);
   const depositChanged = !form.keepPricing && Number(form.newDeposit) !== Number(contract.deposit);
+  const draftAppendixPrintId = `draft-renewal-appendix-${contract.id}`;
 
   const handlePrintAppendix = () => {
     const iframe = document.createElement('iframe');
@@ -4125,11 +4128,11 @@ function RenewalModal({ contract, data, onClose, onSave }) {
             <div className="appendix-preview-scroll" style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                 <h3 className="form-section-title" style={{ margin: 0 }}>📄 Xem trước phụ lục (A4)</h3>
-                <button className="secondary-btn sm" onClick={handlePrintAppendix}>🖨️ In phụ lục này</button>
+                <button className="secondary-btn sm" onClick={() => printDocumentElement(draftAppendixPrintId, `Phụ lục gia hạn P${contract.roomId}`)}>🖨️ In phụ lục này</button>
               </div>
               <div className="appendix-container-scroll" style={{ maxHeight: '500px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px' }}>
                 <div className="appendix-paper-a4" style={{ transform: 'scale(0.8)', transformOrigin: 'top center', margin: '0 auto', marginBottom: '-150px' }}>
-                   <AppendixContent contract={contract} tenant={tenant} form={form} room={room} />
+                   <AppendixContent contract={contract} tenant={tenant} form={form} room={room} printId={draftAppendixPrintId} />
                 </div>
               </div>
             </div>
