@@ -2457,28 +2457,60 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
 }
 
 function RoomsTab({ data, onAction, onSelect, query }) {
-  const filteredRooms = useMemo(() => {
+  const [caseFilter, setCaseFilter] = useState('all');
+  const roomCards = useMemo(() => {
     const q = query.toLowerCase();
-    return (data.rooms || []).filter(r => r.id.toLowerCase().includes(q));
-  }, [data.rooms, query]);
+    return (data.rooms || []).map(room => {
+      const statusInfo = getRoomStatusInfo(data, room.id);
+      const { label, color, contract, ownerOccupied } = statusInfo;
+      const roomActiveMember = (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active' && m.role === 'primary')
+        || (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active');
+      const primaryTenant = contract
+        ? (getPrimaryTenantByContract(data, contract.id) || (roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null))
+        : roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null;
+      const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
+      const debt = currentReceipt ? Math.max(0, Number(currentReceipt.total || 0) - Number(currentReceipt.paidAmount || 0)) : 0;
+      const caseType = ownerOccupied ? 'owner' : label === 'Trống' ? 'vacant' : debt > 0 ? 'debt' : 'occupied';
+      return { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType };
+    }).filter(item => item.room.id.toLowerCase().includes(q));
+  }, [data, query]);
+
+  const caseOptions = [
+    ['all', 'Tất cả', roomCards.length],
+    ['occupied', 'Đang ở', roomCards.filter(r => r.caseType === 'occupied').length],
+    ['debt', 'Đang nợ', roomCards.filter(r => r.caseType === 'debt').length],
+    ['vacant', 'Trống', roomCards.filter(r => r.caseType === 'vacant').length],
+    ['owner', 'Chủ nhà', roomCards.filter(r => r.caseType === 'owner').length],
+  ];
+  const visibleRooms = caseFilter === 'all' ? roomCards : roomCards.filter(r => r.caseType === caseFilter);
+
   return (
-    <div className="rooms-grid">
-      {filteredRooms.map(room => {
-        const { label, color, contract, ownerOccupied } = getRoomStatusInfo(data, room.id);
-        const roomActiveMember = (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active' && m.role === 'primary')
-          || (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active');
-        const primaryTenant = contract
-          ? (getPrimaryTenantByContract(data, contract.id) || (roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null))
-          : roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null;
-        const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
+    <div className="rooms-panel">
+      <div className="room-case-tabs">
+        {caseOptions.map(([id, text, count]) => (
+          <button key={id} className={caseFilter === id ? 'active' : ''} onClick={() => setCaseFilter(id)}>
+            <span>{text}</span><b>{count}</b>
+          </button>
+        ))}
+      </div>
+      <div className="rooms-grid compact">
+      {visibleRooms.map(({ room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType }) => {
+        const statusText = ownerOccupied ? 'Chủ nhà' : label;
+        const receiptLabel = ownerOccupied ? 'Không lập phiếu' : debt > 0 ? `Nợ ${formatMoney(debt)}` : currentReceipt ? 'Đã thanh toán' : 'Chưa có phiếu';
         return (
-          <div key={room.id} className="room-card-liquid" onClick={() => onSelect(room)}>
-            <div className="room-header"><span className="room-id">P{room.id}</span><span className={`status-badge-liquid ${color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{label}</span></div>
+          <div key={room.id} className={`room-card-liquid compact ${caseType}`} onClick={() => onSelect(room)}>
+            <div className="room-header">
+              <span className="room-id">P{room.id}</span>
+              <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
+            </div>
             <div className="room-body">
               {primaryTenant ? (
                 <div className="tenant-block-primary">
                   <p className="tenant-name-main">{primaryTenant.name}</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}><p className="tenant-sub">{ownerOccupied && !contract ? 'Chủ nhà ở' : formatMoney(contract?.rent || room.rent || 0)}</p>{currentReceipt && <span className={`status-badge-liquid ${currentReceipt.status === 'Đã thanh toán' ? 'active' : currentReceipt.status === 'Nợ một phần' ? 'notice' : 'debt'}`} style={{ fontSize: '10px' }}>{currentReceipt.status}</span>}</div>
+                  <div className="room-card-meta">
+                    <span>{ownerOccupied && !contract ? 'Chủ nhà ở' : formatMoney(contract?.rent || room.rent || 0)}</span>
+                    <b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b>
+                  </div>
                 </div>
               ) : <p className="muted">Phòng đang trống</p>}
             </div>
@@ -2495,6 +2527,8 @@ function RoomsTab({ data, onAction, onSelect, query }) {
           </div>
         );
       })}
+      {!visibleRooms.length && <div className="empty-state-inline">Không có phòng phù hợp với bộ lọc này.</div>}
+      </div>
     </div>
   );
 }
