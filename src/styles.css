@@ -605,6 +605,197 @@ h1, h2, h3, h4 {
   overflow-x: auto;
 }
 
+.tenant-crm {
+  gap: 16px;
+}
+
+.tenant-crm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tenant-crm-header h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  color: var(--text-main);
+}
+
+.tenant-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tenant-stat-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #2563eb;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.tenant-stat-card b {
+  display: block;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-main);
+}
+
+.tenant-stat-card span {
+  display: block;
+  margin-top: 8px;
+  font-weight: 800;
+  color: var(--text-secondary);
+}
+
+.tenant-stat-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.tenant-stat-card.active { border-left-color: var(--success); }
+.tenant-stat-card.notice { border-left-color: #06b6d4; }
+.tenant-stat-card.debt { border-left-color: var(--danger); }
+.tenant-stat-card.warning { border-left-color: var(--warning); }
+
+.tenant-filter-bar {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.tenant-filter-bar label {
+  min-width: 160px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tenant-filter-bar select {
+  width: 100%;
+  height: 38px;
+  margin-top: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0 10px;
+  background: #fff;
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.tenant-identity {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.tenant-identity b {
+  font-size: 15px;
+  color: var(--text-main);
+}
+
+.tenant-identity span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tenant-identity:hover b {
+  color: var(--primary);
+}
+
+.tenant-contract-cell {
+  display: grid;
+  gap: 6px;
+  align-items: start;
+}
+
+.tenant-contract-cell small {
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tenant-payment-pill {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tenant-payment-pill.active {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.tenant-payment-pill.debt {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.tenant-payment-pill.notice {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #fed7aa;
+}
+
+.tenant-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tenant-timeline-row {
+  display: grid;
+  grid-template-columns: 110px 160px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.tenant-timeline-row:first-of-type {
+  border-top: 0;
+}
+
+.tenant-timeline-row span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tenant-timeline-row b {
+  color: var(--text-main);
+}
+
+.tenant-timeline-row em {
+  color: var(--text-secondary);
+  font-style: normal;
+}
+
 table {
   width: 100%;
   border-collapse: separate;
@@ -1225,6 +1416,30 @@ textarea {
 }
 
 @media (max-width: 768px) {
+  .tenant-crm-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tenant-crm-header .btn-group {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-stats-grid,
+  .tenant-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tenant-filter-bar label {
+    min-width: calc(50% - 8px);
+  }
+
+  .tenant-timeline-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
   .detail-modal-v2 {
     width: 100vw;
     height: 100dvh;
@@ -1278,6 +1493,17 @@ textarea {
   .op-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .tenant-stats-grid,
+  .tenant-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-filter-bar label {
+    min-width: 100%;
   }
 }
 

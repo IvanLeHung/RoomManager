@@ -1213,6 +1213,10 @@ function AppMain() {
 
   function handleAction(type, roomOrTenant) {
     if (type === 'add_tenant') {
+      if (!roomOrTenant?.id) {
+        alert('Vui lòng chọn phòng cụ thể để thêm khách thuê.');
+        return;
+      }
       const room = data.rooms.find(r => r.id === roomOrTenant.id);
       setNewRentalRoom(room);
     } else if (type === 'notice') {
@@ -1329,6 +1333,9 @@ function AppMain() {
     } else if (type === 'view_tenants') {
       setQuery(`P${roomOrTenant.id}`);
       setTab('tenants');
+    } else if (type === 'view_room') {
+      const room = data.rooms.find(r => r.id === roomOrTenant.id || r.id === roomOrTenant.roomId);
+      if (room) setSelectedRoom(room);
     } else if (type === 'create_receipt_all') {
       setTab('receipts');
       // Trigger batch create logic if needed, but for now just navigation is fine
@@ -2612,46 +2619,141 @@ function RoomsTab({ data, onAction, onSelect, query }) {
 }
 
 function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
-  // Chỉ hiển thị những người đang có membership active
-  const activeTenants = useMemo(() => {
-    return tenants.filter(t => (data.memberships || []).some(m => m.tenantId === t.id && m.status === 'active'));
-  }, [tenants, data.memberships]);
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [paymentFilter, setPaymentFilter] = useState('all');
+  const [contractFilter, setContractFilter] = useState('all');
+
+  const tenantRows = useMemo(() => {
+    return (data.memberships || []).map(m => {
+      const tenant = (data.tenants || []).find(t => t.id === m.tenantId);
+      if (!tenant) return null;
+      const contract = (data.contracts || []).find(c => c.id === m.contractId);
+      const room = (data.rooms || []).find(r => r.id === m.roomId);
+      const receipt = contract ? (data.receipts || []).find(r => r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
+      const debt = receipt ? Math.max(0, Number(receipt.total || 0) - Number(receipt.paidAmount || 0)) : 0;
+      const contractDaysLeft = contract ? getDaysUntil(contract.endDate) : null;
+      const contractState = !contract || isOwnerOccupiedRoom(room) ? 'none' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'expired' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'expiring' : 'valid';
+      const paymentState = debt > 0 ? 'debt' : receipt ? 'paid' : 'missing';
+      return { tenant, membership: m, contract, room, receipt, debt, contractDaysLeft, contractState, paymentState };
+    }).filter(Boolean).sort((a, b) => String(a.room?.id || a.membership.roomId).localeCompare(String(b.room?.id || b.membership.roomId), 'vi', { numeric: true }));
+  }, [data]);
+
+  const activeRows = tenantRows.filter(r => r.membership.status === 'active');
+  const moveOutThisMonth = (data.moveOutReports || []).filter(r => String(r.actualEndDate || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length;
+  const debtRows = activeRows.filter(r => r.debt > 0);
+  const expiringRows = activeRows.filter(r => r.contractState === 'expiring' || r.contractState === 'expired');
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+
+  const filteredRows = tenantRows.filter(row => {
+    const roomId = String(row.room?.id || row.membership.roomId || '');
+    const searchBlob = `${row.tenant.name || ''} ${row.tenant.phone || ''} ${row.tenant.cccd || ''} ${roomId}`.toLowerCase();
+    if (normalizedQuery && !searchBlob.includes(normalizedQuery)) return false;
+    if (statusFilter === 'active' && row.membership.status !== 'active') return false;
+    if (statusFilter === 'notice' && row.membership.status !== 'notice' && row.contract?.status !== 'notice') return false;
+    if (statusFilter === 'left' && row.membership.status !== 'ended') return false;
+    if (paymentFilter === 'paid' && row.paymentState !== 'paid') return false;
+    if (paymentFilter === 'debt' && row.paymentState !== 'debt') return false;
+    if (paymentFilter === 'missing' && row.paymentState !== 'missing') return false;
+    if (contractFilter === 'expiring' && row.contractState !== 'expiring') return false;
+    if (contractFilter === 'expired' && row.contractState !== 'expired') return false;
+    return true;
+  });
 
   return (
-    <div className="widget stack" style={{ gap: '16px' }}>
-      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '18px' }}>Khách đang ở ({activeTenants.length})</h2>
-        <button className="secondary-btn" onClick={() => { setQuery(''); const d = localStorage.getItem(STORAGE_KEY); if(d) setData(JSON.parse(d)); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          🔄 Làm mới danh sách
-        </button>
+    <div className="tenant-crm stack">
+      <div className="tenant-crm-header no-print">
+        <div>
+          <h2>👥 Người thuê</h2>
+          <p className="muted small">Quản lý vòng đời khách thuê: vào ở, hợp đồng, thanh toán và rời đi.</p>
+        </div>
+        <div className="btn-group" style={{ marginTop: 0 }}>
+          <button className="primary-btn" onClick={() => onAction('add_tenant')}>+ Thêm khách</button>
+          <button className="secondary-btn" onClick={() => setQuery('')}>🔎 Xóa tìm kiếm</button>
+          <button className="secondary-btn" onClick={() => onAction('export_excel')}>📊 Xuất Excel</button>
+        </div>
       </div>
-      <div className="table-wrap">
+
+      <div className="tenant-stats-grid">
+        <div className="tenant-stat-card active"><b>{activeRows.length}</b><span>Đang thuê</span><small>+{tenantRows.filter(r => String(r.membership.createdAt || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length} tháng này</small></div>
+        <div className="tenant-stat-card notice"><b>{moveOutThisMonth}</b><span>Rời đi</span><small>{INITIAL_MONTH}</small></div>
+        <div className="tenant-stat-card debt"><b>{debtRows.length}</b><span>Đang nợ</span><small>{formatMoney(debtRows.reduce((s, r) => s + r.debt, 0))}</small></div>
+        <div className="tenant-stat-card warning"><b>{expiringRows.length}</b><span>HĐ cảnh báo</span><small>Hết hạn / 30 ngày</small></div>
+      </div>
+
+      <div className="tenant-filter-bar no-print">
+        <label>Trạng thái
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <option value="active">Đang ở</option>
+            <option value="notice">Sắp rời</option>
+            <option value="left">Đã rời</option>
+            <option value="all">Tất cả</option>
+          </select>
+        </label>
+        <label>Thanh toán
+          <select value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
+            <option value="all">Tất cả</option>
+            <option value="paid">Đã đóng</option>
+            <option value="debt">Đang nợ</option>
+            <option value="missing">Chưa có phiếu</option>
+          </select>
+        </label>
+        <label>Hợp đồng
+          <select value={contractFilter} onChange={e => setContractFilter(e.target.value)}>
+            <option value="all">Tất cả</option>
+            <option value="expiring">Sắp hết hạn</option>
+            <option value="expired">Hết hạn</option>
+          </select>
+        </label>
+        <button className="secondary-btn sm" onClick={() => { setStatusFilter('active'); setPaymentFilter('all'); setContractFilter('all'); }}>Reset lọc</button>
+      </div>
+
+      <div className="widget liquid-glass" style={{ padding: 0 }}>
+        <div className="table-wrap">
         <table>
-          <thead><tr><th>Người thuê</th><th>SĐT</th><th>CCCD</th><th>Trạng thái</th><th>Phòng</th><th>Vai trò</th><th>Thao tác</th></tr></thead>
+          <thead><tr><th>Người thuê</th><th>Phòng</th><th>Hợp đồng</th><th>Thanh toán</th><th>Ngày vào</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
           <tbody>
-            {activeTenants.map(t => {
-              const m = (data.memberships || []).find(m => m.tenantId === t.id && m.status === 'active');
-              if (!m) return null; // Safety check
+            {filteredRows.map(({ tenant: t, membership: m, contract, room, receipt, debt, contractDaysLeft, contractState, paymentState }) => {
+              const contractText = contractState === 'none' ? 'Không áp dụng' : contractDaysLeft === null ? 'Chưa cập nhật' : contractDaysLeft < 0 ? 'Hết hạn' : `Còn ${contractDaysLeft} ngày`;
+              const contractBadge = contractState === 'valid' ? 'active' : contractState === 'expiring' ? 'notice' : contractState === 'expired' ? 'debt' : 'vacant';
+              const paymentBadge = paymentState === 'paid' ? 'active' : paymentState === 'debt' ? 'debt' : 'notice';
+              const membershipBadge = m.status === 'active' ? 'active' : m.status === 'notice' ? 'notice' : 'vacant';
+              const membershipLabel = m.status === 'active' ? (m.role === 'primary' ? 'Đại diện' : 'Ở cùng') : m.status === 'notice' ? 'Sắp rời' : 'Đã rời';
               return (
-                <tr key={t.id}>
-                  <td><button className="primary-btn sm" style={{ height: '32px', fontSize: '13px' }} onClick={() => onAction('detail', t)}>{t.name}</button></td>
-                  <td>{t.phone}</td>
-                  <td>{t.cccd}</td>
-                  <td><span className="status-badge-liquid active">Đang ở</span></td>
-                  <td>P{m.roomId}</td>
-                  <td>{m?.role === 'primary' ? 'Đại diện' : 'Ở cùng'}</td>
+                <tr key={`${t.id}-${m.id || m.roomId}`}>
+                  <td>
+                    <button className="tenant-identity" onClick={() => onAction('detail', t)}>
+                      <b>👤 {t.name}</b>
+                      <span>📱 {t.phone || 'Chưa có SĐT'}</span>
+                      <span>🪪 {t.cccd || 'Chưa có CCCD'}</span>
+                    </button>
+                  </td>
+                  <td><button className="secondary-btn sm" onClick={() => onAction('view_room', room || { id: m.roomId })}>P{m.roomId}</button></td>
+                  <td>
+                    <div className="tenant-contract-cell">
+                      <span className={`status-badge-liquid ${contractBadge}`}>{contractText}</span>
+                      {contract && <small>{formatBusinessDate(contract.startDate)} → {formatBusinessDate(contract.endDate)}</small>}
+                    </div>
+                  </td>
+                  <td>
+                    <button className={`tenant-payment-pill ${paymentBadge}`} onClick={() => receipt ? onAction('view_qr', receipt) : onAction('create_receipt', room || { id: m.roomId })}>
+                      {paymentState === 'paid' ? `Đã đóng ${receipt?.month || ''}` : paymentState === 'debt' ? `Nợ ${formatMoney(debt)}` : 'Chưa có phiếu'}
+                    </button>
+                  </td>
+                  <td>{formatDisplayDate(m.joinedDate || contract?.startDate || String(m.createdAt || '').slice(0, 10))}</td>
+                  <td><span className={`status-badge-liquid ${membershipBadge}`}>{membershipLabel}</span></td>
                   <td>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <button className="secondary-btn sm" style={{ height: '32px', fontSize: '13px' }} onClick={() => onAction('view_contract', t)}>Xem HĐ</button>
-                      <button className="secondary-btn sm" style={{ height: '32px', fontSize: '13px' }} onClick={() => onAction('edit_tenant', t)}>✏️ Sửa</button>
+                      {contract && <button className="secondary-btn sm" onClick={() => onAction('view_contract', { roomId: m.roomId, contractId: contract.id })}>HĐ</button>}
+                      <button className="secondary-btn sm" onClick={() => onAction('edit_tenant', t)}>Sửa</button>
                     </div>
                   </td>
                 </tr>
               );
             })}
-            {activeTenants.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>Không tìm thấy khách đang ở nào.</td></tr>}
+            {filteredRows.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>Không tìm thấy khách phù hợp.</td></tr>}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -4522,6 +4624,72 @@ function AppendixContent({ contract, tenant, form, room, printId }) {
           <p><b>ĐẠI DIỆN BÊN B</b></p>
           <div style={{ height: '70px' }}></div>
           <p><b>{tenant.name}</b></p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TenantDetailModal({ tenant, data, onClose }) {
+  const memberships = (data.memberships || []).filter(m => m.tenantId === tenant.id).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const activeMembership = memberships.find(m => m.status === 'active') || memberships[0];
+  const contract = activeMembership ? (data.contracts || []).find(c => c.id === activeMembership.contractId) : null;
+  const room = activeMembership ? (data.rooms || []).find(r => r.id === activeMembership.roomId) : null;
+  const receipts = contract ? (data.receipts || []).filter(r => r.contractId === contract.id).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : [];
+  const currentReceipt = receipts.find(r => r.month === INITIAL_MONTH && r.type === 'monthly');
+  const debt = currentReceipt ? Math.max(0, Number(currentReceipt.total || 0) - Number(currentReceipt.paidAmount || 0)) : 0;
+  const timeline = [
+    { date: tenant.createdAt, title: 'Tạo khách', detail: tenant.name },
+    ...memberships.map(m => ({ date: m.joinedDate || m.createdAt, title: 'Vào ở', detail: `P${m.roomId} - ${m.role === 'primary' ? 'Đại diện' : 'Ở cùng'}` })),
+    ...(contract ? [{ date: contract.signedDate || contract.createdAt, title: 'Ký hợp đồng', detail: `${formatBusinessDate(contract.startDate)} → ${formatBusinessDate(contract.endDate)}` }] : []),
+    ...receipts.filter(r => Number(r.paidAmount || 0) > 0).map(r => ({ date: r.paidDate || r.createdAt, title: `Thanh toán ${r.month}`, detail: formatMoney(r.paidAmount || 0) })),
+    ...(memberships.filter(m => m.leftDate).map(m => ({ date: m.leftDate, title: 'Rời phòng', detail: `P${m.roomId}` })))
+  ].filter(i => i.date).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '820px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2 style={{ fontSize: '26px' }}>{tenant.name}</h2>
+            <p className="muted">{tenant.phone || 'Chưa có SĐT'} • CCCD {tenant.cccd || 'Chưa cập nhật'}</p>
+          </div>
+          <button className="secondary-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="detail-body-v2 stack" style={{ gap: '16px' }}>
+          <div className="tenant-detail-grid">
+            <div className="op-card">
+              <h3 className="op-card-title">Cư trú</h3>
+              <p className="op-value">P{activeMembership?.roomId || '—'}</p>
+              <p className="op-label">{activeMembership?.status === 'active' ? 'Đang ở' : 'Đã rời'} • {activeMembership?.role === 'primary' ? 'Đại diện' : 'Ở cùng'}</p>
+            </div>
+            <div className="op-card">
+              <h3 className="op-card-title">Hợp đồng</h3>
+              <p className="op-value">{contract ? `${formatBusinessDate(contract.startDate)} → ${formatBusinessDate(contract.endDate)}` : isOwnerOccupiedRoom(room) ? 'Chủ nhà ở' : 'Chưa có'}</p>
+              <p className="op-label">{contract ? calculateRentalDuration(contract.startDate, contract.endDate) : 'Không áp dụng'}</p>
+            </div>
+            <div className="op-card">
+              <h3 className="op-card-title">Thanh toán</h3>
+              <p className="op-value" style={{ color: debt > 0 ? 'var(--danger)' : 'var(--success)' }}>{debt > 0 ? formatMoney(debt) : 'Không nợ'}</p>
+              <p className="op-label">{currentReceipt ? `Phiếu ${currentReceipt.month}` : 'Chưa có phiếu tháng này'}</p>
+            </div>
+            <div className="op-card">
+              <h3 className="op-card-title">Ra vào</h3>
+              <p className="op-value">{tenant.licensePlate || 'Chưa có biển số'}</p>
+              <p className="op-label">Vân tay: {tenant.fingerprintCode || 'Chưa đăng ký'} • {tenant.fingerprintStatus || 'Chưa đăng ký'}</p>
+            </div>
+          </div>
+          <div className="op-card">
+            <h3 className="op-card-title">Timeline</h3>
+            {timeline.map((item, idx) => (
+              <div key={`${item.title}-${idx}`} className="tenant-timeline-row">
+                <span>{formatDisplayDate(String(item.date || '').slice(0, 10))}</span>
+                <b>{item.title}</b>
+                <em>{item.detail}</em>
+              </div>
+            ))}
+            {!timeline.length && <p className="muted small">Chưa có lịch sử hoạt động.</p>}
+          </div>
         </div>
       </div>
     </div>
