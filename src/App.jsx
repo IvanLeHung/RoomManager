@@ -1022,6 +1022,7 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
               <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>QUYẾT TOÁN CÔNG NỢ</h3>
               <div className="stack" style={{ gap: '5px' }}>
                 <div className="data-row"><span>Tiền phòng phát sinh ({report.roomChargeDays || 0} ngày)</span><b>{formatMoney(report.proratedRent || 0)}</b></div>
+                <div className="data-row"><span>Dịch vụ phát sinh ({report.roomChargeDays || 0} ngày)</span><b>{formatMoney(report.proratedFixedServices || 0)}</b></div>
                 <div className="data-row"><span>Tiền điện</span><b>{formatMoney(report.electricAmount || 0)}</b></div>
                 <div className="data-row"><span>Tiền nước</span><b>{formatMoney(report.waterAmount || 0)}</b></div>
                 <div className="data-row"><span>Phí khác</span><b>{formatMoney(Number(report.unpaidRent || 0) + Number(report.cleaningFee || 0) + Number(report.damageFee || 0) + Number(report.otherFee || 0))}</b></div>
@@ -1506,6 +1507,7 @@ function AppMain() {
           'Tiền nước': rep.waterAmount,
           'Số ngày tính tiền phòng': rep.roomChargeDays || '',
           'Tiền phòng phát sinh': rep.proratedRent || 0,
+          'Dịch vụ phát sinh': rep.proratedFixedServices || 0,
           'Tiền phòng/phí còn nợ khác': rep.unpaidRent,
           'Phí hư hỏng': rep.damageFee || 0,
           'Phí vệ sinh': rep.cleaningFee || 0,
@@ -1800,7 +1802,7 @@ function AppMain() {
                   type: 'move_out_settlement',
                   month: report.actualEndDate.split('-').slice(0, 2).reverse().join('/'),
                   rent: report.proratedRent || 0,
-                  fixedServices: 0,
+                  fixedServices: report.proratedFixedServices || 0,
                   electricOld: report.electricOld,
                   electricNew: report.electricNew,
                   electricUsed: report.electricUsed,
@@ -3725,10 +3727,14 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const endDate = new Date(form.actualEndDate);
   const roomChargeDays = Number.isNaN(endDate.getTime()) ? 0 : endDate.getDate();
   const monthlyRent = Number(contract.rent || room.rent || 0);
+  const occupantCount = getContractOccupantCount(data, contract);
+  const monthlyFixedServices = fixedServiceTotal(room, occupantCount);
   const proratedRent = Math.round((monthlyRent / 30) * roomChargeDays);
+  const proratedFixedServices = Math.round((monthlyFixedServices / 30) * roomChargeDays);
   const dailyRent = monthlyRent / 30;
+  const dailyFixedServices = monthlyFixedServices / 30;
 
-  const totalIncurred = proratedRent + electricAmount + waterAmount + Number(form.unpaidRent) +
+  const totalIncurred = proratedRent + proratedFixedServices + electricAmount + waterAmount + Number(form.unpaidRent) +
                         Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
   
   const deposit = Number(contract.deposit || 0);
@@ -3768,8 +3774,12 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   <label>Người đứng tên <input value={tenant.name} readOnly style={{ background: '#f1f5f9' }} /></label>
                   <label>Số ngày sử dụng <input value={`${roomChargeDays} ngày`} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                   <label>Tiền phòng phát sinh <input value={formatMoney(proratedRent)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
+                  <label>Dịch vụ phát sinh <input value={formatMoney(proratedFixedServices)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                   <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
                     Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / 30 x {roomChargeDays} ngày = {formatMoney(proratedRent)}
+                  </p>
+                  <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
+                    Dịch vụ cố định: {formatMoney(monthlyFixedServices)}/tháng ({occupantCount} người) / 30 x {roomChargeDays} ngày = {formatMoney(proratedFixedServices)}
                   </p>
                   <label style={{ gridColumn: 'span 2' }}>Tiền cọc đang giữ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                 </div>
@@ -3822,6 +3832,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 <h3 className="summary-label-main">Kết quả tất toán</h3>
                 
                 <div className="summary-row"><span>Tiền phòng phát sinh ({roomChargeDays} ngày)</span><b>{formatMoney(proratedRent)}</b></div>
+                <div className="summary-row"><span>Dịch vụ phát sinh ({roomChargeDays} ngày)</span><b>{formatMoney(proratedFixedServices)}</b></div>
                 <div className="summary-row"><span>Tiền điện</span><b>{formatMoney(electricAmount)}</b></div>
                 <div className="summary-row"><span>Tiền nước</span><b>{formatMoney(waterAmount)}</b></div>
                 <div className="summary-row"><span>Phí khác</span><b>{formatMoney(Number(form.unpaidRent || 0) + Number(form.cleaningFee || 0) + Number(form.damageFee || 0) + Number(form.otherFee || 0))}</b></div>
@@ -3871,9 +3882,12 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         id: uid('moveout'),
                         unpaidRent: Number(form.unpaidRent || 0),
                         monthlyRent,
+                        monthlyFixedServices,
                         roomChargeDays,
                         dailyRent,
+                        dailyFixedServices,
                         proratedRent,
+                        proratedFixedServices,
                         cleaningFee: Number(form.cleaningFee || 0),
                         damageFee: Number(form.damageFee || 0),
                         otherFee: Number(form.otherFee || 0),
