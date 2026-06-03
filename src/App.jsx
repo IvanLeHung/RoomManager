@@ -258,17 +258,26 @@ function getDaysUntil(dateStr) {
 }
 
 function getRoomStatusInfo(data, roomId) {
+  const room = (data.rooms || []).find(r => r.id === roomId);
+  const ownerOccupied = isOwnerOccupiedRoom(room);
   const contract = (data.contracts || []).find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'));
-  if (!contract) return { label: 'Trống', color: 'gray', contract: null };
+  const hasActiveMembers = (data.memberships || []).some(m => m.roomId === roomId && m.status === 'active');
+  if (!contract && hasActiveMembers) return { label: 'Đang ở', color: 'green', contract: null, ownerOccupied };
+  if (!contract) return { label: 'Trống', color: 'gray', contract: null, ownerOccupied };
   if (contract.status === 'notice') return { label: 'Báo chuyển', color: 'orange', contract };
   if (contract.status === 'moving_out') return { label: 'Đang tất toán', color: 'blue', contract };
-  return { label: 'Đang ở', color: 'green', contract };
+  return { label: 'Đang ở', color: 'green', contract, ownerOccupied };
+}
+
+function isOwnerOccupiedRoom(room) {
+  if (!room) return false;
+  return room.id === '202' || String(room.note || '').toLowerCase().includes('chủ nhà');
 }
 
 function getDashboardStats(data, currentMonth) {
   const totalRooms = data.rooms.length;
   const activeContracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
-  const occupiedRooms = activeContracts.length;
+  const occupiedRooms = (data.rooms || []).filter(r => getRoomStatusInfo(data, r.id).label !== 'Trống').length;
   const vacantRooms = totalRooms - occupiedRooms;
   
   const expiringContracts = activeContracts.filter(c => {
@@ -1219,6 +1228,11 @@ function AppMain() {
         'Hệ thống sẽ chốt công nợ, cập nhật trạng thái hợp đồng, kết thúc cư trú và ghi lịch sử trả phòng.'
       )) setSettlingRoom({ room, contract: activeContract });
     } else if (type === 'view_contract') {
+      const roomForContract = roomOrTenant?.roomId ? data.rooms.find(r => r.id === roomOrTenant.roomId) : data.rooms.find(r => r.id === roomOrTenant?.id);
+      if (isOwnerOccupiedRoom(roomForContract)) {
+        alert('Phòng chủ nhà ở không cần hợp đồng.');
+        return;
+      }
       const tenantMembership = roomOrTenant && !roomOrTenant.roomId
         ? (data.memberships || []).find(m => m.tenantId === roomOrTenant.id && m.status === 'active')
         : null;
@@ -2450,8 +2464,12 @@ function RoomsTab({ data, onAction, onSelect, query }) {
   return (
     <div className="rooms-grid">
       {filteredRooms.map(room => {
-        const { label, color, contract } = getRoomStatusInfo(data, room.id);
-        const primaryTenant = contract ? getPrimaryTenantByContract(data, contract.id) : null;
+        const { label, color, contract, ownerOccupied } = getRoomStatusInfo(data, room.id);
+        const roomActiveMember = (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active' && m.role === 'primary')
+          || (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active');
+        const primaryTenant = contract
+          ? (getPrimaryTenantByContract(data, contract.id) || (roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null))
+          : roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null;
         const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
         return (
           <div key={room.id} className="room-card-liquid" onClick={() => onSelect(room)}>
@@ -2460,7 +2478,7 @@ function RoomsTab({ data, onAction, onSelect, query }) {
               {primaryTenant ? (
                 <div className="tenant-block-primary">
                   <p className="tenant-name-main">{primaryTenant.name}</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}><p className="tenant-sub">{formatMoney(contract.rent)}</p>{currentReceipt && <span className={`status-badge-liquid ${currentReceipt.status === 'Đã thanh toán' ? 'active' : currentReceipt.status === 'Nợ một phần' ? 'notice' : 'debt'}`} style={{ fontSize: '10px' }}>{currentReceipt.status}</span>}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}><p className="tenant-sub">{ownerOccupied && !contract ? 'Chủ nhà ở' : formatMoney(contract?.rent || room.rent || 0)}</p>{currentReceipt && <span className={`status-badge-liquid ${currentReceipt.status === 'Đã thanh toán' ? 'active' : currentReceipt.status === 'Nợ một phần' ? 'notice' : 'debt'}`} style={{ fontSize: '10px' }}>{currentReceipt.status}</span>}</div>
                 </div>
               ) : <p className="muted">Phòng đang trống</p>}
             </div>
@@ -2471,7 +2489,7 @@ function RoomsTab({ data, onAction, onSelect, query }) {
                   <button className="secondary-btn" title="Xem lịch sử" onClick={(e) => { e.stopPropagation(); onAction('view_history', room); }}>📜</button>
                 </>
               ) : (
-                <><button className="secondary-btn" title="Xem hợp đồng" onClick={(e) => { e.stopPropagation(); onAction('view_contract', room); }}>📄</button><button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('create_receipt', room); }}>{currentReceipt ? 'Sửa phiếu' : 'Lập phiếu'}</button></>
+                <><button className="secondary-btn" title={ownerOccupied && !contract ? 'Không cần hợp đồng' : 'Xem hợp đồng'} onClick={(e) => { e.stopPropagation(); ownerOccupied && !contract ? onSelect(room) : onAction('view_contract', room); }}>📄</button>{!ownerOccupied && <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('create_receipt', room); }}>{currentReceipt ? 'Sửa phiếu' : 'Lập phiếu'}</button>}</>
               )}
             </div>
           </div>
@@ -2939,10 +2957,16 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [historyFilter, setHistoryFilter] = useState('all');
   const [showMoreActions, setShowMoreActions] = useState(false);
-  const { label, color, contract } = getRoomStatusInfo(data, room.id);
-  const primaryTenant = contract ? getPrimaryTenantByContract(data, contract.id) : null;
+  const { label, color, contract, ownerOccupied } = getRoomStatusInfo(data, room.id);
+  const roomActiveMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
+  const roomPrimaryMember = roomActiveMembers.find(m => m.role === 'primary') || roomActiveMembers[0];
+  const primaryTenant = contract
+    ? (getPrimaryTenantByContract(data, contract.id) || (roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null))
+    : roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null;
   const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
-  const allMembers = contract ? (data.memberships || []).filter(m => m.contractId === contract.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) })) : [];
+  const allMembers = contract
+    ? (data.memberships || []).filter(m => m.contractId === contract.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }))
+    : (data.memberships || []).filter(m => m.roomId === room.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }));
   const activeMembers = allMembers.filter(m => m.status === 'active');
   const roomReceipts = (data.receipts || []).filter(r => r.roomId === room.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const roomTransfers = (data.roomTransfers || []).filter(t => t.oldRoomId === room.id || t.newRoomId === room.id);
@@ -2974,15 +2998,15 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
     today.setHours(0, 0, 0, 0);
     return Math.ceil((date.getTime() - today.getTime()) / 86400000);
   };
-  const contractStartValid = !contract || !isInvalidContractDate(contract.startDate);
-  const contractEndValid = !contract || !isInvalidContractDate(contract.endDate);
-  const contractSignedValid = !contract || !isInvalidContractDate(contract.signedDate);
-  const contractDateValid = !contract || isValidContractRange(contract.startDate, contract.endDate);
-  const contractRequiredDatesValid = !contract || (contractSignedValid && contractDateValid);
+  const contractStartValid = !contract || ownerOccupied || !isInvalidContractDate(contract.startDate);
+  const contractEndValid = !contract || ownerOccupied || !isInvalidContractDate(contract.endDate);
+  const contractSignedValid = !contract || ownerOccupied || !isInvalidContractDate(contract.signedDate);
+  const contractDateValid = !contract || ownerOccupied || isValidContractRange(contract.startDate, contract.endDate);
+  const contractRequiredDatesValid = ownerOccupied || !contract || (contractSignedValid && contractDateValid);
   const contractDuration = contract ? calculateRentalDuration(contract.startDate, contract.endDate) : '—';
   const contractDaysLeft = dateDiffDays(contract?.endDate);
-  const contractStatus = !contract ? 'Chưa có hợp đồng' : !contractRequiredDatesValid ? 'Thiếu ngày hợp lệ' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
-  const contractStatusClass = !contract ? 'vacant' : !contractRequiredDatesValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
+  const contractStatus = ownerOccupied ? 'Chủ nhà ở - không cần hợp đồng' : !contract ? 'Chưa có hợp đồng' : !contractRequiredDatesValid ? 'Thiếu ngày hợp lệ' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
+  const contractStatusClass = ownerOccupied ? 'active' : !contract ? 'vacant' : !contractRequiredDatesValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
   const receiptStatus = !currentReceipt ? 'Chưa có phiếu' : isReceiptOverdue ? 'Quá hạn' : currentReceipt.status;
   const receiptStatusClass = receiptStatus === 'Đã thanh toán' ? 'active' : receiptStatus === 'Nợ một phần' ? 'notice' : receiptStatus === 'Quá hạn' ? 'debt' : 'debt';
   const occupantLimit = room.maxPeople || room.capacity || '—';
@@ -3141,7 +3165,23 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
     if (activeTab === 'overview') return renderOverview();
     if (activeTab === 'contract') return (
       <div className="stack" style={{ gap: '16px' }}>
-        {contract ? (
+        {ownerOccupied ? (
+          <>
+            <div className="op-card">
+              <h3 className="op-card-title">Thông tin cư trú</h3>
+              <div className="op-grid">
+                {renderMetric('Loại phòng', 'Chủ nhà ở')}
+                {renderMetric('Trạng thái', 'Đang ở')}
+                {renderMetric('Hợp đồng', 'Không áp dụng')}
+                {renderMetric('Số người ở', `${activeMembers.length}/${occupantLimit}`)}
+                {renderMetric('Ghi chú', room.note || 'Chủ nhà ở, không cần hợp đồng thuê')}
+              </div>
+            </div>
+            <div className="warning-box" style={{ background: '#ecfdf5', borderColor: '#10b981', color: '#065f46' }}>
+              Phòng {room.id} là phòng chủ nhà ở nên không yêu cầu ngày ký, ngày bắt đầu, ngày hết hạn hoặc phụ lục hợp đồng.
+            </div>
+          </>
+        ) : contract ? (
           <>
             <div className="op-card">
               <h3 className="op-card-title">Thông tin hợp đồng</h3>
@@ -3319,7 +3359,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
               <span className={`status-badge-liquid ${color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{label}</span>
               {receiptDebt > 0 && <span className="status-badge-liquid debt">Nợ {formatMoney(receiptDebt)}</span>}
             </div>
-            <p className="muted">{primaryTenant ? `${primaryTenant.name} • ${primaryTenant.phone}` : 'Chưa có hợp đồng hiện tại'}</p>
+            <p className="muted">{primaryTenant ? `${primaryTenant.name} • ${primaryTenant.phone}` : ownerOccupied ? 'Chủ nhà ở, không cần hợp đồng' : 'Chưa có hợp đồng hiện tại'}</p>
           </div>
           <button className="secondary-btn" onClick={onClose}>✕</button>
         </div>
@@ -3342,22 +3382,24 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
               <><button className="primary-btn" style={{ flex: 1 }} onClick={() => onAction('add_tenant')}>+ Thuê mới</button><button className="secondary-btn" style={{ flex: 1 }} onClick={() => onAction('view_history')}>📜 Xem lịch sử thuê</button></>
             ) : (
               <>
-                <button className="primary-btn" onClick={() => onAction('create_receipt')}>⚡ Lập phiếu tháng</button>
+                {!ownerOccupied && <button className="primary-btn" onClick={() => onAction('create_receipt')}>⚡ Lập phiếu tháng</button>}
                 {currentReceipt && <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => onAction('pay_receipt', currentReceipt)}>Ghi nhận thanh toán</button>}
                 {currentReceipt && <button className="secondary-btn" onClick={() => onAction('view_qr', currentReceipt)}>Xem QR</button>}
                 <div style={{ position: 'relative' }}>
                   <button className="secondary-btn" onClick={() => setShowMoreActions(!showMoreActions)}>⋯ Thao tác khác</button>
                   {showMoreActions && (
                     <div className="more-actions-menu">
-                      <button onClick={() => { setShowMoreActions(false); onAction('edit_contract'); }}>Sửa hợp đồng</button>
-                      <button onClick={() => { setShowMoreActions(false); onAction('renew_contract'); }}>Gia hạn hợp đồng</button>
-                      <button className="warning" onClick={() => { setShowMoreActions(false); onAction('transfer_room'); }}>Đổi phòng</button>
-                      <button className="warning" onClick={() => { setShowMoreActions(false); onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice'); }}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : 'Báo chuyển'}</button>
-                      <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>Xuất PDF</button>
-                      <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>In hợp đồng</button>
-                      <button onClick={() => { setShowMoreActions(false); onAction('print_appendix'); }}>In phụ lục</button>
-                      <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Tất toán</button>
-                      <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Kết thúc thuê</button>
+                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('edit_contract'); }}>Sửa hợp đồng</button>}
+                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('renew_contract'); }}>Gia hạn hợp đồng</button>}
+                      {!ownerOccupied && <button className="warning" onClick={() => { setShowMoreActions(false); onAction('transfer_room'); }}>Đổi phòng</button>}
+                      {!ownerOccupied && <button className="warning" onClick={() => { setShowMoreActions(false); onAction(label === 'Báo chuyển' ? 'cancel_notice' : 'notice'); }}>{label === 'Báo chuyển' ? 'Hủy báo chuyển' : 'Báo chuyển'}</button>}
+                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>Xuất PDF</button>}
+                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>In hợp đồng</button>}
+                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('print_appendix'); }}>In phụ lục</button>}
+                      {!ownerOccupied && <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Tất toán</button>}
+                      {!ownerOccupied && <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Kết thúc thuê</button>}
+                      {ownerOccupied && <button onClick={() => { setShowMoreActions(false); setActiveTab('residents'); }}>Quản lý người ở</button>}
+                      {ownerOccupied && <button onClick={() => { setShowMoreActions(false); setActiveTab('history'); }}>Xem lịch sử</button>}
                     </div>
                   )}
                 </div>
