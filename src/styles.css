@@ -198,6 +198,158 @@ h1, h2, h3, h4 {
   transition: transform 0.2s ease;
 }
 
+.dashboard-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-filter-bar button {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #dbe4f0;
+  background: #f8fafc;
+  color: var(--text-secondary);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dashboard-filter-bar button.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.dashboard-filter-bar input,
+.dashboard-filter-bar select {
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid #dbe4f0;
+  padding: 0 10px;
+}
+
+.dashboard-filter-bar span {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.dashboard-kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.stat-card-liquid.kpi {
+  padding: 18px;
+  border-left: 4px solid #94a3b8;
+  cursor: default;
+}
+
+.stat-card-liquid.kpi .stat-value {
+  font-size: 24px;
+}
+
+.stat-card-liquid.kpi.money { border-left-color: #2563eb; }
+.stat-card-liquid.kpi.success { border-left-color: var(--success); }
+.stat-card-liquid.kpi.danger { border-left-color: var(--danger); }
+.stat-card-liquid.kpi.net { border-left-color: #8b5cf6; }
+.stat-card-liquid.kpi.rooms { border-left-color: #22c55e; cursor: pointer; }
+.stat-card-liquid.kpi.vacant { border-left-color: #64748b; }
+.stat-card-liquid.kpi.tenant { border-left-color: #06b6d4; }
+.stat-card-liquid.kpi.warning { border-left-color: var(--warning); }
+
+.mini-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 108px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.chart-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chart-bars i {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  min-width: 4px;
+}
+
+.chart-bars .income,
+.chart-legend .income { background: #22c55e; }
+.chart-bars .expense,
+.chart-legend .expense { background: #ef4444; }
+.chart-bars .net-positive,
+.chart-legend .net-positive { background: #2563eb; }
+.chart-bars .net-negative { background: #f59e0b; }
+
+.chart-row b {
+  text-align: right;
+  color: var(--text-main);
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.chart-legend span {
+  width: 16px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.cashflow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cashflow-list div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.cashflow-list div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.cashflow-list span {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.cashflow-list b.success { color: var(--success); }
+.cashflow-list b.danger { color: var(--danger); }
+
 .stat-label {
   font-size: 13px;
   font-weight: 600;
