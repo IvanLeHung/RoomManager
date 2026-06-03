@@ -2291,14 +2291,78 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
 }
 
 function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
-  const stats = getDashboardStats(data, INITIAL_MONTH);
-  
-  const recentRooms = [...data.rooms].slice(-5).reverse();
-  const recentReceipts = [...(data.receipts || [])].slice(-5).reverse();
-  const recentMoveOuts = (data.moveOutReports || []).slice(0, 5);
+  const today = new Date();
+  const [periodMode, setPeriodMode] = useState('month');
+  const [periodMonth, setPeriodMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
+  const [periodQuarter, setPeriodQuarter] = useState(`${today.getFullYear()}-Q${Math.floor(today.getMonth() / 3) + 1}`);
+  const [periodYear, setPeriodYear] = useState(String(today.getFullYear()));
+  const [customRange, setCustomRange] = useState({
+    start: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
+    end: today.toISOString().slice(0, 10)
+  });
 
+  const period = useMemo(() => {
+    if (periodMode === 'month') {
+      const [year, month] = periodMonth.split('-').map(Number);
+      return { start: new Date(year, month - 1, 1), end: new Date(year, month, 0), label: `Tháng ${String(month).padStart(2, '0')}/${year}` };
+    }
+    if (periodMode === 'quarter') {
+      const [yearText, qText] = periodQuarter.split('-Q');
+      const year = Number(yearText);
+      const quarter = Number(qText);
+      const startMonth = (quarter - 1) * 3;
+      return { start: new Date(year, startMonth, 1), end: new Date(year, startMonth + 3, 0), label: `Quý ${quarter}/${year}` };
+    }
+    if (periodMode === 'year') {
+      const year = Number(periodYear);
+      return { start: new Date(year, 0, 1), end: new Date(year, 11, 31), label: `Năm ${year}` };
+    }
+    return { start: parseDateFlexible(customRange.start) || new Date(), end: parseDateFlexible(customRange.end) || new Date(), label: `${formatDisplayDate(customRange.start)} - ${formatDisplayDate(customRange.end)}` };
+  }, [periodMode, periodMonth, periodQuarter, periodYear, customRange]);
+
+  const inPeriod = (value) => {
+    const date = parseDateFlexible(value) || new Date(value || 0);
+    if (!date || Number.isNaN(date.getTime())) return false;
+    date.setHours(0, 0, 0, 0);
+    const start = new Date(period.start); start.setHours(0, 0, 0, 0);
+    const end = new Date(period.end); end.setHours(23, 59, 59, 999);
+    return date >= start && date <= end;
+  };
+
+  const monthKey = (date) => `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+  const periodMonthKeys = [];
+  const cursor = new Date(period.start.getFullYear(), period.start.getMonth(), 1);
+  const endCursor = new Date(period.end.getFullYear(), period.end.getMonth(), 1);
+  while (cursor <= endCursor) {
+    periodMonthKeys.push(monthKey(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  const stats = getDashboardStats(data, INITIAL_MONTH);
+  const periodReceipts = (data.receipts || []).filter(r => periodMonthKeys.includes(r.month) || inPeriod(r.createdAt));
+  const periodExpenses = (data.expensePayments || []).filter(e => periodMonthKeys.includes(e.month) || inPeriod(e.date || e.createdAt));
+  const periodContracts = (data.contracts || []).filter(c => inPeriod(c.createdAt || c.startDate));
+  const periodMoveOuts = (data.moveOutReports || []).filter(r => inPeriod(r.actualEndDate || r.createdAt));
+
+  const totalRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.total || 0), 0);
+  const paidRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
+  const unpaidRevenue = Math.max(0, totalRevenue - paidRevenue);
+  const expenses = periodExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  const netCash = paidRevenue - expenses;
+  const collectionRate = totalRevenue > 0 ? (paidRevenue / totalRevenue) * 100 : 0;
   const occupancyRate = stats.totalRooms > 0 ? (stats.occupiedRooms / stats.totalRooms) * 100 : 0;
-  const paymentRate = stats.totalReceipts > 0 ? ((stats.totalReceipts - stats.unpaidReceipts.length) / stats.totalReceipts) * 100 : 0;
+  const recentReceipts = [...periodReceipts].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
+  const topDebtRooms = [...periodReceipts]
+    .map(r => ({ ...r, debt: Math.max(0, Number(r.total || 0) - Number(r.paidAmount || 0)) }))
+    .filter(r => r.debt > 0)
+    .sort((a, b) => b.debt - a.debt)
+    .slice(0, 5);
+  const chartRows = periodMonthKeys.map(key => {
+    const income = periodReceipts.filter(r => r.month === key).reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
+    const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    return { key, income, expense: out, net: income - out };
+  });
+  const chartMax = Math.max(1, ...chartRows.flatMap(r => [r.income, r.expense, Math.abs(r.net)]));
 
   return (
     <div className="dashboard-container stack">
@@ -2307,7 +2371,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
           <h2 style={{ fontSize: '24px' }}>Tổng quan hệ thống</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSyncing ? 'var(--warning)' : 'var(--success)' }}></span>
-            {isSyncing ? 'Đang đồng bộ...' : lastSynced && cloudEnabled ? `Đã lưu Cloud: ${lastSynced.toLocaleTimeString()}` : 'Chế độ Local'}
+            {isSyncing ? 'Đang đồng bộ...' : lastSynced ? `Đã lưu: ${lastSynced.toLocaleTimeString()}` : 'Chế độ Local'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -2317,48 +2381,46 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat-card-liquid" onClick={() => onRoomClick('')} style={{ cursor: 'pointer' }}>
-          <p className="stat-label">Tổng số phòng</p>
-          <p className="stat-value">{stats.totalRooms}</p>
-          <div className="stat-progress-bg"><div className="stat-progress-bar" style={{ width: '100%' }}></div></div>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid var(--success)' }}>
-          <p className="stat-label">Phòng đang ở</p>
-          <p className="stat-value">{stats.occupiedRooms}</p>
-          <div className="stat-progress-bg"><div className="stat-progress-bar" style={{ width: `${occupancyRate}%`, background: 'var(--success)' }}></div></div>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid var(--text-muted)' }}>
-          <p className="stat-label">Phòng trống</p>
-          <p className="stat-value">{stats.vacantRooms}</p>
-          <div className="stat-progress-bg"><div className="stat-progress-bar" style={{ width: `${100 - occupancyRate}%`, background: 'var(--text-muted)' }}></div></div>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid var(--warning)' }}>
-          <p className="stat-label">Sắp hết hạn</p>
-          <p className="stat-value">{stats.expiringContracts.length}</p>
-          <p className="stat-note">Trong 30 ngày tới</p>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid #8b5cf6' }}>
-          <p className="stat-label">Tổng người thuê</p>
-          <p className="stat-value">{stats.currentTenants}</p>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid #06b6d4' }}>
-          <p className="stat-label">Phiếu tháng {INITIAL_MONTH}</p>
-          <p className="stat-value">{stats.totalReceipts}</p>
-          <div className="stat-progress-bg"><div className="stat-progress-bar" style={{ width: `${paymentRate}%`, background: '#06b6d4' }}></div></div>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid var(--danger)' }}>
-          <p className="stat-label">Chưa thanh toán</p>
-          <p className="stat-value">{stats.unpaidReceipts.length}</p>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid #f43f5e' }}>
-          <p className="stat-label">Tổng nợ còn lại</p>
-          <p className="stat-value" style={{ fontSize: '20px' }}>{formatMoney(stats.totalDebt)}</p>
-        </div>
+      <div className="dashboard-filter-bar">
+        {['month', 'quarter', 'year', 'custom'].map(mode => <button key={mode} className={periodMode === mode ? 'active' : ''} onClick={() => setPeriodMode(mode)}>{mode === 'month' ? 'Tháng' : mode === 'quarter' ? 'Quý' : mode === 'year' ? 'Năm' : 'Tùy chỉnh'}</button>)}
+        {periodMode === 'month' && <input type="month" value={periodMonth} onChange={e => setPeriodMonth(e.target.value)} />}
+        {periodMode === 'quarter' && <select value={periodQuarter} onChange={e => setPeriodQuarter(e.target.value)}>{[0, 1, 2].flatMap(offset => [1, 2, 3, 4].map(q => `${today.getFullYear() - offset}-Q${q}`)).map(v => <option key={v} value={v}>{v.replace('-Q', ' - Quý ')}</option>)}</select>}
+        {periodMode === 'year' && <select value={periodYear} onChange={e => setPeriodYear(e.target.value)}>{[0, 1, 2, 3].map(offset => <option key={today.getFullYear() - offset}>{today.getFullYear() - offset}</option>)}</select>}
+        {periodMode === 'custom' && <><input type="date" value={customRange.start} onChange={e => setCustomRange({...customRange, start: e.target.value})} /><input type="date" value={customRange.end} onChange={e => setCustomRange({...customRange, end: e.target.value})} /></>}
+        <span>{period.label}</span>
+      </div>
+
+      <div className="stats-grid dashboard-kpi-grid">
+        <div className="stat-card-liquid kpi money"><p className="stat-label">Tổng doanh thu</p><p className="stat-value">{formatMoney(totalRevenue)}</p><p className="stat-note">{periodReceipts.length} phiếu</p></div>
+        <div className="stat-card-liquid kpi success"><p className="stat-label">Đã thu</p><p className="stat-value">{formatMoney(paidRevenue)}</p><p className="stat-note">Tỷ lệ thu {collectionRate.toFixed(0)}%</p></div>
+        <div className="stat-card-liquid kpi danger"><p className="stat-label">Chưa thu</p><p className="stat-value">{formatMoney(unpaidRevenue)}</p><p className="stat-note">Công nợ trong kỳ</p></div>
+        <div className="stat-card-liquid kpi net"><p className="stat-label">Dòng tiền ròng</p><p className="stat-value">{formatMoney(netCash)}</p><p className="stat-note">Đã thu - chi phí</p></div>
+        <div className="stat-card-liquid kpi rooms" onClick={() => onRoomClick('')}><p className="stat-label">Phòng đang ở</p><p className="stat-value">{stats.occupiedRooms}/{stats.totalRooms}</p><p className="stat-note">Lấp đầy {occupancyRate.toFixed(0)}%</p></div>
+        <div className="stat-card-liquid kpi vacant"><p className="stat-label">Phòng trống</p><p className="stat-value">{stats.vacantRooms}</p><p className="stat-note">Sẵn sàng cho thuê</p></div>
+        <div className="stat-card-liquid kpi tenant"><p className="stat-label">Thuê mới / Rời đi</p><p className="stat-value">{periodContracts.length} / {periodMoveOuts.length}</p><p className="stat-note">Trong kỳ</p></div>
+        <div className="stat-card-liquid kpi warning"><p className="stat-label">HĐ sắp hết hạn</p><p className="stat-value">{stats.expiringContracts.length}</p><p className="stat-note">Trong 30 ngày tới</p></div>
       </div>
 
       <div className="dashboard-grid-main">
         <div className="stack" style={{ gap: '24px' }}>
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">📈 Doanh thu / Chi phí / Lợi nhuận</h3>
+            <div className="mini-chart">
+              {chartRows.map(row => (
+                <div key={row.key} className="chart-row">
+                  <span>{row.key}</span>
+                  <div className="chart-bars">
+                    <i className="income" style={{ width: `${Math.max(4, row.income / chartMax * 100)}%` }} title={`Thu ${formatMoney(row.income)}`}></i>
+                    <i className="expense" style={{ width: `${Math.max(4, row.expense / chartMax * 100)}%` }} title={`Chi ${formatMoney(row.expense)}`}></i>
+                    <i className={row.net >= 0 ? 'net-positive' : 'net-negative'} style={{ width: `${Math.max(4, Math.abs(row.net) / chartMax * 100)}%` }} title={`Ròng ${formatMoney(row.net)}`}></i>
+                  </div>
+                  <b>{formatMoney(row.net)}</b>
+                </div>
+              ))}
+            </div>
+            <div className="chart-legend"><span className="income"></span>Tiền vào <span className="expense"></span>Tiền ra <span className="net-positive"></span>Ròng</div>
+          </div>
+
           {/* Cảnh báo */}
           <div className="widget liquid-glass">
             <h3 className="form-section-title">⚠️ Cảnh báo & Nhắc nhở</h3>
@@ -2384,6 +2446,12 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
               {stats.vacantRooms > 0 && (
                 <div className="alert-item secondary">
                   <span>✨ Đang có {stats.vacantRooms} phòng trống sẵn sàng cho thuê.</span>
+                </div>
+              )}
+              {topDebtRooms.length > 0 && (
+                <div className="alert-item danger">
+                  <span>📌 Top nợ: </span>
+                  <b>{topDebtRooms.map(r => `P${r.roomId} ${formatMoney(r.debt)}`).join(', ')}</b>
                 </div>
               )}
               {stats.expiringContracts.length === 0 && stats.unpaidReceipts.length === 0 && stats.notifyingMoveOut.length === 0 && (
@@ -2421,6 +2489,16 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
         </div>
 
         <div className="stack" style={{ gap: '24px' }}>
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">💵 Dòng tiền</h3>
+            <div className="cashflow-list">
+              <div><span>Tiền vào</span><b className="success">{formatMoney(paidRevenue)}</b></div>
+              <div><span>Tiền ra</span><b className="danger">{formatMoney(expenses)}</b></div>
+              <div><span>Dòng tiền ròng</span><b className={netCash >= 0 ? 'success' : 'danger'}>{formatMoney(netCash)}</b></div>
+              <div><span>Công nợ còn lại</span><b>{formatMoney(unpaidRevenue)}</b></div>
+            </div>
+          </div>
+
           {/* Danh sách nhanh */}
           <div className="widget liquid-glass">
             <h3 className="form-section-title">📅 Gần đây</h3>
