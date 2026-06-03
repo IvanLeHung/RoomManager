@@ -1392,6 +1392,8 @@ function AppMain() {
             'SĐT': t.phone,
             'CCCD': t.cccd,
             'Biển số xe': t.licensePlate || '',
+            'Mã vân tay': t.fingerprintCode || '',
+            'Trạng thái vân tay': t.fingerprintStatus || '',
             'Địa chỉ': t.address || '',
             'Ngày vào': m ? (m.joinedDate || '') : '',
             'Trạng thái': 'Đang ở',
@@ -1516,6 +1518,8 @@ function AppMain() {
           'Tổng phát sinh': rep.totalIncurred,
           'Khách còn phải trả': rep.mustCollect,
           'Cần hoàn cọc': rep.mustRefund,
+          'Cần xóa vân tay': (rep.accessRemovalTasks || []).filter(t => t.status === 'Cần xóa').map(t => `${t.name} (${t.fingerprintCode})`).join(', '),
+          'Biển số xe cần kiểm tra': (rep.accessRemovalTasks || []).map(t => t.licensePlate).filter(Boolean).join(', '),
           'Ghi chú': rep.note || '',
           'Ngày tạo': rep.createdAt ? new Date(rep.createdAt).toLocaleDateString('vi-VN') : ''
         }));
@@ -1530,6 +1534,8 @@ function AppMain() {
             'SĐT': t.phone,
             'CCCD': t.cccd,
             'Biển số xe': t.licensePlate || '',
+            'Mã vân tay': t.fingerprintCode || '',
+            'Trạng thái vân tay': t.fingerprintStatus || '',
             'Phòng cũ': m ? m.roomId : '',
             'Vai trò': m?.role === 'primary' ? 'Người đứng tên' : 'Người ở cùng',
             'Ngày vào': m ? (m.joinedDate || '') : '',
@@ -1786,11 +1792,26 @@ function AppMain() {
       )}
       {settlingRoom && (
         <SettlementModal room={settlingRoom.room} contract={settlingRoom.contract} data={data} bankInfo={bankInfo} onClose={() => setSettlingRoom(null)} onSave={(report) => {
+            const affectedTenants = (data.memberships || [])
+              .filter(m => m.contractId === report.contractId)
+              .map(m => (data.tenants || []).find(t => t.id === m.tenantId))
+              .filter(Boolean);
             setData(old => {
               const updatedContracts = old.contracts.map(c => c.id === report.contractId ? { ...c, status: 'ended', actualEndDate: report.actualEndDate, endedAt: new Date().toISOString() } : c);
               const updatedMemberships = old.memberships.map(m => m.contractId === report.contractId ? { ...m, status: 'ended', leftDate: report.actualEndDate } : m);
               const affectedTenantIds = old.memberships.filter(m => m.contractId === report.contractId).map(m => m.tenantId);
-              const updatedTenants = old.tenants.map(t => affectedTenantIds.includes(t.id) ? { ...t, status: 'moved_out', lastRoomId: report.roomId } : t);
+              const updatedTenants = old.tenants.map(t => affectedTenantIds.includes(t.id) ? { ...t, status: 'moved_out', lastRoomId: report.roomId, fingerprintStatus: t.fingerprintCode ? 'Cần xóa' : (t.fingerprintStatus || 'Chưa đăng ký') } : t);
+              const accessRemovalTasks = old.tenants
+                .filter(t => affectedTenantIds.includes(t.id))
+                .map(t => ({
+                  tenantId: t.id,
+                  name: t.name,
+                  phone: t.phone,
+                  fingerprintCode: t.fingerprintCode || '',
+                  licensePlate: t.licensePlate || t.vehicle || '',
+                  action: t.fingerprintCode ? 'Xóa vân tay khỏi máy chấm/khóa cửa' : 'Không có vân tay đã lưu',
+                  status: t.fingerprintCode ? 'Cần xóa' : 'Không cần xử lý'
+                }));
               
               // Tạo phiếu thu chốt trả phòng nếu còn nợ
               let newReceipts = [...(old.receipts || [])];
@@ -1821,8 +1842,12 @@ function AppMain() {
                 });
               }
               
-              return { ...old, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, moveOutReports: [report, ...(old.moveOutReports || [])] };
+              return { ...old, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, moveOutReports: [{ ...report, accessRemovalTasks }, ...(old.moveOutReports || [])] };
             });
+            const fingerprintNames = affectedTenants.filter(t => t.fingerprintCode).map(t => `${t.name} (${t.fingerprintCode})`);
+            if (fingerprintNames.length > 0) {
+              alert(`Nhắc admin: cần xóa vân tay cho khách đã trả phòng:\n${fingerprintNames.join('\n')}`);
+            }
             setSettlingRoom(null);
           }}
         />
@@ -2138,7 +2163,7 @@ function RentalHistoryTab({ data, onAction }) {
     <div className="widget liquid-glass" style={{ padding: 0 }}>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Ngày trả</th><th>Phòng</th><th>Người đứng tên</th><th>Ngày bắt đầu</th><th>Thời hạn gốc</th><th>Tiền cọc</th><th>Thao tác</th></tr></thead>
+          <thead><tr><th>Ngày trả</th><th>Phòng</th><th>Người đứng tên</th><th>Ngày bắt đầu</th><th>Thời hạn gốc</th><th>Tiền cọc</th><th>Ra vào</th><th>Thao tác</th></tr></thead>
           <tbody>
             {endedContracts.map(c => {
               const tenant = getPrimaryTenantByContract(data, c.id) || { name: 'N/A' };
@@ -2151,11 +2176,12 @@ function RentalHistoryTab({ data, onAction }) {
                   <td>{formatBusinessDate(c.startDate)}</td>
                   <td>{formatBusinessDate(c.endDate)}</td>
                   <td>{formatMoney(c.deposit)}</td>
+                  <td>{(report?.accessRemovalTasks || []).some(t => t.status === 'Cần xóa') ? <span className="status-badge-liquid debt">Cần xóa vân tay</span> : <span className="status-badge-liquid active">Đã kiểm tra</span>}</td>
                   <td><button className="secondary-btn sm" onClick={() => onAction('view_contract', { roomId: c.roomId, contractId: c.id })}>Xem HĐ</button></td>
                 </tr>
               );
             })}
-            {endedContracts.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>Chưa có lịch sử hợp đồng nào kết thúc.</td></tr>}
+            {endedContracts.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>Chưa có lịch sử hợp đồng nào kết thúc.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -3164,8 +3190,13 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
                   <div>
                     <p className="op-value">{m.tenant?.name || 'N/A'}</p>
                     <p className="op-label">{m.tenant?.phone || '—'} • CCCD {m.tenant?.cccd || '—'} • Vào {formatDate(m.joinedDate || contract?.startDate)}{m.leftDate ? ` • Ra ${formatDisplayDate(m.leftDate)}` : ''}</p>
+                    <p className="op-label">Xe máy: <b>{m.tenant?.licensePlate || m.tenant?.vehicle || 'Chưa cập nhật'}</b> • Vân tay: <b>{m.tenant?.fingerprintCode || 'Chưa đăng ký'}</b> • {m.tenant?.fingerprintStatus || 'Chưa đăng ký'}</p>
                   </div>
-                  <span className={`status-badge-liquid ${m.status === 'active' ? 'active' : 'vacant'}`}>{m.status === 'active' ? 'Đang ở' : 'Đã rời đi'}</span>
+                  <div className="row-actions">
+                    {m.tenant?.fingerprintStatus === 'Cần xóa' && <span className="status-badge-liquid debt">Cần xóa vân tay</span>}
+                    <span className={`status-badge-liquid ${m.status === 'active' ? 'active' : 'vacant'}`}>{m.status === 'active' ? 'Đang ở' : 'Đã rời đi'}</span>
+                    {m.tenant && <button className="secondary-btn sm" onClick={() => onAction('edit_tenant', m.tenant)}>Sửa</button>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -3395,6 +3426,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
     tenantCCCDPlace: '',
     tenantAddress: '',
     tenantVehicle: '',
+    tenantFingerprintCode: '',
+    tenantFingerprintStatus: 'Chưa đăng ký',
     tenantBirthday: '',
     // Contract Info
     contractNo: `HĐ-${room.id}-${new Date().getFullYear()}${(new Date().getMonth()+1).toString().padStart(2,'0')}`,
@@ -3441,6 +3474,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
       cccdPlace: form.tenantCCCDPlace,
       address: form.tenantAddress,
       licensePlate: form.tenantVehicle,
+      fingerprintCode: form.tenantFingerprintCode,
+      fingerprintStatus: form.tenantFingerprintStatus,
       birthday: form.tenantBirthday,
       role: 'primary',
       status: 'active',
@@ -3562,6 +3597,15 @@ function RentalFlowModal({ room, onClose, onSave }) {
                   <label style={{ gridColumn: 'span 2' }}>Địa chỉ thường trú <input value={form.tenantAddress} onChange={e => setForm({...form, tenantAddress: e.target.value})} /></label>
                   <label>Ngày sinh <input type="date" value={form.tenantBirthday} onChange={e => setForm({...form, tenantBirthday: e.target.value})} /></label>
                   <label>Biển số xe <input value={form.tenantVehicle} onChange={e => setForm({...form, tenantVehicle: e.target.value})} /></label>
+                  <label>Mã vân tay <input value={form.tenantFingerprintCode} onChange={e => setForm({...form, tenantFingerprintCode: e.target.value})} placeholder="VD: F502-01" /></label>
+                  <label>Trạng thái vân tay
+                    <select value={form.tenantFingerprintStatus} onChange={e => setForm({...form, tenantFingerprintStatus: e.target.value})}>
+                      <option>Chưa đăng ký</option>
+                      <option>Đã đăng ký</option>
+                      <option>Cần xóa</option>
+                      <option>Đã xóa</option>
+                    </select>
+                  </label>
                 </div>
               </section>
             </div>
@@ -3715,6 +3759,11 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
 
   const primaryMembership = (data.memberships || []).find(m => m.contractId === contract.id && m.role === 'primary');
   const tenant = primaryMembership ? (data.tenants || []).find(t => t.id === primaryMembership.tenantId) : { name: 'N/A' };
+  const settlementMembers = (data.memberships || [])
+    .filter(m => m.contractId === contract.id)
+    .map(m => ({ ...m, tenant: (data.tenants || []).find(t => t.id === m.tenantId) }))
+    .filter(m => m.tenant);
+  const fingerprintRemovalList = settlementMembers.filter(m => m.tenant.fingerprintCode);
 
   // Logic tính toán realtime
   const electricOld = Number(room.electricOld || room.electricStart || room.initialElectric || 0);
@@ -3871,6 +3920,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                     <li>Hợp đồng sẽ chuyển sang "Đã kết thúc"</li>
                     <li>Phòng {room.id} sẽ trở về trạng thái trống</li>
                     <li>Lịch sử tất toán sẽ được lưu lại</li>
+                    {fingerprintRemovalList.length > 0 && <li>Admin cần xóa vân tay: {fingerprintRemovalList.map(m => `${m.tenant.name} (${m.tenant.fingerprintCode})`).join(', ')}</li>}
                   </ul>
                 </div>
 
@@ -4339,6 +4389,15 @@ function EditTenantModal({ tenant, onClose, onSave }) {
             <label>SĐT <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></label>
             <label>CCCD <input value={form.cccd} onChange={e => setForm({...form, cccd: e.target.value})} /></label>
             <label>Biển số xe <input value={form.licensePlate || form.vehicle || ''} onChange={e => setForm({...form, licensePlate: e.target.value})} /></label>
+            <label>Mã vân tay <input value={form.fingerprintCode || ''} onChange={e => setForm({...form, fingerprintCode: e.target.value})} placeholder="VD: F502-01" /></label>
+            <label>Trạng thái vân tay
+              <select value={form.fingerprintStatus || 'Chưa đăng ký'} onChange={e => setForm({...form, fingerprintStatus: e.target.value})}>
+                <option>Chưa đăng ký</option>
+                <option>Đã đăng ký</option>
+                <option>Cần xóa</option>
+                <option>Đã xóa</option>
+              </select>
+            </label>
             <label>Vai trò 
               <select value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
                 <option value="primary">Người đứng tên</option>
