@@ -220,10 +220,65 @@ h1, h2, h3, h4 {
 }
 
 /* Room Cards */
+.rooms-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.room-case-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.room-case-tabs button {
+  height: 42px;
+  border: 1px solid #dbe4f0;
+  background: #fff;
+  color: var(--text-secondary);
+  border-radius: 12px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.room-case-tabs button.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.room-case-tabs b {
+  min-width: 26px;
+  height: 24px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.room-case-tabs button.active b {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
 .rooms-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 24px;
+}
+
+.rooms-grid.compact {
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 14px;
 }
 
 .room-card-liquid {
@@ -238,6 +293,19 @@ h1, h2, h3, h4 {
   flex-direction: column;
   gap: 20px;
 }
+
+.room-card-liquid.compact {
+  min-height: 154px;
+  border-radius: 16px;
+  padding: 16px;
+  gap: 12px;
+  border-left: 5px solid #dbe4f0;
+}
+
+.room-card-liquid.compact.occupied { border-left-color: #22c55e; }
+.room-card-liquid.compact.debt { border-left-color: #ef4444; }
+.room-card-liquid.compact.vacant { border-left-color: #94a3b8; }
+.room-card-liquid.compact.owner { border-left-color: #f59e0b; }
 
 .room-card-liquid:hover {
   transform: translateY(-4px);
@@ -254,6 +322,10 @@ h1, h2, h3, h4 {
   font-size: 30px;
   font-weight: 800;
   color: var(--text-main);
+}
+
+.room-card-liquid.compact .room-id {
+  font-size: 26px;
 }
 
 /* Badges */
@@ -279,6 +351,12 @@ h1, h2, h3, h4 {
   border-radius: 16px;
   border: 1px solid rgba(37, 99, 235, 0.1);
   margin-bottom: 12px;
+}
+
+.room-card-liquid.compact .tenant-block-primary {
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 0;
 }
 
 .tenant-name-main {
@@ -936,6 +1014,54 @@ textarea {
 .more-actions-menu button:hover {
   background: #f8fafc;
   color: var(--text-main);
+}
+
+.room-card-liquid.compact .tenant-name-main {
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.room-card-meta b {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.room-card-meta .success { color: var(--success); }
+.room-card-meta .danger { color: var(--danger); }
+.room-card-meta .muted { color: var(--text-muted); }
+
+.room-card-liquid.compact .btn-group {
+  gap: 8px;
+}
+
+.room-card-liquid.compact .primary-btn,
+.room-card-liquid.compact .secondary-btn {
+  height: 36px;
+  border-radius: 10px;
+  font-size: 13px;
+  padding: 0 12px;
+}
+
+.empty-state-inline {
+  grid-column: 1 / -1;
+  padding: 28px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  color: var(--text-muted);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .more-actions-menu button.warning {
