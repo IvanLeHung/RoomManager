@@ -1021,9 +1021,12 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
               </table>
               <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>QUYẾT TOÁN CÔNG NỢ</h3>
               <div className="stack" style={{ gap: '5px' }}>
+                <div className="data-row"><span>Tiền phòng phát sinh ({report.roomChargeDays || 0} ngày)</span><b>{formatMoney(report.proratedRent || 0)}</b></div>
+                <div className="data-row"><span>Tiền điện</span><b>{formatMoney(report.electricAmount || 0)}</b></div>
+                <div className="data-row"><span>Tiền nước</span><b>{formatMoney(report.waterAmount || 0)}</b></div>
+                <div className="data-row"><span>Phí khác</span><b>{formatMoney(Number(report.unpaidRent || 0) + Number(report.cleaningFee || 0) + Number(report.damageFee || 0) + Number(report.otherFee || 0))}</b></div>
+                <div className="data-row"><span>Tổng phát sinh</span><b>{formatMoney(report.totalIncurred || 0)}</b></div>
                 <div className="data-row"><span>Tiền cọc đối trừ</span><b>{formatMoney(report.depositUsed)}</b></div>
-                <div className="data-row"><span>Tiền nhà chưa trả</span><b>{formatMoney(report.unpaidRent)}</b></div>
-                <div className="data-row"><span>Phí vệ sinh / Hư hỏng</span><b>{formatMoney(report.cleaningFee + report.damageFee)}</b></div>
                 <div className="data-row" style={{ borderTop: '2px solid #000', paddingTop: '10px', marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '16px' }}><b>KẾT QUẢ TẤT TOÁN</b></span>
                   {report.mustCollect > 0 ? <b style={{ fontSize: '20px', color: 'var(--danger)' }}>Khách trả thêm: {formatMoney(report.mustCollect)}</b> : <b style={{ fontSize: '20px', color: 'var(--success)' }}>Chủ nhà hoàn: {formatMoney(report.mustRefund)}</b>}
@@ -1501,7 +1504,9 @@ function AppMain() {
           'Nước đầu': rep.waterOld,
           'Nước chốt': rep.waterNew,
           'Tiền nước': rep.waterAmount,
-          'Tiền phòng còn nợ': rep.unpaidRent,
+          'Số ngày tính tiền phòng': rep.roomChargeDays || '',
+          'Tiền phòng phát sinh': rep.proratedRent || 0,
+          'Tiền phòng/phí còn nợ khác': rep.unpaidRent,
           'Phí hư hỏng': rep.damageFee || 0,
           'Phí vệ sinh': rep.cleaningFee || 0,
           'Phí khác': rep.otherFee || 0,
@@ -1794,7 +1799,7 @@ function AppMain() {
                   contractId: report.contractId,
                   type: 'move_out_settlement',
                   month: report.actualEndDate.split('-').slice(0, 2).reverse().join('/'),
-                  rent: 0,
+                  rent: report.proratedRent || 0,
                   fixedServices: 0,
                   electricOld: report.electricOld,
                   electricNew: report.electricNew,
@@ -3717,8 +3722,13 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const waterUsed = Math.max(0, Number(form.waterNew) - waterOld);
   const electricAmount = electricUsed * Number(room.electricPrice || 3800);
   const waterAmount = waterUsed * Number(room.waterPrice || 32000);
-  
-  const totalIncurred = electricAmount + waterAmount + Number(form.unpaidRent) + 
+  const endDate = new Date(form.actualEndDate);
+  const roomChargeDays = Number.isNaN(endDate.getTime()) ? 0 : endDate.getDate();
+  const monthlyRent = Number(contract.rent || room.rent || 0);
+  const proratedRent = Math.round((monthlyRent / 30) * roomChargeDays);
+  const dailyRent = monthlyRent / 30;
+
+  const totalIncurred = proratedRent + electricAmount + waterAmount + Number(form.unpaidRent) +
                         Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
   
   const deposit = Number(contract.deposit || 0);
@@ -3756,6 +3766,11 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 <div className="form-grid-v2">
                   <label>Ngày trả phòng <input type="date" value={form.actualEndDate} onChange={e => setForm({...form, actualEndDate: e.target.value})} /></label>
                   <label>Người đứng tên <input value={tenant.name} readOnly style={{ background: '#f1f5f9' }} /></label>
+                  <label>Số ngày sử dụng <input value={`${roomChargeDays} ngày`} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
+                  <label>Tiền phòng phát sinh <input value={formatMoney(proratedRent)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
+                  <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
+                    Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / 30 x {roomChargeDays} ngày = {formatMoney(proratedRent)}
+                  </p>
                   <label style={{ gridColumn: 'span 2' }}>Tiền cọc đang giữ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                 </div>
               </section>
@@ -3793,7 +3808,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
               <section>
                 <h3 className="form-section-title">💸 Phí phát sinh & Ghi chú</h3>
                 <div className="form-grid-v2">
-                  <label>Tiền phòng còn nợ <input type="number" value={form.unpaidRent} onChange={e => setForm({...form, unpaidRent: e.target.value})} /></label>
+                  <label>Tiền phòng/phí còn nợ khác <input type="number" value={form.unpaidRent} onChange={e => setForm({...form, unpaidRent: e.target.value})} /></label>
                   <label>Phí vệ sinh trả phòng <input type="number" value={form.cleaningFee} onChange={e => setForm({...form, cleaningFee: e.target.value})} /></label>
                   <label>Chi phí hư hỏng <input type="number" value={form.damageFee} onChange={e => setForm({...form, damageFee: e.target.value})} /></label>
                   <label>Phí khác <input type="number" value={form.otherFee} onChange={e => setForm({...form, otherFee: e.target.value})} /></label>
@@ -3806,6 +3821,10 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
               <div className="summary-card">
                 <h3 className="summary-label-main">Kết quả tất toán</h3>
                 
+                <div className="summary-row"><span>Tiền phòng phát sinh ({roomChargeDays} ngày)</span><b>{formatMoney(proratedRent)}</b></div>
+                <div className="summary-row"><span>Tiền điện</span><b>{formatMoney(electricAmount)}</b></div>
+                <div className="summary-row"><span>Tiền nước</span><b>{formatMoney(waterAmount)}</b></div>
+                <div className="summary-row"><span>Phí khác</span><b>{formatMoney(Number(form.unpaidRent || 0) + Number(form.cleaningFee || 0) + Number(form.damageFee || 0) + Number(form.otherFee || 0))}</b></div>
                 <div className="summary-row"><span>Tổng phát sinh</span><b>{formatMoney(totalIncurred)}</b></div>
                 <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>
                 {!isOffsetDeposit && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
@@ -3851,6 +3870,10 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         ...form,
                         id: uid('moveout'),
                         unpaidRent: Number(form.unpaidRent || 0),
+                        monthlyRent,
+                        roomChargeDays,
+                        dailyRent,
+                        proratedRent,
                         cleaningFee: Number(form.cleaningFee || 0),
                         damageFee: Number(form.damageFee || 0),
                         otherFee: Number(form.otherFee || 0),
