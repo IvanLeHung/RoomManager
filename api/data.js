@@ -1,21 +1,35 @@
 const prisma = require('./lib/prisma');
 
+async function retryNeonQuery(fn, retries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || '');
+      const isConnectionError = /terminated|timeout|connection|fetch failed|socket/i.test(message);
+      if (!isConnectionError || attempt === retries) break;
+      await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 module.exports = async (req, res) => {
   if (req.method === 'GET') {
     try {
-      const [rooms, tenants, memberships, contracts, receipts, moveOutReports, contractRenewals, roomTransfers, suppliers, expenseCategories, expensePayments] = await Promise.all([
-        prisma.room.findMany(),
-        prisma.tenant.findMany(),
-        prisma.membership.findMany(),
-        prisma.contract.findMany(),
-        prisma.receipt.findMany(),
-        prisma.moveOutReport.findMany(),
-        prisma.contractRenewal.findMany(),
-        prisma.roomTransfer.findMany(),
-        prisma.supplier.findMany(),
-        prisma.expenseCategory.findMany(),
-        prisma.expensePayment.findMany(),
-      ]);
+      const rooms = await retryNeonQuery(() => prisma.room.findMany());
+      const tenants = await retryNeonQuery(() => prisma.tenant.findMany());
+      const memberships = await retryNeonQuery(() => prisma.membership.findMany());
+      const contracts = await retryNeonQuery(() => prisma.contract.findMany());
+      const receipts = await retryNeonQuery(() => prisma.receipt.findMany());
+      const moveOutReports = await retryNeonQuery(() => prisma.moveOutReport.findMany());
+      const contractRenewals = await retryNeonQuery(() => prisma.contractRenewal.findMany());
+      const roomTransfers = await retryNeonQuery(() => prisma.roomTransfer.findMany());
+      const suppliers = await retryNeonQuery(() => prisma.supplier.findMany());
+      const expenseCategories = await retryNeonQuery(() => prisma.expenseCategory.findMany());
+      const expensePayments = await retryNeonQuery(() => prisma.expensePayment.findMany());
 
       return res.status(200).json({
         rooms,
@@ -37,10 +51,6 @@ module.exports = async (req, res) => {
         details: error.message,
         stack: error.stack 
       });
-    } finally {
-      try {
-        await prisma.$disconnect();
-      } catch (e) {}
     }
   }
 
@@ -137,13 +147,6 @@ module.exports = async (req, res) => {
         details: error.message,
         stack: error.stack 
       });
-    } finally {
-      // Đảm bảo đóng kết nối để tránh rò rỉ (leak) trong môi trường serverless
-      try {
-        await prisma.$disconnect();
-      } catch (e) {
-        console.error("Lỗi khi đóng prisma:", e);
-      }
     }
   }
 
