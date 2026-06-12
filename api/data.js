@@ -88,57 +88,45 @@ module.exports = async (req, res) => {
 
         const ids = (items) => items.filter(i => i && i.id).map(i => i.id);
 
-        // full_sync is a snapshot: records missing from the payload should be removed too.
-        // Run deletes only after all upserts succeed so a partial sync cannot wipe existing data.
-        const deleteOperations = [
-          prisma.expensePayment.deleteMany({ where: { id: { notIn: ids(payload.expensePayments || []) } } }),
-          prisma.expenseCategory.deleteMany({ where: { id: { notIn: ids(payload.expenseCategories || []) } } }),
-          prisma.supplier.deleteMany({ where: { id: { notIn: ids(payload.suppliers || []) } } }),
-          prisma.roomTransfer.deleteMany({ where: { id: { notIn: ids(roomTransfers) } } }),
-          prisma.contractRenewal.deleteMany({ where: { id: { notIn: ids(contractRenewals) } } }),
-          prisma.moveOutReport.deleteMany({ where: { id: { notIn: ids(moveOutReports) } } }),
-          prisma.receipt.deleteMany({ where: { id: { notIn: ids(receipts) } } }),
-          prisma.membership.deleteMany({ where: { id: { notIn: ids(memberships) } } }),
-          prisma.contract.deleteMany({ where: { id: { notIn: ids(contracts) } } }),
-          prisma.tenant.deleteMany({ where: { id: { notIn: ids(tenants) } } }),
-          prisma.room.deleteMany({ where: { id: { notIn: ids(rooms) } } }),
-        ];
-
-        // Sử dụng Promise.all thay cho $transaction để tránh lỗi "Unable to start a transaction" trên môi trường Serverless
-        const operations = [
-          ...rooms.filter(i => i && i.id).map(item => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...tenants.filter(i => i && i.id).map(item => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...memberships.filter(i => i && i.id).map(item => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...contracts.filter(i => i && i.id).map(item => { const data = pick(item, contractKeys); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...receipts.filter(i => i && i.id).map(item => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...moveOutReports.filter(i => i && i.id).map(item => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...contractRenewals.filter(i => i && i.id).map(item => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...roomTransfers.filter(i => i && i.id).map(item => { const data = pick(item, transferKeys); return prisma.roomTransfer.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...(payload.suppliers || []).filter(i => i && i.id).map(item => { const data = pick(item, supplierKeys); return prisma.supplier.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...(payload.expenseCategories || []).filter(i => i && i.id).map(item => { const data = pick(item, categoryKeys); return prisma.expenseCategory.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...(payload.expensePayments || []).filter(i => i && i.id).map(item => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
-        ];
-
-        // Chạy các lệnh theo nhóm (Batch) với kích thước lớn hơn để đảm bảo hoàn thành trong giới hạn 10s của Vercel
-        const BATCH_SIZE = 40;
-        for (let i = 0; i < operations.length; i += BATCH_SIZE) {
-          const batch = operations.slice(i, i + BATCH_SIZE);
-          try {
-            await Promise.all(batch);
-          } catch (e) {
-            console.error(`Lỗi ở batch ${i}:`, e.message);
-            // Thử lại từng cái một nếu batch lớn thất bại (để cô lập lỗi)
-            if (e.message.includes('terminated') || e.message.includes('timeout')) {
-              for (const op of batch) {
-                try { await op; } catch (inner) { console.error("Lỗi con:", inner.message); }
-              }
-            } else {
-              throw e;
-            }
+        const runInBatches = async (operations, batchSize = 12) => {
+          for (let i = 0; i < operations.length; i += batchSize) {
+            const batch = operations.slice(i, i + batchSize);
+            await Promise.all(batch.map(op => op()));
           }
-        }
+        };
 
-        await Promise.all(deleteOperations);
+        // full_sync is a snapshot: records missing from the payload should be removed too.
+        // Deletes run only after all upserts succeed so a partial sync cannot wipe existing data.
+        const deleteOperations = [
+          () => prisma.expensePayment.deleteMany({ where: { id: { notIn: ids(payload.expensePayments || []) } } }),
+          () => prisma.expenseCategory.deleteMany({ where: { id: { notIn: ids(payload.expenseCategories || []) } } }),
+          () => prisma.supplier.deleteMany({ where: { id: { notIn: ids(payload.suppliers || []) } } }),
+          () => prisma.roomTransfer.deleteMany({ where: { id: { notIn: ids(roomTransfers) } } }),
+          () => prisma.contractRenewal.deleteMany({ where: { id: { notIn: ids(contractRenewals) } } }),
+          () => prisma.moveOutReport.deleteMany({ where: { id: { notIn: ids(moveOutReports) } } }),
+          () => prisma.receipt.deleteMany({ where: { id: { notIn: ids(receipts) } } }),
+          () => prisma.membership.deleteMany({ where: { id: { notIn: ids(memberships) } } }),
+          () => prisma.contract.deleteMany({ where: { id: { notIn: ids(contracts) } } }),
+          () => prisma.tenant.deleteMany({ where: { id: { notIn: ids(tenants) } } }),
+          () => prisma.room.deleteMany({ where: { id: { notIn: ids(rooms) } } }),
+        ];
+
+        const operations = [
+          ...rooms.filter(i => i && i.id).map(item => () => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...tenants.filter(i => i && i.id).map(item => () => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...memberships.filter(i => i && i.id).map(item => () => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contracts.filter(i => i && i.id).map(item => () => { const data = pick(item, contractKeys); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...receipts.filter(i => i && i.id).map(item => () => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...moveOutReports.filter(i => i && i.id).map(item => () => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contractRenewals.filter(i => i && i.id).map(item => () => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...roomTransfers.filter(i => i && i.id).map(item => () => { const data = pick(item, transferKeys); return prisma.roomTransfer.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.suppliers || []).filter(i => i && i.id).map(item => () => { const data = pick(item, supplierKeys); return prisma.supplier.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.expenseCategories || []).filter(i => i && i.id).map(item => () => { const data = pick(item, categoryKeys); return prisma.expenseCategory.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.expensePayments || []).filter(i => i && i.id).map(item => () => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
+        ];
+
+        await runInBatches(operations);
+        await runInBatches(deleteOperations, 4);
         
         return res.status(200).json({ success: true });
       }
