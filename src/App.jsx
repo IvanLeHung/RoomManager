@@ -437,6 +437,10 @@ function fixedServiceTotal(room, occupantCount = null) {
   return Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0) + Number(room.internet || 0);
 }
 
+function getExpensePaidAmount(expense) {
+  return Number(expense?.paidAmount ?? expense?.amount ?? 0);
+}
+
 function getElectricOld(receipt) {
   return Number(receipt.electricOld ?? receipt.electricStart ?? 0);
 }
@@ -814,7 +818,10 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
   const depositAmount = Number(contract.deposit || room.deposit || rentAmount || 0);
   const electricPrice = Number(contract.terms?.electricPrice || room.electricPrice || 3800);
   const waterPrice = Number(contract.terms?.waterPrice || room.waterPrice || 32000);
-  const fixedServiceTotal = Number(room.internet || 0) + Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0);
+  const baseFixedServiceTotal = Number(room.internet || 0) + Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0);
+  const occupantCount = Math.max(1, tenants.length || 1);
+  const appliedFixedServiceTotal = fixedServiceTotal(room, occupantCount);
+  const fixedServiceDiscount = Math.max(0, baseFixedServiceTotal - appliedFixedServiceTotal);
   const isMain = type === 'main';
   const isLiquidation = type === 'liquidation';
   const isRenewal = type === 'renewal';
@@ -888,14 +895,15 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <p>4.4. Khi trả phòng, Hai Bên lập Biên bản kiểm tra hiện trạng. Bên A chỉ được khấu trừ cọc đối với công nợ, hư hỏng do lỗi Bên B hoặc chi phí có bảng kê/hóa đơn/chứng từ hợp lệ. Bên A hoàn cọc trong 07 (bảy) ngày làm việc kể từ khi nhận đủ chìa khóa/thẻ, bàn giao xong và quyết toán công nợ với Bên B.</p>
                 <h3>ĐIỀU 5. GIÁ THUÊ VÀ PHÍ DỊCH VỤ</h3>
                 <p>5.1. Tiền thuê: <b>{formatMoney(rentAmount)}</b>/tháng (bằng chữ: <b>{numberToWords(rentAmount)}</b>).</p>
-                <p>5.2. Phí dịch vụ chưa gồm trong tiền thuê. Tổng phí dịch vụ cố định hiện tại: <b>{formatMoney(fixedServiceTotal)}</b>/tháng, gồm:</p>
+                <p>5.2. Phí dịch vụ chưa gồm trong tiền thuê. Tổng phí dịch vụ cố định gốc: <b>{formatMoney(baseFixedServiceTotal)}</b>/tháng. Trường hợp Bên B ở một mình trong phòng được giảm 50% phí dịch vụ cố định; từ 02 người trở lên áp dụng đủ phí dịch vụ cố định.</p>
+                <p>5.3. Mức phí dịch vụ cố định đang áp dụng cho Hợp đồng này: <b>{formatMoney(appliedFixedServiceTotal)}</b>/tháng theo số người ở hiện tại là <b>{occupantCount}</b> người{fixedServiceDiscount > 0 ? <>, đã giảm <b>{formatMoney(fixedServiceDiscount)}</b>/tháng.</> : <>.</>}</p>
                 <p>- Điện: <b>{formatMoney(electricPrice)}</b>/kWh, theo chỉ số công tơ (ghi đầu/cuối kỳ trong phiếu thu).</p>
                 <p>- Nước: <b>{formatMoney(waterPrice)}</b>/m³, theo chỉ số công tơ (ghi đầu/cuối kỳ trong phiếu thu).</p>
                 <p>- Mạng internet: <b>{formatMoney(room.internet)}</b>/phòng/tháng.</p>
                 <p>- Vệ sinh rác & dịch vụ chung: <b>{formatMoney(room.cleaning)}</b>/phòng/tháng.</p>
                 <p>- Phí bảo trì thang máy: <b>{formatMoney(room.elevator)}</b>/phòng/tháng.</p>
                 <p>- Phí sử dụng máy giặt chung: <b>{formatMoney(room.laundry)}</b>/phòng/tháng.</p>
-                <p>5.3. Khi đơn giá đầu vào hoặc phí dịch vụ thay đổi, Bên A báo trước ít nhất 15 ngày và gửi bảng tính kèm căn cứ/chứng từ nếu có.</p>
+                <p>5.4. Khi đơn giá đầu vào, số người ở hoặc phí dịch vụ thay đổi, Bên A báo trước ít nhất 15 ngày và gửi bảng tính kèm căn cứ/chứng từ nếu có.</p>
                 <h3>ĐIỀU 6. PHƯƠNG THỨC VÀ HẠN THANH TOÁN</h3>
                 <p>6.1. Kỳ thanh toán: 01 (một) tháng/lần.</p>
                 <p>6.2. Hạn thanh toán thống nhất: chậm nhất ngày 10 của tháng thuê.</p>
@@ -2389,14 +2397,14 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
 
   const stats = getDashboardStats(data, INITIAL_MONTH);
   const periodReceipts = (data.receipts || []).filter(r => periodMonthKeys.includes(r.month) || inPeriod(r.createdAt));
-  const periodExpenses = (data.expensePayments || []).filter(e => periodMonthKeys.includes(e.month) || inPeriod(e.date || e.createdAt));
+  const periodExpenses = (data.expensePayments || []).filter(e => periodMonthKeys.includes(e.month) || inPeriod(e.paymentDate || e.date || e.createdAt));
   const periodContracts = (data.contracts || []).filter(c => inPeriod(c.createdAt || c.startDate));
   const periodMoveOuts = (data.moveOutReports || []).filter(r => inPeriod(r.actualEndDate || r.createdAt));
 
   const totalRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.total || 0), 0);
   const paidRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
   const unpaidRevenue = Math.max(0, totalRevenue - paidRevenue);
-  const expenses = periodExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  const expenses = periodExpenses.reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
   const netCash = paidRevenue - expenses;
   const collectionRate = totalRevenue > 0 ? (paidRevenue / totalRevenue) * 100 : 0;
   const occupancyRate = stats.totalRooms > 0 ? (stats.occupiedRooms / stats.totalRooms) * 100 : 0;
@@ -2408,7 +2416,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
     .slice(0, 5);
   const chartRows = periodMonthKeys.map(key => {
     const income = periodReceipts.filter(r => r.month === key).reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
-    const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
     return { key, income, expense: out, net: income - out };
   });
   const chartMax = Math.max(1, ...chartRows.flatMap(r => [r.income, r.expense, Math.abs(r.net)]));
@@ -3746,6 +3754,9 @@ function RentalFlowModal({ room, onClose, onSave }) {
     },
     note: ''
   });
+  const previewBaseFixedServiceTotal = Number(form.services.cleaning || 0) + Number(form.services.elevator || 0) + Number(form.services.laundry || 0) + Number(form.services.internet || 0);
+  const previewAppliedFixedServiceTotal = fixedServiceTotal(room, 1);
+  const previewFixedServiceDiscount = Math.max(0, previewBaseFixedServiceTotal - previewAppliedFixedServiceTotal);
 
   const handleNext = () => {
     if (!form.tenantName || !form.signedDate || !form.startDate || !form.endDate) {
@@ -3858,7 +3869,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
                   <p>3. Tiền thuê: <b>{formatMoney(form.rent)}</b>/tháng.</p>
                   <p>4. Tiền đặt cọc: <b>{formatMoney(form.deposit)}</b>.</p>
                   <p>5. Điện: {form.electricPrice}đ/kWh; Nước: {form.waterPrice}đ/m³.</p>
-                  <p>6. Dịch vụ khác: Vệ sinh ({formatMoney(form.services.cleaning)}), Thang máy ({formatMoney(form.services.elevator)}), Giặt ({formatMoney(form.services.laundry)}), Internet ({formatMoney(form.services.internet)}).</p>
+                  <p>6. Dịch vụ cố định gốc: <b>{formatMoney(previewBaseFixedServiceTotal)}</b>/tháng. Khách ở một mình được giảm 50% phí dịch vụ cố định, mức áp dụng hiện tại: <b>{formatMoney(previewAppliedFixedServiceTotal)}</b>/tháng{previewFixedServiceDiscount > 0 ? <>, giảm <b>{formatMoney(previewFixedServiceDiscount)}</b>/tháng.</> : <>.</>}</p>
+                  <p>7. Chi tiết dịch vụ: Vệ sinh ({formatMoney(form.services.cleaning)}), Thang máy ({formatMoney(form.services.elevator)}), Giặt ({formatMoney(form.services.laundry)}), Internet ({formatMoney(form.services.internet)}).</p>
                 </div>
                 <div className="signature-row">
                   <div><p><b>BÊN CHO THUÊ</b></p><div className="signature-space"></div><p>DIỆM THỊ BÌNH</p></div>
