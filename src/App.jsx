@@ -437,6 +437,10 @@ function fixedServiceTotal(room, occupantCount = null) {
   return Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0) + Number(room.internet || 0);
 }
 
+function getExpensePaidAmount(expense) {
+  return Number(expense?.paidAmount ?? expense?.amount ?? 0);
+}
+
 function getElectricOld(receipt) {
   return Number(receipt.electricOld ?? receipt.electricStart ?? 0);
 }
@@ -2393,14 +2397,14 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
 
   const stats = getDashboardStats(data, INITIAL_MONTH);
   const periodReceipts = (data.receipts || []).filter(r => periodMonthKeys.includes(r.month) || inPeriod(r.createdAt));
-  const periodExpenses = (data.expensePayments || []).filter(e => periodMonthKeys.includes(e.month) || inPeriod(e.date || e.createdAt));
+  const periodExpenses = (data.expensePayments || []).filter(e => periodMonthKeys.includes(e.month) || inPeriod(e.paymentDate || e.date || e.createdAt));
   const periodContracts = (data.contracts || []).filter(c => inPeriod(c.createdAt || c.startDate));
   const periodMoveOuts = (data.moveOutReports || []).filter(r => inPeriod(r.actualEndDate || r.createdAt));
 
   const totalRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.total || 0), 0);
   const paidRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
   const unpaidRevenue = Math.max(0, totalRevenue - paidRevenue);
-  const expenses = periodExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  const expenses = periodExpenses.reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
   const netCash = paidRevenue - expenses;
   const collectionRate = totalRevenue > 0 ? (paidRevenue / totalRevenue) * 100 : 0;
   const occupancyRate = stats.totalRooms > 0 ? (stats.occupiedRooms / stats.totalRooms) * 100 : 0;
@@ -2412,7 +2416,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
     .slice(0, 5);
   const chartRows = periodMonthKeys.map(key => {
     const income = periodReceipts.filter(r => r.month === key).reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
-    const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
     return { key, income, expense: out, net: income - out };
   });
   const chartMax = Math.max(1, ...chartRows.flatMap(r => [r.income, r.expense, Math.abs(r.net)]));
