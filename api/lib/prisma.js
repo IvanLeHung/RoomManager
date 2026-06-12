@@ -6,9 +6,7 @@ const ws = require('ws');
 // Cấu hình WebSocket cho môi trường Serverless
 neonConfig.webSocketConstructor = ws;
 
-let prisma;
-
-const initPrisma = () => {
+const createPrismaClient = () => {
   let connectionString = process.env.DATABASE_URL || '';
   
   // Loại bỏ mọi dấu ngoặc kép, nháy đơn và khoảng trắng thừa
@@ -27,13 +25,16 @@ const initPrisma = () => {
   return new PrismaClient({ adapter });
 };
 
+let prisma;
+
 if (process.env.NODE_ENV === 'production') {
-  prisma = initPrisma();
+  prisma = createPrismaClient();
 } else {
   if (!global.prisma) {
-    global.prisma = initPrisma();
+    global.prisma = createPrismaClient();
   }
   prisma = global.prisma;
 }
 
 module.exports = prisma;
+module.exports.createPrismaClient = createPrismaClient;
