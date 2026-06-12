@@ -1,6 +1,7 @@
-const prisma = require('./lib/prisma');
+const { createPrismaClient } = require('./lib/prisma');
 
 module.exports = async (req, res) => {
+  const prisma = createPrismaClient();
   const dbUrl = process.env.DATABASE_URL || "KHÔNG TÌM THẤY BIẾN";
   
   try {
@@ -17,8 +18,6 @@ module.exports = async (req, res) => {
       message: error.message
     });
   } finally {
-    try {
-      await prisma.$disconnect();
-    } catch (e) {}
+    await prisma.$disconnect().catch(() => {});
   }
 };

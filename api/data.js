@@ -1,4 +1,4 @@
-const prisma = require('./lib/prisma');
+const { createPrismaClient } = require('./lib/prisma');
 
 async function retryNeonQuery(fn, retries = 2) {
   let lastError;
@@ -17,6 +17,8 @@ async function retryNeonQuery(fn, retries = 2) {
 }
 
 module.exports = async (req, res) => {
+  const prisma = createPrismaClient();
+
   if (req.method === 'GET') {
     try {
       const rooms = await retryNeonQuery(() => prisma.room.findMany());
@@ -51,6 +53,8 @@ module.exports = async (req, res) => {
         details: error.message,
         stack: error.stack 
       });
+    } finally {
+      await prisma.$disconnect().catch(() => {});
     }
   }
 
@@ -147,8 +151,11 @@ module.exports = async (req, res) => {
         details: error.message,
         stack: error.stack 
       });
+    } finally {
+      await prisma.$disconnect().catch(() => {});
     }
   }
 
+  await prisma.$disconnect().catch(() => {});
   return res.status(405).json({ error: 'Method not allowed' });
 };
