@@ -1834,7 +1834,7 @@ function AppMain() {
                   status: t.fingerprintCode ? 'Cần xóa' : 'Không cần xử lý'
                 }));
               
-              // Tạo phiếu thu chốt trả phòng nếu còn nợ
+              // Tạo phiếu thu chốt trả phòng nếu khách còn phải thanh toán thêm
               let newReceipts = [...(old.receipts || [])];
               if (report.mustCollect > 0) {
                 newReceipts.push({
@@ -1862,13 +1862,55 @@ function AppMain() {
                   createdAt: new Date().toISOString()
                 });
               }
+
+              let newExpensePayments = [...(old.expensePayments || [])];
+              if (report.mustRefund > 0) {
+                const [m, y] = report.actualEndDate.split('-').slice(0, 2).reverse();
+                const prefix = `PC-${y}${m}`;
+                const count = newExpensePayments.filter(e => e.expenseCode && e.expenseCode.startsWith(prefix)).length + 1;
+                const expenseCode = `${prefix}-${String(count).padStart(3, '0')}`;
+                newExpensePayments.push({
+                  id: uid('exp'),
+                  expenseCode,
+                  type: 'deposit_refund',
+                  source: 'move_out_settlement',
+                  sourceReportId: report.id,
+                  roomId: report.roomId,
+                  contractId: report.contractId,
+                  tenantId: report.tenantId,
+                  supplierId: '',
+                  recipientName: report.tenantName || 'Khách thuê',
+                  recipientPhone: report.tenantPhone || '',
+                  recipientBankName: report.refundBankName || '',
+                  recipientBankAccount: report.refundBankAccount || '',
+                  recipientBankOwner: report.refundBankOwner || report.tenantName || '',
+                  recipientQrImageUrl: report.refundQrImageUrl || '',
+                  categoryId: 'cat_other',
+                  month: `${m}/${y}`,
+                  paymentDate: report.actualEndDate,
+                  title: `Hoàn cọc trả phòng P${report.roomId}`,
+                  description: `Hoàn tiền cọc cho ${report.tenantName || 'khách thuê'} sau khi tất toán phòng ${report.roomId}.`,
+                  totalAmount: report.mustRefund,
+                  amount: report.mustRefund,
+                  paidAmount: report.mustRefund,
+                  status: 'paid',
+                  paymentMethod: report.refundQrImageUrl || report.refundBankAccount ? 'transfer' : 'cash',
+                  note: report.note || 'Tự tạo từ luồng hoàn tất trả phòng',
+                  createdAt: new Date().toISOString()
+                });
+              }
               
-              return { ...old, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, moveOutReports: [{ ...report, accessRemovalTasks }, ...(old.moveOutReports || [])] };
+              return { ...old, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, expensePayments: newExpensePayments, moveOutReports: [{ ...report, accessRemovalTasks }, ...(old.moveOutReports || [])] };
             });
+            const completionMessages = [];
+            if (report.mustRefund > 0) {
+              completionMessages.push(`Đã tạo phiếu chi hoàn cọc ${formatMoney(report.mustRefund)} cho ${report.tenantName || 'khách thuê'}.`);
+            }
             const fingerprintNames = affectedTenants.filter(t => t.fingerprintCode).map(t => `${t.name} (${t.fingerprintCode})`);
             if (fingerprintNames.length > 0) {
-              alert(`Nhắc admin: cần xóa vân tay cho khách đã trả phòng:\n${fingerprintNames.join('\n')}`);
+              completionMessages.push(`Nhắc admin: cần xóa vân tay cho khách đã trả phòng:\n${fingerprintNames.join('\n')}`);
             }
+            if (completionMessages.length > 0) alert(completionMessages.join('\n\n'));
             setSettlingRoom(null);
           }}
         />
@@ -3831,7 +3873,7 @@ function RentalFlowModal({ room, onClose, onSave }) {
 
   return (
     <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '850px' }} onClick={e => e.stopPropagation()}>
+      <div className="detail-modal-v2 liquid-glass rental-contract-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <h2>Tạo hợp đồng mới • Phòng {room.id}</h2>
@@ -3839,18 +3881,18 @@ function RentalFlowModal({ room, onClose, onSave }) {
           </div>
           <button className="secondary-btn" onClick={onClose}>✕</button>
         </div>
-        <div className="detail-body-v2 stack" style={{ gap: '24px' }}>
-          <div className="settlement-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div className="stack" style={{ gap: '20px' }}>
-              <section>
+        <div className="detail-body-v2 rental-contract-body">
+          <div className="rental-contract-layout">
+            <div className="rental-column">
+              <section className="rental-form-section">
                 <h3 className="form-section-title">👤 Thông tin người thuê</h3>
-                <div className="form-grid-v2">
-                  <label style={{ gridColumn: 'span 2' }}>Họ và tên <input value={form.tenantName} onChange={e => setForm({...form, tenantName: e.target.value})} placeholder="Nguyễn Văn A" /></label>
+                <div className="rental-form-grid tenant-info">
+                  <label className="span-2">Họ và tên <input value={form.tenantName} onChange={e => setForm({...form, tenantName: e.target.value})} placeholder="Nguyễn Văn A" /></label>
                   <label>Số điện thoại <input value={form.tenantPhone} onChange={e => setForm({...form, tenantPhone: e.target.value})} placeholder="09xx..." /></label>
                   <label>Số CCCD <input value={form.tenantCCCD} onChange={e => setForm({...form, tenantCCCD: e.target.value})} /></label>
                   <label>Ngày cấp CCCD <input type="date" value={form.tenantCCCDDate} onChange={e => setForm({...form, tenantCCCDDate: e.target.value})} /></label>
                   <label>Nơi cấp <input value={form.tenantCCCDPlace} onChange={e => setForm({...form, tenantCCCDPlace: e.target.value})} /></label>
-                  <label style={{ gridColumn: 'span 2' }}>Địa chỉ thường trú <input value={form.tenantAddress} onChange={e => setForm({...form, tenantAddress: e.target.value})} /></label>
+                  <label className="span-2">Địa chỉ thường trú <input value={form.tenantAddress} onChange={e => setForm({...form, tenantAddress: e.target.value})} /></label>
                   <label>Ngày sinh <input type="date" value={form.tenantBirthday} onChange={e => setForm({...form, tenantBirthday: e.target.value})} /></label>
                   <label>Biển số xe <input value={form.tenantVehicle} onChange={e => setForm({...form, tenantVehicle: e.target.value})} /></label>
                   <label>Mã vân tay <input value={form.tenantFingerprintCode} onChange={e => setForm({...form, tenantFingerprintCode: e.target.value})} placeholder="VD: F502-01" /></label>
@@ -3866,10 +3908,10 @@ function RentalFlowModal({ room, onClose, onSave }) {
               </section>
             </div>
 
-            <div className="stack" style={{ gap: '20px' }}>
-              <section>
+            <div className="rental-column">
+              <section className="rental-form-section">
                 <h3 className="form-section-title">📄 Chi tiết hợp đồng</h3>
-                <div className="form-grid-v2">
+                <div className="rental-form-grid contract-info">
                   <label>Số hợp đồng <input value={form.contractNo} onChange={e => setForm({...form, contractNo: e.target.value})} /></label>
                   <label>Ngày ký <input type="date" value={form.signedDate} onChange={e => setForm({...form, signedDate: e.target.value})} /><span className="small muted">Ngày ký cố định, không tự cập nhật theo hôm nay.</span></label>
                   <label>Ngày bắt đầu <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></label>
@@ -3880,17 +3922,17 @@ function RentalFlowModal({ room, onClose, onSave }) {
                 </div>
               </section>
 
-              <section>
+              <section className="rental-form-section">
                 <h3 className="form-section-title">💡 Dịch vụ & Điều khoản</h3>
-                <div className="form-grid-v2" style={{ gap: '10px' }}>
+                <div className="rental-form-grid service-info">
                   <label>Giá điện <input type="number" value={form.electricPrice} onChange={e => setForm({...form, electricPrice: e.target.value})} /></label>
                   <label>Giá nước <input type="number" value={form.waterPrice} onChange={e => setForm({...form, waterPrice: e.target.value})} /></label>
-                  <label style={{ gridColumn: 'span 2' }}>Ghi chú thêm <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} style={{ minHeight: '60px' }} /></label>
+                  <label className="span-2">Ghi chú thêm <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} style={{ minHeight: '82px' }} /></label>
                 </div>
               </section>
             </div>
           </div>
-          <div className="btn-group" style={{ marginTop: '12px' }}>
+          <div className="rental-contract-footer">
             <button className="secondary-btn" onClick={onClose} style={{ flex: 1 }}>Hủy bỏ</button>
             <button className="primary-btn" onClick={handleNext} style={{ flex: 2 }}>Tiếp theo: Xem trước hợp đồng ➡️</button>
           </div>
@@ -4010,6 +4052,10 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
     cleaningFee: 100000,
     damageFee: 0,
     otherFee: 0,
+    refundBankName: '',
+    refundBankAccount: '',
+    refundBankOwner: '',
+    refundQrImageUrl: '',
     note: ''
   });
 
@@ -4104,6 +4150,29 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 </div>
               </section>
 
+              {mustRefund > 0 && (
+                <section>
+                  <h3 className="form-section-title">🏦 Thông tin hoàn cọc cho khách</h3>
+                  <div className="form-grid-v2">
+                    <label>Ngân hàng người thuê
+                      <input value={form.refundBankName} onChange={e => setForm({...form, refundBankName: e.target.value})} placeholder="VD: Vietcombank, BIDV..." />
+                    </label>
+                    <label>Số tài khoản
+                      <input value={form.refundBankAccount} onChange={e => setForm({...form, refundBankAccount: e.target.value})} placeholder="Nhập STK nhận hoàn cọc" />
+                    </label>
+                    <label style={{ gridColumn: 'span 2' }}>Chủ tài khoản
+                      <input value={form.refundBankOwner || tenant.name || ''} onChange={e => setForm({...form, refundBankOwner: e.target.value})} placeholder={tenant.name || 'Tên chủ tài khoản'} />
+                    </label>
+                    <label style={{ gridColumn: 'span 2' }}>Link ảnh QR của người thuê
+                      <input value={form.refundQrImageUrl} onChange={e => setForm({...form, refundQrImageUrl: e.target.value})} placeholder="Dán link ảnh QR để lưu vào phiếu chi hoàn cọc" />
+                    </label>
+                    <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
+                      Khi hoàn tất trả phòng, hệ thống tự tạo phiếu chi hoàn cọc {formatMoney(mustRefund)} để xác nhận chủ nhà đã chuyển lại tiền cho khách.
+                    </p>
+                  </div>
+                </section>
+              )}
+
               {/* Nhóm 2: Điện nước */}
               <section>
                 <h3 className="form-section-title">⚡ Chỉ số điện nước</h3>
@@ -4170,6 +4239,18 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   </div>
                 )}
 
+                {mustRefund > 0 && (
+                  <div className="settlement-qr-card">
+                    <h4>Phiếu chi hoàn cọc sẽ tạo</h4>
+                    {form.refundQrImageUrl ? <img src={form.refundQrImageUrl} alt="QR người thuê nhận hoàn cọc" /> : <p className="small muted">Có thể dán link QR người thuê ở form bên trái để lưu kèm phiếu chi.</p>}
+                    <div className="payment-details-v4">
+                      <div className="row"><span className="label">Người nhận</span><span className="val">{form.refundBankOwner || tenant.name || 'Khách thuê'}</span></div>
+                      <div className="row"><span className="label">Số tiền hoàn</span><span className="val">{formatMoney(mustRefund)}</span></div>
+                      {form.refundBankAccount && <div className="row"><span className="label">STK</span><span className="val">{form.refundBankAccount}</span></div>}
+                    </div>
+                  </div>
+                )}
+
                 <div className="warning-box">
                   <b>Lưu ý sau khi hoàn tất:</b>
                   <ul>
@@ -4210,6 +4291,13 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         mustCollect,
                         mustRefund,
                         settlementMode: form.settlementMode,
+                        tenantId: tenant.id,
+                        tenantName: tenant.name,
+                        tenantPhone: tenant.phone,
+                        refundBankName: form.refundBankName,
+                        refundBankAccount: form.refundBankAccount,
+                        refundBankOwner: form.refundBankOwner || tenant.name,
+                        refundQrImageUrl: form.refundQrImageUrl,
                         contractId: contract.id,
                         roomId: room.id
                       });
@@ -5687,8 +5775,20 @@ function SupplierModal({ supplier, onClose, onSave }) {
 }
 
 function ExpenseQRModal({ expense, supplier, onClose }) {
-  // Simple QR placeholder since we don't have a real supplier bank code mapping here
-  // In a real app, you'd use buildVietQrUrl with supplier bank info
+  const recipientName = supplier?.name || expense.recipientName || 'Vãng lai';
+  const bankName = supplier?.bankName || expense.recipientBankName || '';
+  const bankAccount = supplier?.bankAccount || expense.recipientBankAccount || '';
+  const bankOwner = supplier?.bankOwner || expense.recipientBankOwner || recipientName;
+  const qrImageUrl = expense.recipientQrImageUrl || expense.qrImageUrl || '';
+  const remainingAmount = Math.max(0, Number(expense.totalAmount || 0) - Number(expense.paidAmount || 0));
+  const displayAmount = remainingAmount > 0 ? remainingAmount : Number(expense.totalAmount || 0);
+  const transferText = `${expense.expenseCode || ''} ${expense.title || ''}`.trim();
+  const copyExpenseTransfer = () => {
+    const text = `${bankName}\nSTK: ${bankAccount}\nChủ TK: ${bankOwner}\nSố tiền: ${formatMoney(displayAmount)}\nNội dung: ${transferText}`;
+    navigator.clipboard.writeText(text);
+    alert('Đã copy thông tin chuyển khoản phiếu chi.');
+  };
+
   return (
     <div className="modal no-print" onClick={onClose}>
       <div className="detail-modal-v2" style={{ maxWidth: '400px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -5697,21 +5797,29 @@ function ExpenseQRModal({ expense, supplier, onClose }) {
           <button className="secondary-btn sm" onClick={onClose}>✕</button>
         </div>
         <div className="detail-body-v2 stack" style={{ alignItems: 'center' }}>
-          <p>Thanh toán cho: <b>{supplier?.name || 'Vãng lai'}</b></p>
-          <p style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)' }}>{formatMoney(expense.totalAmount - expense.paidAmount)}</p>
+          <p>Thanh toán cho: <b>{recipientName}</b></p>
+          <p style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)' }}>{formatMoney(displayAmount)}</p>
           
-          {supplier?.bankAccount ? (
+          {qrImageUrl && (
+            <div className="settlement-qr-card" style={{ width: '100%' }}>
+              <h4>QR người nhận</h4>
+              <img src={qrImageUrl} alt="QR người nhận tiền" />
+            </div>
+          )}
+
+          {bankAccount ? (
             <div className="widget" style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
               <p className="small muted">THÔNG TIN CHUYỂN KHOẢN</p>
-              <p style={{ marginTop: '10px' }}>Ngân hàng: <b>{supplier.bankName}</b></p>
-              <p>Số TK: <b>{supplier.bankAccount}</b></p>
-              <p>Chủ TK: <b>{supplier.bankOwner}</b></p>
-              <p style={{ marginTop: '10px' }} className="small">Nội dung: <b>{expense.title}</b></p>
+              <p style={{ marginTop: '10px' }}>Ngân hàng: <b>{bankName || 'Chưa cập nhật'}</b></p>
+              <p>Số TK: <b>{bankAccount}</b></p>
+              <p>Chủ TK: <b>{bankOwner || 'Chưa cập nhật'}</b></p>
+              <p style={{ marginTop: '10px' }} className="small">Nội dung: <b>{transferText}</b></p>
             </div>
           ) : (
-            <div className="warning-box">Nhà cung cấp này chưa có thông tin ngân hàng. Vui lòng cập nhật để tạo mã QR.</div>
+            <div className="warning-box">Phiếu chi này chưa có thông tin ngân hàng. Có thể lưu link ảnh QR hoặc cập nhật STK người nhận.</div>
           )}
           
+          {(bankAccount || qrImageUrl) && <button className="secondary-btn wide" onClick={copyExpenseTransfer}>📋 Copy nội dung CK</button>}
           <button className="primary-btn wide" style={{ marginTop: '20px' }} onClick={() => window.print()}>🖨️ In chứng từ</button>
         </div>
       </div>
