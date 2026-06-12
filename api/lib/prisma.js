@@ -41,5 +41,7 @@ if (process.env.NODE_ENV !== 'production') {
   prisma = global.prisma;
 }
 
-module.exports = prisma;
-module.exports.createPrismaClient = createPrismaClient;
+module.exports = {
+  prisma,
+  createPrismaClient
+};
