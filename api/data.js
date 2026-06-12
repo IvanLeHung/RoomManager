@@ -87,6 +87,30 @@ module.exports = async (req, res) => {
         const expenseKeys = ['id', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
 
         const ids = (items) => items.filter(i => i && i.id).map(i => i.id);
+        const nowIso = () => new Date().toISOString();
+        const toInt = (value, fallback = 0) => Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback;
+        const toFloat = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+        const prepareRoom = (item) => ({ rent: 0, deposit: 0, cleaning: 0, elevator: 0, laundry: 0, internet: 0, electricPrice: 3800, waterPrice: 32000, ...pick(item, roomKeys) });
+        const prepareTenant = (item) => ({ name: 'Chưa cập nhật', status: 'active', ...pick(item, tenantKeys) });
+        const prepareMembership = (item) => ({ role: 'primary', status: 'active', createdAt: nowIso(), ...pick(item, membershipKeys) });
+        const prepareContract = (item) => ({ startDate: '', endDate: '', deposit: 0, rent: 0, status: 'active', createdAt: nowIso(), ...pick(item, contractKeys) });
+        const prepareReceipt = (item) => {
+          const data = { type: 'monthly', rent: 0, fixedServices: 0, electricOld: 0, electricNew: 0, electricUsed: 0, electricAmount: 0, waterOld: 0, waterNew: 0, waterUsed: 0, waterAmount: 0, other: 0, total: 0, paidAmount: 0, debt: 0, status: 'Chưa thanh toán', createdAt: nowIso(), ...pick(item, receiptKeys) };
+          ['rent', 'fixedServices', 'other', 'total', 'paidAmount', 'debt'].forEach(k => { data[k] = toInt(data[k]); });
+          ['electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount'].forEach(k => { data[k] = toFloat(data[k]); });
+          return data;
+        };
+        const prepareMoveOut = (item) => {
+          const data = { electricOld: 0, electricNew: 0, electricUsed: 0, electricAmount: 0, waterOld: 0, waterNew: 0, waterUsed: 0, waterAmount: 0, depositUsed: 0, unpaidRent: 0, cleaningFee: 0, damageFee: 0, mustCollect: 0, mustRefund: 0, createdAt: nowIso(), ...pick(item, moveOutKeys) };
+          ['depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'otherFee', 'mustCollect', 'mustRefund'].forEach(k => { if (data[k] !== undefined) data[k] = toInt(data[k]); });
+          ['electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'totalIncurred'].forEach(k => { if (data[k] !== undefined) data[k] = toFloat(data[k]); });
+          return data;
+        };
+        const prepareRenewal = (item) => ({ signedDate: '', oldEndDate: '', newStartDate: '', newEndDate: '', oldRent: 0, newRent: 0, oldDeposit: 0, newDeposit: 0, createdAt: nowIso(), ...pick(item, renewalKeys) });
+        const prepareTransfer = (item) => ({ transferDate: '', oldRent: 0, newRent: 0, oldDeposit: 0, newDeposit: 0, createdAt: nowIso(), ...pick(item, transferKeys) });
+        const prepareSupplier = (item) => ({ name: 'Vãng lai', createdAt: nowIso(), updatedAt: nowIso(), ...pick(item, supplierKeys) });
+        const prepareCategory = (item) => ({ name: 'Khác', createdAt: nowIso(), updatedAt: nowIso(), ...pick(item, categoryKeys) });
+        const prepareExpense = (item) => ({ categoryId: 'cat_other', month: '', paymentDate: nowIso().slice(0, 10), title: 'Chi phí', totalAmount: 0, paidAmount: 0, status: 'unpaid', paymentMethod: 'transfer', createdAt: nowIso(), updatedAt: nowIso(), ...pick(item, expenseKeys) });
 
         const runInBatches = async (operations, batchSize = 12) => {
           for (let i = 0; i < operations.length; i += batchSize) {
@@ -112,17 +136,17 @@ module.exports = async (req, res) => {
         ];
 
         const operations = [
-          ...rooms.filter(i => i && i.id).map(item => () => { const data = pick(item, roomKeys); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...tenants.filter(i => i && i.id).map(item => () => { const data = pick(item, tenantKeys); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...memberships.filter(i => i && i.id).map(item => () => { const data = pick(item, membershipKeys); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...contracts.filter(i => i && i.id).map(item => () => { const data = pick(item, contractKeys); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...receipts.filter(i => i && i.id).map(item => () => { const data = pick(item, receiptKeys); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...moveOutReports.filter(i => i && i.id).map(item => () => { const data = pick(item, moveOutKeys); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...contractRenewals.filter(i => i && i.id).map(item => () => { const data = pick(item, renewalKeys); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...roomTransfers.filter(i => i && i.id).map(item => () => { const data = pick(item, transferKeys); return prisma.roomTransfer.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...(payload.suppliers || []).filter(i => i && i.id).map(item => () => { const data = pick(item, supplierKeys); return prisma.supplier.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...(payload.expenseCategories || []).filter(i => i && i.id).map(item => () => { const data = pick(item, categoryKeys); return prisma.expenseCategory.upsert({ where: { id: data.id }, update: data, create: data }); }),
-          ...(payload.expensePayments || []).filter(i => i && i.id).map(item => () => { const data = pick(item, expenseKeys); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...rooms.filter(i => i && i.id).map(item => () => { const data = prepareRoom(item); return prisma.room.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...tenants.filter(i => i && i.id).map(item => () => { const data = prepareTenant(item); return prisma.tenant.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...memberships.filter(i => i && i.id).map(item => () => { const data = prepareMembership(item); return prisma.membership.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contracts.filter(i => i && i.id).map(item => () => { const data = prepareContract(item); return prisma.contract.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...receipts.filter(i => i && i.id).map(item => () => { const data = prepareReceipt(item); return prisma.receipt.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...moveOutReports.filter(i => i && i.id).map(item => () => { const data = prepareMoveOut(item); return prisma.moveOutReport.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...contractRenewals.filter(i => i && i.id).map(item => () => { const data = prepareRenewal(item); return prisma.contractRenewal.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...roomTransfers.filter(i => i && i.id).map(item => () => { const data = prepareTransfer(item); return prisma.roomTransfer.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.suppliers || []).filter(i => i && i.id).map(item => () => { const data = prepareSupplier(item); return prisma.supplier.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.expenseCategories || []).filter(i => i && i.id).map(item => () => { const data = prepareCategory(item); return prisma.expenseCategory.upsert({ where: { id: data.id }, update: data, create: data }); }),
+          ...(payload.expensePayments || []).filter(i => i && i.id).map(item => () => { const data = prepareExpense(item); return prisma.expensePayment.upsert({ where: { id: data.id }, update: data, create: data }); }),
         ];
 
         await runInBatches(operations);

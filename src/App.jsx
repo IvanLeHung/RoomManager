@@ -2227,7 +2227,8 @@ function AppMain() {
                       if (!res.ok) {
                         const errData = await res.json().catch(() => ({}));
                         console.info('Import JSON saved locally but cloud sync failed.', errData);
-                        alert(`Nhập JSON thành công trên máy này, nhưng chưa đồng bộ cloud: ${errData.details || errData.error || res.status}`);
+                        const message = String(errData.details || errData.error || res.status).slice(0, 260);
+                        alert(`Nhập JSON thành công trên máy này, nhưng chưa đồng bộ cloud: ${message}`);
                         return;
                       }
                       cloudFailureRef.current = 0;
