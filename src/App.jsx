@@ -2213,7 +2213,32 @@ function AppMain() {
                 const imported = JSON.parse(event.target.result);
                 if (window.confirm('Cảnh báo: Dữ liệu hiện tại sẽ bị ghi đè. Bạn có chắc chắn muốn nhập dữ liệu từ file này?')) {
                   setData(imported);
-                  alert('Nhập dữ liệu thành công!');
+                  localStorage.setItem(STORAGE_KEY, JSON.stringify(imported));
+                  setCloudEnabled(true);
+                  setHasLoadedCloud(true);
+                  setIsSyncing(true);
+                  fetch('/api/data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'full_sync', payload: imported })
+                  })
+                    .then(async res => {
+                      setIsSyncing(false);
+                      if (!res.ok) {
+                        const errData = await res.json().catch(() => ({}));
+                        console.info('Import JSON saved locally but cloud sync failed.', errData);
+                        alert(`Nhập JSON thành công trên máy này, nhưng chưa đồng bộ cloud: ${errData.details || errData.error || res.status}`);
+                        return;
+                      }
+                      cloudFailureRef.current = 0;
+                      setLastSynced(new Date());
+                      alert('Nhập JSON thành công và đã đồng bộ lên cloud!');
+                    })
+                    .catch(err => {
+                      setIsSyncing(false);
+                      console.info('Import JSON saved locally but cloud sync failed.', err?.message || err);
+                      alert(`Nhập JSON thành công trên máy này, nhưng chưa đồng bộ cloud: ${err?.message || 'Lỗi kết nối'}`);
+                    });
                 }
               } catch (err) {
                 alert('Lỗi: File JSON không hợp lệ!');
