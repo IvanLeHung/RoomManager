@@ -433,6 +433,186 @@ h1, h2, h3, h4 {
   gap: 14px;
 }
 
+.character-select-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  transition: grid-template-columns 0.32s ease;
+}
+
+.character-select.has-selection .character-select-layout {
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+}
+
+.room-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 14px;
+  min-width: 0;
+}
+
+.character-select.has-selection .room-roster {
+  grid-template-columns: 1fr;
+  max-height: calc(100dvh - 190px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.character-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.character-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.13), transparent 55%);
+  transition: opacity 0.28s ease;
+}
+
+.character-card:hover::after,
+.character-card.selected::after {
+  opacity: 1;
+}
+
+.character-select.has-selection .character-card {
+  min-height: 116px;
+  opacity: 0.72;
+  transform: scale(0.98);
+}
+
+.character-select.has-selection .character-card .btn-group {
+  display: none;
+}
+
+.character-card.selected {
+  opacity: 1;
+  transform: scale(1);
+  box-shadow: 0 18px 45px rgba(37, 99, 235, 0.18);
+}
+
+.character-card.selected.occupied { box-shadow: 0 18px 45px rgba(34, 197, 94, 0.2); }
+.character-card.selected.debt { box-shadow: 0 18px 45px rgba(239, 68, 68, 0.22); }
+.character-card.selected.vacant { box-shadow: 0 18px 45px rgba(100, 116, 139, 0.18); }
+.character-card.selected.owner { box-shadow: 0 18px 45px rgba(245, 158, 11, 0.22); }
+
+.character-detail {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #e2e8f0;
+  border-left: 6px solid #2563eb;
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+  padding: 22px;
+  min-height: 520px;
+  position: sticky;
+  top: 24px;
+  animation: detailSlideIn 0.32s ease both;
+}
+
+.character-detail.occupied { border-left-color: #22c55e; }
+.character-detail.debt { border-left-color: #ef4444; }
+.character-detail.vacant { border-left-color: #94a3b8; }
+.character-detail.owner { border-left-color: #f59e0b; }
+
+@keyframes detailSlideIn {
+  from { opacity: 0; transform: translateX(24px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.character-detail-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.detail-eyebrow {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.character-detail-hero h2 {
+  font-size: 44px;
+  line-height: 1;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.character-detail-hero p {
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-secondary);
+}
+
+.detail-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.detail-stat-grid div,
+.detail-info-list div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.detail-stat-grid span,
+.detail-info-list span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.detail-stat-grid b,
+.detail-info-list b {
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.detail-stat-grid .success,
+.detail-info-list .success { color: var(--success); }
+.detail-stat-grid .danger,
+.detail-info-list .danger { color: var(--danger); }
+.detail-stat-grid .muted,
+.detail-info-list .muted { color: var(--text-muted); }
+
+.detail-info-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.character-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.character-detail-actions button {
+  min-width: 140px;
+}
+
 .room-card-liquid {
   background: #fff;
   border-radius: 24px;
@@ -1486,6 +1666,26 @@ textarea {
 }
 
 @media (max-width: 768px) {
+  .character-select.has-selection .character-select-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .character-select.has-selection .room-roster {
+    max-height: none;
+    grid-template-columns: 1fr;
+    padding-right: 0;
+  }
+
+  .character-detail {
+    position: static;
+    min-height: 0;
+  }
+
+  .detail-stat-grid,
+  .detail-info-list {
+    grid-template-columns: 1fr;
+  }
+
   .tenant-crm-header {
     align-items: stretch;
     flex-direction: column;

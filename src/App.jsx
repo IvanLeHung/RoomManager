@@ -2619,6 +2619,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
 
 function RoomsTab({ data, onAction, onSelect, query }) {
   const [caseFilter, setCaseFilter] = useState('all');
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
   const roomCards = useMemo(() => {
     const q = query.toLowerCase();
     return (data.rooms || []).map(room => {
@@ -2644,51 +2645,109 @@ function RoomsTab({ data, onAction, onSelect, query }) {
     ['owner', 'Chủ nhà', roomCards.filter(r => r.caseType === 'owner').length],
   ];
   const visibleRooms = caseFilter === 'all' ? roomCards : roomCards.filter(r => r.caseType === caseFilter);
+  const selectedCard = visibleRooms.find(r => r.room.id === selectedRoomId) || null;
+
+  const renderActionButtons = ({ room, label, contract, ownerOccupied, currentReceipt }) => (
+    label === 'Trống' ? (
+      <>
+        <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('add_tenant', room); }}>+ Thêm khách</button>
+        <button className="secondary-btn" title="Xem lịch sử" onClick={(e) => { e.stopPropagation(); onAction('view_history', room); }}>📜</button>
+      </>
+    ) : (
+      <>
+        <button className="secondary-btn" title={ownerOccupied && !contract ? 'Không cần hợp đồng' : 'Xem hợp đồng'} onClick={(e) => { e.stopPropagation(); ownerOccupied && !contract ? setSelectedRoomId(room.id) : onAction('view_contract', room); }}>📄</button>
+        {!ownerOccupied && <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('create_receipt', room); }}>{currentReceipt ? 'Sửa phiếu' : 'Lập phiếu'}</button>}
+      </>
+    )
+  );
 
   return (
-    <div className="rooms-panel">
+    <div className={`rooms-panel character-select ${selectedCard ? 'has-selection' : ''}`}>
       <div className="room-case-tabs">
         {caseOptions.map(([id, text, count]) => (
-          <button key={id} className={caseFilter === id ? 'active' : ''} onClick={() => setCaseFilter(id)}>
+          <button key={id} className={caseFilter === id ? 'active' : ''} onClick={() => { setCaseFilter(id); setSelectedRoomId(null); }}>
             <span>{text}</span><b>{count}</b>
           </button>
         ))}
       </div>
-      <div className="rooms-grid compact">
-      {visibleRooms.map(({ room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType }) => {
-        const statusText = ownerOccupied ? 'Chủ nhà' : label;
-        const receiptLabel = ownerOccupied ? 'Không lập phiếu' : debt > 0 ? `Nợ ${formatMoney(debt)}` : currentReceipt ? 'Đã thanh toán' : 'Chưa có phiếu';
-        return (
-          <div key={room.id} className={`room-card-liquid compact ${caseType}`} onClick={() => onSelect(room)}>
-            <div className="room-header">
-              <span className="room-id">P{room.id}</span>
-              <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
-            </div>
-            <div className="room-body">
-              {primaryTenant ? (
-                <div className="tenant-block-primary">
-                  <p className="tenant-name-main">{primaryTenant.name}</p>
-                  <div className="room-card-meta">
-                    <span>{ownerOccupied && !contract ? 'Chủ nhà ở' : formatMoney(contract?.rent || room.rent || 0)}</span>
-                    <b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b>
-                  </div>
+      <div className="character-select-layout">
+        <div className="room-roster">
+          {visibleRooms.map(({ room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType }) => {
+            const statusText = ownerOccupied ? 'Chủ nhà' : label;
+            const receiptLabel = ownerOccupied ? 'Không lập phiếu' : debt > 0 ? `Nợ ${formatMoney(debt)}` : currentReceipt ? 'Đã thanh toán' : 'Chưa có phiếu';
+            const isSelected = selectedRoomId === room.id;
+            return (
+              <div key={room.id} className={`room-card-liquid compact character-card ${caseType} ${isSelected ? 'selected' : ''}`} onClick={() => setSelectedRoomId(isSelected ? null : room.id)}>
+                <div className="room-header">
+                  <span className="room-id">P{room.id}</span>
+                  <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
                 </div>
-              ) : <p className="muted">Phòng đang trống</p>}
-            </div>
-            <div className="btn-group">
-              {label === 'Trống' ? (
-                <>
-                  <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('add_tenant', room); }}>+ Thêm khách</button>
-                  <button className="secondary-btn" title="Xem lịch sử" onClick={(e) => { e.stopPropagation(); onAction('view_history', room); }}>📜</button>
-                </>
-              ) : (
-                <><button className="secondary-btn" title={ownerOccupied && !contract ? 'Không cần hợp đồng' : 'Xem hợp đồng'} onClick={(e) => { e.stopPropagation(); ownerOccupied && !contract ? onSelect(room) : onAction('view_contract', room); }}>📄</button>{!ownerOccupied && <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('create_receipt', room); }}>{currentReceipt ? 'Sửa phiếu' : 'Lập phiếu'}</button>}</>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      {!visibleRooms.length && <div className="empty-state-inline">Không có phòng phù hợp với bộ lọc này.</div>}
+                <div className="room-body">
+                  {primaryTenant ? (
+                    <div className="tenant-block-primary">
+                      <p className="tenant-name-main">{primaryTenant.name}</p>
+                      <div className="room-card-meta">
+                        <span>{ownerOccupied && !contract ? 'Chủ nhà ở' : formatMoney(contract?.rent || room.rent || 0)}</span>
+                        <b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b>
+                      </div>
+                    </div>
+                  ) : <p className="muted">Phòng đang trống</p>}
+                </div>
+                {!selectedCard && <div className="btn-group">{renderActionButtons({ room, label, contract, ownerOccupied, currentReceipt })}</div>}
+              </div>
+            );
+          })}
+          {!visibleRooms.length && <div className="empty-state-inline">Không có phòng phù hợp với bộ lọc này.</div>}
+        </div>
+
+        {selectedCard && (() => {
+          const { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType } = selectedCard;
+          const activeMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
+          const occupantCount = contract ? getContractOccupantCount(data, contract) : activeMembers.length;
+          const fixedServices = fixedServiceTotal(room, occupantCount || (primaryTenant ? 1 : 0));
+          const latestReceipt = currentReceipt || (data.receipts || []).filter(r => r.roomId === room.id).sort((a, b) => new Date(b.createdAt || b.savedAt || 0) - new Date(a.createdAt || a.savedAt || 0))[0];
+          const statusText = ownerOccupied ? 'Chủ nhà' : label;
+          const receiptLabel = ownerOccupied ? 'Không lập phiếu' : debt > 0 ? `Nợ ${formatMoney(debt)}` : currentReceipt ? 'Đã thanh toán' : 'Chưa có phiếu';
+          return (
+            <aside className={`character-detail ${caseType}`}>
+              <div className="character-detail-hero">
+                <div>
+                  <span className="detail-eyebrow">Phòng được chọn</span>
+                  <h2>P{room.id}</h2>
+                  <p>{primaryTenant?.name || 'Phòng đang trống'}</p>
+                </div>
+                <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
+              </div>
+
+              <div className="detail-stat-grid">
+                <div><span>Giá thuê</span><b>{formatMoney(contract?.rent || room.rent || 0)}</b></div>
+                <div><span>Tiền cọc</span><b>{formatMoney(contract?.deposit || room.deposit || 0)}</b></div>
+                <div><span>Công nợ</span><b className={debt > 0 ? 'danger' : 'success'}>{formatMoney(debt)}</b></div>
+                <div><span>Thanh toán</span><b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b></div>
+              </div>
+
+              <div className="detail-info-list">
+                <div><span>Người thuê</span><b>{primaryTenant?.name || 'Chưa có khách'}</b></div>
+                <div><span>Số điện thoại</span><b>{primaryTenant?.phone || '—'}</b></div>
+                <div><span>Ngày vào</span><b>{formatDisplayDate(activeMembers[0]?.joinedDate || contract?.startDate || '')}</b></div>
+                <div><span>Hết hạn HĐ</span><b>{contract ? formatBusinessDate(contract.endDate) : ownerOccupied ? 'Không cần HĐ' : '—'}</b></div>
+                <div><span>Điện gần nhất</span><b>{latestReceipt ? `${formatLocaleNumber(getElectricOld(latestReceipt))} → ${formatLocaleNumber(getElectricNew(latestReceipt))}` : 'Chưa có'}</b></div>
+                <div><span>Nước gần nhất</span><b>{latestReceipt ? `${formatLocaleNumber(getWaterOld(latestReceipt))} → ${formatLocaleNumber(getWaterNew(latestReceipt))}` : 'Chưa có'}</b></div>
+                <div><span>Dịch vụ cố định</span><b>{formatMoney(fixedServices)}</b></div>
+                <div><span>Ghi chú</span><b>{room.note || '—'}</b></div>
+              </div>
+
+              <div className="character-detail-actions">
+                <button className="primary-btn" onClick={() => onSelect(room)}>Mở chi tiết</button>
+                {!ownerOccupied && <button className="secondary-btn" onClick={() => onAction('create_receipt', room)}>{currentReceipt ? 'Sửa phiếu' : 'Lập phiếu'}</button>}
+                {!ownerOccupied && debt > 0 && currentReceipt && <button className="secondary-btn" onClick={() => onAction('pay_receipt', currentReceipt)}>Thanh toán</button>}
+                <button className="secondary-btn" onClick={() => onAction('view_history', room)}>Lịch sử thuê</button>
+                {label === 'Trống' && <button className="primary-btn" onClick={() => onAction('add_tenant', room)}>Thêm khách</button>}
+                {!ownerOccupied && contract && <button className="secondary-btn danger" onClick={() => onAction('moving_out', room)}>Trả phòng</button>}
+              </div>
+            </aside>
+          );
+        })()}
       </div>
     </div>
   );
