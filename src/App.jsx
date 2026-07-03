@@ -2060,7 +2060,18 @@ function AppMain() {
           }}
         />
       )}
-      {viewingContract && <ContractPreview {...viewingContract} tenants={data.tenants.filter(t => data.memberships.some(m => m.contractId === viewingContract.contract.id && m.tenantId === t.id))} bankInfo={bankInfo} onClose={() => setViewingContract(null)} />}
+      {viewingContract && <ContractPreview
+        {...viewingContract}
+        tenants={(data.memberships || [])
+          .filter(m => m.contractId === viewingContract.contract.id)
+          .map(m => {
+            const tenant = (data.tenants || []).find(t => t.id === m.tenantId);
+            return tenant ? { ...tenant, role: m.role, membershipStatus: m.status } : null;
+          })
+          .filter(Boolean)}
+        bankInfo={bankInfo}
+        onClose={() => setViewingContract(null)}
+      />}
       {viewingAppendix && (
         <RenewalAppendixPreviewModal
           contract={viewingAppendix.contract}
