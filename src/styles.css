@@ -2061,6 +2061,49 @@ textarea {
 
 .charge-row-v4 .details b { color: #475569; }
 
+.receipt-charge-group {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 14px 4px;
+  margin-bottom: 14px;
+  background: #fff;
+}
+
+.receipt-charge-group.old-room {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.receipt-charge-group.current-room {
+  background: #f8fafc;
+  border-color: #dbeafe;
+}
+
+.receipt-charge-group .group-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.receipt-charge-group .group-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #64748b;
+  font-size: 12px;
+}
+
+.receipt-charge-group .charge-row-v4:last-child {
+  border-bottom: 0;
+}
+
 /* Right: Payment Card */
 .payment-card-v4 {
   background: #fff;
