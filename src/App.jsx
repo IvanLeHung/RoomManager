@@ -1412,7 +1412,9 @@ function AppMain() {
     } else if (type === 'add_roommate') {
       const roomId = roomOrTenant?.id || roomOrTenant?.roomId;
       const room = data.rooms.find(r => r.id === roomId);
-      const activeContract = data.contracts.find(c => c.roomId === roomId && ['active', 'notice', 'moving_out'].includes(c.status));
+      const activeContract = roomOrTenant?.contractId
+        ? data.contracts.find(c => c.id === roomOrTenant.contractId)
+        : data.contracts.find(c => c.roomId === roomId && ['active', 'notice', 'moving_out'].includes(c.status));
       if (!room || !activeContract) {
         alert('Phòng cần có hợp đồng hiệu lực trước khi thêm người ở cùng.');
         return;
@@ -1989,7 +1991,7 @@ function AppMain() {
           onClose={() => setSelectedRoom(null)} 
           onAction={(type, arg) => { 
             handleAction(type, arg || selectedRoom); 
-            setSelectedRoom(null); 
+            if (!['add_roommate', 'edit_tenant'].includes(type)) setSelectedRoom(null);
           }} 
         />
       )}
@@ -3829,7 +3831,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
             </div>
           );
         })}
-        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }} onClick={() => onAction('add_roommate')}>+ Thêm người ở</button>}
+        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }} onClick={() => onAction('add_roommate', { roomId: room.id, contractId: contract.id })}>+ Thêm người ở</button>}
         {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.', '+ Thuê mới', () => onAction('add_tenant'))}
       </div>
     );
