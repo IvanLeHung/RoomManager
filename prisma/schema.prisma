@@ -32,6 +32,8 @@ model Tenant {
   cccdPlace    String?
   address      String?
   licensePlate String?
+  fingerprintCode String?
+  fingerprintStatus String?
   birthday     String?
   status       String?
   lastRoomId   String?

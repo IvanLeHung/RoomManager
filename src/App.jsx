@@ -118,6 +118,20 @@ function safeRead(key, fallback) {
   }
 }
 
+function getDataVersion(data) {
+  if (!data) return 0;
+  const dateFields = ['createdAt', 'updatedAt', 'savedAt', 'paidDate', 'signedDate', 'startDate', 'joinedDate', 'endedAt', 'renewedAt'];
+  const collections = ['rooms', 'tenants', 'memberships', 'contracts', 'receipts', 'moveOutReports', 'contractRenewals', 'roomTransfers', 'suppliers', 'expenseCategories', 'expensePayments'];
+  return collections.reduce((max, key) => {
+    return Math.max(max, ...((data[key] || []).map(item => {
+      return Math.max(0, ...dateFields.map(field => {
+        const time = Date.parse(item?.[field] || '');
+        return Number.isNaN(time) ? 0 : time;
+      }));
+    })));
+  }, 0);
+}
+
 function uid(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -1239,6 +1253,7 @@ function AppMain() {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [detailTenant, setDetailTenant] = useState(null);
   const [newRentalRoom, setNewRentalRoom] = useState(null);
+  const [addingRoommate, setAddingRoommate] = useState(null);
   const [settlingRoom, setSettlingRoom] = useState(null);
   const [transferringContract, setTransferringContract] = useState(null);
   const [viewingContract, setViewingContract] = useState(null);
@@ -1274,13 +1289,15 @@ function AppMain() {
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
           setData(prev => ({
-            ...prev,
-            ...cloudData,
-            suppliers: cloudData.suppliers || prev.suppliers || [],
-            expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
-            expensePayments: cloudData.expensePayments || prev.expensePayments || [],
-            contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
-            roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
+            ...(getDataVersion(prev) > getDataVersion(cloudData) ? prev : {
+              ...prev,
+              ...cloudData,
+              suppliers: cloudData.suppliers || prev.suppliers || [],
+              expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
+              expensePayments: cloudData.expensePayments || prev.expensePayments || [],
+              contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
+              roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
+            })
           }));
           setLastSynced(new Date());
           setCloudEnabled(true);
@@ -1378,7 +1395,31 @@ function AppMain() {
         return;
       }
       const room = data.rooms.find(r => r.id === roomOrTenant.id);
+      if (!room) {
+        alert('Không tìm thấy phòng cần tạo hợp đồng.');
+        return;
+      }
+      const roomStatus = getRoomStatusInfo(data, room.id);
+      if (roomStatus.ownerOccupied) {
+        alert('Phòng chủ nhà ở không cần tạo hợp đồng thuê.');
+        return;
+      }
+      if (roomStatus.contract && ['active', 'notice', 'moving_out'].includes(roomStatus.contract.status)) {
+        alert(`Phòng ${room.id} đang có hợp đồng hiệu lực. Vui lòng tất toán/kết thúc hợp đồng hiện tại trước khi tạo hợp đồng mới.`);
+        return;
+      }
       setNewRentalRoom(room);
+    } else if (type === 'add_roommate') {
+      const roomId = roomOrTenant?.id || roomOrTenant?.roomId;
+      const room = data.rooms.find(r => r.id === roomId);
+      const activeContract = roomOrTenant?.contractId
+        ? data.contracts.find(c => c.id === roomOrTenant.contractId)
+        : data.contracts.find(c => c.roomId === roomId && ['active', 'notice', 'moving_out'].includes(c.status));
+      if (!room || !activeContract) {
+        alert('Phòng cần có hợp đồng hiệu lực trước khi thêm người ở cùng.');
+        return;
+      }
+      setAddingRoommate({ room, contract: activeContract });
     } else if (type === 'notice') {
       if (window.confirm(`Xác nhận báo chuyển cho phòng ${roomOrTenant.id}?\n\nPhòng sẽ được đưa vào trạng thái sắp trống để theo dõi công nợ và lịch kiểm phòng.`)) updateContractStatus(roomOrTenant.id, 'notice');
     } else if (type === 'cancel_notice') {
@@ -1950,7 +1991,7 @@ function AppMain() {
           onClose={() => setSelectedRoom(null)} 
           onAction={(type, arg) => { 
             handleAction(type, arg || selectedRoom); 
-            setSelectedRoom(null); 
+            if (!['add_roommate', 'edit_tenant'].includes(type)) setSelectedRoom(null);
           }} 
         />
       )}
@@ -1960,13 +2001,55 @@ function AppMain() {
           onClose={() => setNewRentalRoom(null)} 
           onSave={(result) => {
             const { tenant, contract, memberships } = result;
+            const existingActiveContract = (data.contracts || []).find(c => c.roomId === contract.roomId && ['active', 'notice', 'moving_out'].includes(c.status));
+            if (existingActiveContract) {
+              alert(`Phòng ${contract.roomId} đã có hợp đồng hiệu lực. Hệ thống không tạo hợp đồng trùng.`);
+              return false;
+            }
+            setData(old => {
+              const serviceConfig = contract.terms?.services || {};
+              const updatedRooms = (old.rooms || []).map(r => r.id === contract.roomId ? {
+                ...r,
+                rent: Number(contract.rent || r.rent || 0),
+                deposit: Number(contract.deposit || r.deposit || 0),
+                electricPrice: Number(contract.terms?.electricPrice || r.electricPrice || 3800),
+                waterPrice: Number(contract.terms?.waterPrice || r.waterPrice || 32000),
+                cleaning: Number(serviceConfig.cleaning ?? r.cleaning ?? 0),
+                elevator: Number(serviceConfig.elevator ?? r.elevator ?? 0),
+                laundry: Number(serviceConfig.laundry ?? r.laundry ?? 0),
+                internet: Number(serviceConfig.internet ?? r.internet ?? 0),
+              } : r);
+              return {
+                ...old,
+                rooms: updatedRooms,
+                tenants: [...(old.tenants || []).filter(t => t.id !== tenant.id), tenant],
+                contracts: [...(old.contracts || []).filter(c => c.id !== contract.id), contract],
+                memberships: [...(old.memberships || []).filter(m => !memberships.some(newM => newM.id === m.id)), ...memberships]
+              };
+            });
+            setNewRentalRoom(null);
+            setSelectedRoom(null);
+            setTab('rooms');
+            alert(`Đã lưu hợp đồng ${contract.contractNo || contract.id} cho phòng ${contract.roomId}.`);
+            return true;
+          }}
+        />
+      )}
+      {addingRoommate && (
+        <RoommateModal
+          room={addingRoommate.room}
+          contract={addingRoommate.contract}
+          onClose={() => setAddingRoommate(null)}
+          onSave={(result) => {
+            const { tenant, membership } = result;
             setData(old => ({
               ...old,
-              tenants: [...(old.tenants || []), tenant],
-              contracts: [...(old.contracts || []), contract],
-              memberships: [...(old.memberships || []), ...memberships]
+              tenants: [...(old.tenants || []).filter(t => t.id !== tenant.id), tenant],
+              memberships: [...(old.memberships || []).filter(m => m.id !== membership.id), membership]
             }));
-            setNewRentalRoom(null);
+            setAddingRoommate(null);
+            alert(`Đã thêm ${tenant.name} vào phòng ${membership.roomId}.`);
+            return true;
           }}
         />
       )}
@@ -3759,7 +3842,7 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
             </div>
           );
         })}
-        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }}>+ Thêm người ở</button>}
+        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }} onClick={() => onAction('add_roommate', { roomId: room.id, contractId: contract.id })}>+ Thêm người ở</button>}
         {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.', '+ Thuê mới', () => onAction('add_tenant'))}
       </div>
     );
@@ -3976,6 +4059,7 @@ function EditContractModal({ contract, data, onClose, onSave }) {
 
 function RentalFlowModal({ room, onClose, onSave }) {
   const [step, setStep] = useState('form'); // 'form' | 'preview'
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
     // Tenant Info
     tenantName: '',
@@ -4024,8 +4108,10 @@ function RentalFlowModal({ room, onClose, onSave }) {
   };
 
   const handleSave = (shouldPrint = false) => {
+    if (isSaving) return;
     const tenantId = uid('tenant');
     const contractId = uid('contract');
+    setIsSaving(true);
     
     const newTenant = {
       id: tenantId,
@@ -4072,13 +4158,24 @@ function RentalFlowModal({ room, onClose, onSave }) {
       roomId: room.id,
       role: 'primary',
       status: 'active',
+      joinedDate: form.startDate,
+      leftDate: '',
       createdAt: new Date().toISOString()
     }];
 
-    onSave({ tenant: newTenant, contract: newContract, memberships });
-    
-    if (shouldPrint) {
-      setTimeout(() => window.print(), 500);
+    try {
+      const saved = onSave({ tenant: newTenant, contract: newContract, memberships });
+      if (saved === false) {
+        setIsSaving(false);
+        return;
+      }
+      if (shouldPrint) {
+        setTimeout(() => window.print(), 500);
+      }
+    } catch (error) {
+      console.error(error);
+      setIsSaving(false);
+      alert('Không lưu được hợp đồng. Vui lòng thử lại hoặc kiểm tra console.');
     }
   };
 
@@ -4093,8 +4190,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
             </div>
             <div className="btn-group">
               <button className="secondary-btn" onClick={() => setStep('form')}>⬅️ Quay lại sửa</button>
-              <button className="primary-btn" onClick={() => handleSave(false)}>💾 Lưu hợp đồng</button>
-              <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => handleSave(true)}>🖨️ Lưu & In</button>
+              <button className="primary-btn" onClick={() => handleSave(false)} disabled={isSaving}>{isSaving ? 'Đang lưu...' : '💾 Lưu hợp đồng'}</button>
+              <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => handleSave(true)} disabled={isSaving}>{isSaving ? 'Đang lưu...' : '🖨️ Lưu & In'}</button>
             </div>
           </div>
           <div className="detail-body-v2" style={{ padding: 0 }}>
@@ -5114,6 +5211,118 @@ function EditTenantModal({ tenant, onClose, onSave }) {
             <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note || ''} onChange={e => setForm({...form, note: e.target.value})} /></label>
           </div>
           <button className="primary-btn wide" style={{ marginTop: '24px' }} onClick={() => onSave(form)}>Lưu thay đổi</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoommateModal({ room, contract, onClose, onSave }) {
+  const [isSaving, setIsSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    phone: '',
+    cccd: '',
+    cccdDate: '',
+    cccdPlace: '',
+    birthday: '',
+    address: '',
+    licensePlate: '',
+    fingerprintCode: '',
+    fingerprintStatus: 'Chưa đăng ký',
+    joinedDate: new Date().toISOString().slice(0, 10),
+    note: ''
+  });
+
+  const handleSave = () => {
+    if (isSaving) return;
+    if (!form.name.trim()) {
+      alert('Vui lòng nhập họ tên người ở cùng.');
+      return;
+    }
+    if (!form.joinedDate) {
+      alert('Vui lòng nhập ngày vào ở.');
+      return;
+    }
+    setIsSaving(true);
+    const tenantId = uid('tenant');
+    const membershipId = uid('membership');
+    const tenant = {
+      id: tenantId,
+      name: form.name.trim(),
+      phone: form.phone,
+      cccd: form.cccd,
+      cccdDate: form.cccdDate,
+      cccdPlace: form.cccdPlace,
+      birthday: form.birthday,
+      address: form.address,
+      licensePlate: form.licensePlate,
+      fingerprintCode: form.fingerprintCode,
+      fingerprintStatus: form.fingerprintStatus,
+      role: 'member',
+      status: 'active',
+      note: form.note,
+      createdAt: new Date().toISOString()
+    };
+    const membership = {
+      id: membershipId,
+      contractId: contract.id,
+      tenantId,
+      roomId: room.id,
+      role: 'member',
+      status: 'active',
+      joinedDate: form.joinedDate,
+      leftDate: '',
+      createdAt: new Date().toISOString()
+    };
+    try {
+      const saved = onSave({ tenant, membership });
+      if (saved === false) {
+        setIsSaving(false);
+      }
+    } catch (error) {
+      console.error(error);
+      setIsSaving(false);
+      alert('Không lưu được người ở cùng. Vui lòng thử lại.');
+    }
+  };
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>Thêm người ở cùng • Phòng {room.id}</h2>
+            <p className="muted">Gắn người ở cùng vào hợp đồng {contract.contractNo || contract.id}</p>
+          </div>
+          <button className="secondary-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="detail-body-v2 stack">
+          <div className="form-grid-v2">
+            <label style={{ gridColumn: 'span 2' }}>Họ và tên <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Nguyễn Văn A" /></label>
+            <label>Số điện thoại <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="09xx..." /></label>
+            <label>Số CCCD <input value={form.cccd} onChange={e => setForm({...form, cccd: e.target.value})} /></label>
+            <label>Ngày cấp CCCD <input type="date" value={form.cccdDate} onChange={e => setForm({...form, cccdDate: e.target.value})} /></label>
+            <label>Nơi cấp <input value={form.cccdPlace} onChange={e => setForm({...form, cccdPlace: e.target.value})} /></label>
+            <label>Ngày sinh <input type="date" value={form.birthday} onChange={e => setForm({...form, birthday: e.target.value})} /></label>
+            <label>Ngày vào ở <input type="date" value={form.joinedDate} onChange={e => setForm({...form, joinedDate: e.target.value})} /></label>
+            <label>Biển số xe <input value={form.licensePlate} onChange={e => setForm({...form, licensePlate: e.target.value})} /></label>
+            <label>Mã vân tay <input value={form.fingerprintCode} onChange={e => setForm({...form, fingerprintCode: e.target.value})} placeholder="VD: F502-02" /></label>
+            <label>Trạng thái vân tay
+              <select value={form.fingerprintStatus} onChange={e => setForm({...form, fingerprintStatus: e.target.value})}>
+                <option>Chưa đăng ký</option>
+                <option>Đã đăng ký</option>
+                <option>Cần xóa</option>
+                <option>Đã xóa</option>
+              </select>
+            </label>
+            <label style={{ gridColumn: 'span 2' }}>Địa chỉ thường trú <input value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></label>
+            <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} /></label>
+          </div>
+          <div className="op-action-footer">
+            <button className="secondary-btn" onClick={onClose}>Hủy</button>
+            <button className="primary-btn" onClick={handleSave} disabled={isSaving}>{isSaving ? 'Đang lưu...' : '+ Thêm người ở cùng'}</button>
+          </div>
         </div>
       </div>
     </div>
