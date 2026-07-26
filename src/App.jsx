@@ -118,6 +118,20 @@ function safeRead(key, fallback) {
   }
 }
 
+function getDataVersion(data) {
+  if (!data) return 0;
+  const dateFields = ['createdAt', 'updatedAt', 'savedAt', 'paidDate', 'signedDate', 'startDate', 'joinedDate', 'endedAt', 'renewedAt'];
+  const collections = ['rooms', 'tenants', 'memberships', 'contracts', 'receipts', 'moveOutReports', 'contractRenewals', 'roomTransfers', 'suppliers', 'expenseCategories', 'expensePayments'];
+  return collections.reduce((max, key) => {
+    return Math.max(max, ...((data[key] || []).map(item => {
+      return Math.max(0, ...dateFields.map(field => {
+        const time = Date.parse(item?.[field] || '');
+        return Number.isNaN(time) ? 0 : time;
+      }));
+    })));
+  }, 0);
+}
+
 function uid(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -1274,13 +1288,15 @@ function AppMain() {
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
           setData(prev => ({
-            ...prev,
-            ...cloudData,
-            suppliers: cloudData.suppliers || prev.suppliers || [],
-            expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
-            expensePayments: cloudData.expensePayments || prev.expensePayments || [],
-            contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
-            roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
+            ...(getDataVersion(prev) > getDataVersion(cloudData) ? prev : {
+              ...prev,
+              ...cloudData,
+              suppliers: cloudData.suppliers || prev.suppliers || [],
+              expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
+              expensePayments: cloudData.expensePayments || prev.expensePayments || [],
+              contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
+              roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
+            })
           }));
           setLastSynced(new Date());
           setCloudEnabled(true);
@@ -1378,6 +1394,19 @@ function AppMain() {
         return;
       }
       const room = data.rooms.find(r => r.id === roomOrTenant.id);
+      if (!room) {
+        alert('Không tìm thấy phòng cần tạo hợp đồng.');
+        return;
+      }
+      const roomStatus = getRoomStatusInfo(data, room.id);
+      if (roomStatus.ownerOccupied) {
+        alert('Phòng chủ nhà ở không cần tạo hợp đồng thuê.');
+        return;
+      }
+      if (roomStatus.contract && ['active', 'notice', 'moving_out'].includes(roomStatus.contract.status)) {
+        alert(`Phòng ${room.id} đang có hợp đồng hiệu lực. Vui lòng tất toán/kết thúc hợp đồng hiện tại trước khi tạo hợp đồng mới.`);
+        return;
+      }
       setNewRentalRoom(room);
     } else if (type === 'notice') {
       if (window.confirm(`Xác nhận báo chuyển cho phòng ${roomOrTenant.id}?\n\nPhòng sẽ được đưa vào trạng thái sắp trống để theo dõi công nợ và lịch kiểm phòng.`)) updateContractStatus(roomOrTenant.id, 'notice');
@@ -1960,13 +1989,37 @@ function AppMain() {
           onClose={() => setNewRentalRoom(null)} 
           onSave={(result) => {
             const { tenant, contract, memberships } = result;
-            setData(old => ({
-              ...old,
-              tenants: [...(old.tenants || []), tenant],
-              contracts: [...(old.contracts || []), contract],
-              memberships: [...(old.memberships || []), ...memberships]
-            }));
+            const existingActiveContract = (data.contracts || []).find(c => c.roomId === contract.roomId && ['active', 'notice', 'moving_out'].includes(c.status));
+            if (existingActiveContract) {
+              alert(`Phòng ${contract.roomId} đã có hợp đồng hiệu lực. Hệ thống không tạo hợp đồng trùng.`);
+              return false;
+            }
+            setData(old => {
+              const serviceConfig = contract.terms?.services || {};
+              const updatedRooms = (old.rooms || []).map(r => r.id === contract.roomId ? {
+                ...r,
+                rent: Number(contract.rent || r.rent || 0),
+                deposit: Number(contract.deposit || r.deposit || 0),
+                electricPrice: Number(contract.terms?.electricPrice || r.electricPrice || 3800),
+                waterPrice: Number(contract.terms?.waterPrice || r.waterPrice || 32000),
+                cleaning: Number(serviceConfig.cleaning ?? r.cleaning ?? 0),
+                elevator: Number(serviceConfig.elevator ?? r.elevator ?? 0),
+                laundry: Number(serviceConfig.laundry ?? r.laundry ?? 0),
+                internet: Number(serviceConfig.internet ?? r.internet ?? 0),
+              } : r);
+              return {
+                ...old,
+                rooms: updatedRooms,
+                tenants: [...(old.tenants || []).filter(t => t.id !== tenant.id), tenant],
+                contracts: [...(old.contracts || []).filter(c => c.id !== contract.id), contract],
+                memberships: [...(old.memberships || []).filter(m => !memberships.some(newM => newM.id === m.id)), ...memberships]
+              };
+            });
             setNewRentalRoom(null);
+            setSelectedRoom(null);
+            setTab('rooms');
+            alert(`Đã lưu hợp đồng ${contract.contractNo || contract.id} cho phòng ${contract.roomId}.`);
+            return true;
           }}
         />
       )}
@@ -3965,6 +4018,7 @@ function EditContractModal({ contract, data, onClose, onSave }) {
 
 function RentalFlowModal({ room, onClose, onSave }) {
   const [step, setStep] = useState('form'); // 'form' | 'preview'
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
     // Tenant Info
     tenantName: '',
@@ -4013,8 +4067,10 @@ function RentalFlowModal({ room, onClose, onSave }) {
   };
 
   const handleSave = (shouldPrint = false) => {
+    if (isSaving) return;
     const tenantId = uid('tenant');
     const contractId = uid('contract');
+    setIsSaving(true);
     
     const newTenant = {
       id: tenantId,
@@ -4061,13 +4117,24 @@ function RentalFlowModal({ room, onClose, onSave }) {
       roomId: room.id,
       role: 'primary',
       status: 'active',
+      joinedDate: form.startDate,
+      leftDate: '',
       createdAt: new Date().toISOString()
     }];
 
-    onSave({ tenant: newTenant, contract: newContract, memberships });
-    
-    if (shouldPrint) {
-      setTimeout(() => window.print(), 500);
+    try {
+      const saved = onSave({ tenant: newTenant, contract: newContract, memberships });
+      if (saved === false) {
+        setIsSaving(false);
+        return;
+      }
+      if (shouldPrint) {
+        setTimeout(() => window.print(), 500);
+      }
+    } catch (error) {
+      console.error(error);
+      setIsSaving(false);
+      alert('Không lưu được hợp đồng. Vui lòng thử lại hoặc kiểm tra console.');
     }
   };
 
@@ -4082,8 +4149,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
             </div>
             <div className="btn-group">
               <button className="secondary-btn" onClick={() => setStep('form')}>⬅️ Quay lại sửa</button>
-              <button className="primary-btn" onClick={() => handleSave(false)}>💾 Lưu hợp đồng</button>
-              <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => handleSave(true)}>🖨️ Lưu & In</button>
+              <button className="primary-btn" onClick={() => handleSave(false)} disabled={isSaving}>{isSaving ? 'Đang lưu...' : '💾 Lưu hợp đồng'}</button>
+              <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => handleSave(true)} disabled={isSaving}>{isSaving ? 'Đang lưu...' : '🖨️ Lưu & In'}</button>
             </div>
           </div>
           <div className="detail-body-v2" style={{ padding: 0 }}>
