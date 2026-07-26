@@ -1992,7 +1992,17 @@ function AppMain() {
           onAction={(type, arg) => { 
             handleAction(type, arg || selectedRoom); 
             if (!['add_roommate', 'edit_tenant'].includes(type)) setSelectedRoom(null);
-          }} 
+          }}
+          onAddRoommate={(result) => {
+            const { tenant, membership } = result;
+            setData(old => ({
+              ...old,
+              tenants: [...(old.tenants || []).filter(t => t.id !== tenant.id), tenant],
+              memberships: [...(old.memberships || []).filter(m => m.id !== membership.id), membership]
+            }));
+            alert(`Đã thêm ${tenant.name} vào phòng ${membership.roomId}.`);
+            return true;
+          }}
         />
       )}
       {newRentalRoom && (
@@ -3542,10 +3552,11 @@ function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
   );
 }
 
-function RoomDetailModal({ room, data, onClose, onAction }) {
+function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [historyFilter, setHistoryFilter] = useState('all');
   const [showMoreActions, setShowMoreActions] = useState(false);
+  const [showRoommateForm, setShowRoommateForm] = useState(false);
   const { label, color, contract, ownerOccupied } = getRoomStatusInfo(data, room.id);
   const roomActiveMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
   const roomPrimaryMember = roomActiveMembers.find(m => m.role === 'primary') || roomActiveMembers[0];
@@ -3831,7 +3842,20 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
             </div>
           );
         })}
-        {contract && <button className="secondary-btn wide" style={{ borderStyle: 'dashed' }} onClick={() => onAction('add_roommate', { roomId: room.id, contractId: contract.id })}>+ Thêm người ở</button>}
+        {contract && (
+          <button
+            type="button"
+            className="secondary-btn wide"
+            style={{ borderStyle: 'dashed' }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowRoommateForm(true);
+            }}
+          >
+            + Thêm người ở
+          </button>
+        )}
         {!allMembers.length && renderEmptyOps('Chưa có người ở', 'Phòng đang trống.', '+ Thuê mới', () => onAction('add_tenant'))}
       </div>
     );
@@ -3939,19 +3963,20 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
   };
 
   return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '980px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <h2 style={{ fontSize: '28px' }}>Phòng {room.id}</h2>
-              <span className={`status-badge-liquid ${color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{label}</span>
-              {receiptDebt > 0 && <span className="status-badge-liquid debt">Nợ {formatMoney(receiptDebt)}</span>}
+    <>
+      <div className="modal" onClick={onClose}>
+        <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '980px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-header">
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <h2 style={{ fontSize: '28px' }}>Phòng {room.id}</h2>
+                <span className={`status-badge-liquid ${color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{label}</span>
+                {receiptDebt > 0 && <span className="status-badge-liquid debt">Nợ {formatMoney(receiptDebt)}</span>}
+              </div>
+              <p className="muted">{primaryTenant ? `${primaryTenant.name} • ${primaryTenant.phone}` : ownerOccupied ? 'Chủ nhà ở, không cần hợp đồng' : 'Chưa có hợp đồng hiện tại'}</p>
             </div>
-            <p className="muted">{primaryTenant ? `${primaryTenant.name} • ${primaryTenant.phone}` : ownerOccupied ? 'Chủ nhà ở, không cần hợp đồng' : 'Chưa có hợp đồng hiện tại'}</p>
+            <button className="secondary-btn" onClick={onClose}>✕</button>
           </div>
-          <button className="secondary-btn" onClick={onClose}>✕</button>
-        </div>
 
         <div className="detail-body-v2">
           <nav className="room-op-tabs">
@@ -3998,6 +4023,22 @@ function RoomDetailModal({ room, data, onClose, onAction }) {
         </div>
       </div>
     </div>
+      {showRoommateForm && contract && (
+        <RoommateModal
+          room={room}
+          contract={contract}
+          onClose={() => setShowRoommateForm(false)}
+          onSave={(result) => {
+            const saved = onAddRoommate ? onAddRoommate(result) : false;
+            if (saved !== false) {
+              setShowRoommateForm(false);
+              setActiveTab('residents');
+            }
+            return saved;
+          }}
+        />
+      )}
+    </>
   );
 }
 
