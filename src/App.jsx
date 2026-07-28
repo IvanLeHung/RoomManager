@@ -4182,6 +4182,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
     tenantFingerprintCode: '',
     tenantFingerprintStatus: 'Chưa đăng ký',
     tenantBirthday: '',
+    tenantNote: '',
+    tenantIdPaste: '',
     // Contract Info
     contractNo: `HĐ-${room.id}-${new Date().getFullYear()}${(new Date().getMonth()+1).toString().padStart(2,'0')}`,
     signedDate: new Date().toISOString().slice(0, 10),
@@ -4204,6 +4206,53 @@ function RentalFlowModal({ room, onClose, onSave }) {
   const previewBaseFixedServiceTotal = Number(form.services.cleaning || 0) + Number(form.services.elevator || 0) + Number(form.services.laundry || 0) + Number(form.services.internet || 0);
   const previewAppliedFixedServiceTotal = fixedServiceTotal(room, 1);
   const previewFixedServiceDiscount = Math.max(0, previewBaseFixedServiceTotal - previewAppliedFixedServiceTotal);
+
+  const readPastedField = (text, label) => {
+    const match = text.match(new RegExp(`${label}\\s*:\\s*([^\\n\\r]+)`, 'i'));
+    return match ? match[1].trim() : '';
+  };
+
+  const parseVietnameseDate = (value) => {
+    const match = String(value || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!match) return '';
+    const [, day, month, year] = match;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  };
+
+  const applyPastedIdInfo = (text) => {
+    const cccd = readPastedField(text, 'Số CCCD');
+    const name = readPastedField(text, 'Họ và tên');
+    const birthday = parseVietnameseDate(readPastedField(text, 'Ngày sinh'));
+    const address = readPastedField(text, 'Nơi thường trú');
+    const issueDate = parseVietnameseDate(readPastedField(text, 'Ngày cấp'));
+    const issuePlace = readPastedField(text, 'Nơi cấp');
+    const extraFields = [
+      ['Giới tính', readPastedField(text, 'Giới tính')],
+      ['Quốc tịch', readPastedField(text, 'Quốc tịch')],
+      ['Quê quán', readPastedField(text, 'Quê quán')],
+      ['Có giá trị đến', readPastedField(text, 'Có giá trị đến')],
+      ['Đặc điểm nhận dạng', readPastedField(text, 'Đặc điểm nhận dạng')],
+      ['Người ký', readPastedField(text, 'Người ký')]
+    ].filter(([, value]) => value);
+    const mrzIndex = text.toLowerCase().indexOf('mrz');
+    const mrzText = mrzIndex >= 0 ? text.slice(mrzIndex).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean).join('\n') : '';
+    const extraNote = [
+      ...extraFields.map(([label, value]) => `${label}: ${value}`),
+      mrzText ? `MRZ:\n${mrzText}` : ''
+    ].filter(Boolean).join('\n');
+
+    setForm(prev => ({
+      ...prev,
+      tenantIdPaste: text,
+      tenantCCCD: cccd || prev.tenantCCCD,
+      tenantName: name || prev.tenantName,
+      tenantBirthday: birthday || prev.tenantBirthday,
+      tenantAddress: address || prev.tenantAddress,
+      tenantCCCDDate: issueDate || prev.tenantCCCDDate,
+      tenantCCCDPlace: issuePlace || prev.tenantCCCDPlace,
+      tenantNote: extraNote || prev.tenantNote
+    }));
+  };
 
   const handleNext = () => {
     if (!form.tenantName || !form.signedDate || !form.startDate || !form.endDate) {
@@ -4235,6 +4284,7 @@ function RentalFlowModal({ room, onClose, onSave }) {
       fingerprintCode: form.tenantFingerprintCode,
       fingerprintStatus: form.tenantFingerprintStatus,
       birthday: form.tenantBirthday,
+      note: form.tenantNote,
       role: 'primary',
       status: 'active',
       createdAt: new Date().toISOString()
@@ -4358,14 +4408,31 @@ function RentalFlowModal({ room, onClose, onSave }) {
             <div className="rental-column">
               <section className="rental-form-section">
                 <h3 className="form-section-title">👤 Thông tin người thuê</h3>
-                <div className="rental-form-grid tenant-info">
+                <div className="paste-id-card">
+                  <label>Dán nhanh thông tin CCCD
+                    <textarea
+                      value={form.tenantIdPaste}
+                      onChange={e => applyPastedIdInfo(e.target.value)}
+                      placeholder={'Dán nguyên nội dung CCCD ở đây, hệ thống tự điền: họ tên, số CCCD, ngày sinh, thường trú, ngày cấp...'}
+                    />
+                  </label>
+                </div>
+                <div className="rental-subsection-title">CCCD mặt trước</div>
+                <div className="rental-form-grid tenant-id-grid">
                   <label className="span-2">Họ và tên <input value={form.tenantName} onChange={e => setForm({...form, tenantName: e.target.value})} placeholder="Nguyễn Văn A" /></label>
-                  <label>Số điện thoại <input value={form.tenantPhone} onChange={e => setForm({...form, tenantPhone: e.target.value})} placeholder="09xx..." /></label>
                   <label>Số CCCD <input value={form.tenantCCCD} onChange={e => setForm({...form, tenantCCCD: e.target.value})} /></label>
+                  <label>Ngày sinh <input type="date" value={form.tenantBirthday} onChange={e => setForm({...form, tenantBirthday: e.target.value})} /></label>
+                  <label className="span-2">Địa chỉ thường trú <input value={form.tenantAddress} onChange={e => setForm({...form, tenantAddress: e.target.value})} /></label>
+                </div>
+                <div className="rental-subsection-title">CCCD mặt sau</div>
+                <div className="rental-form-grid tenant-id-grid">
                   <label>Ngày cấp CCCD <input type="date" value={form.tenantCCCDDate} onChange={e => setForm({...form, tenantCCCDDate: e.target.value})} /></label>
                   <label>Nơi cấp <input value={form.tenantCCCDPlace} onChange={e => setForm({...form, tenantCCCDPlace: e.target.value})} /></label>
-                  <label className="span-2">Địa chỉ thường trú <input value={form.tenantAddress} onChange={e => setForm({...form, tenantAddress: e.target.value})} /></label>
-                  <label>Ngày sinh <input type="date" value={form.tenantBirthday} onChange={e => setForm({...form, tenantBirthday: e.target.value})} /></label>
+                  <label className="span-2">Ghi chú CCCD / MRZ <textarea value={form.tenantNote} onChange={e => setForm({...form, tenantNote: e.target.value})} placeholder="Giới tính, quốc tịch, quê quán, hạn CCCD, đặc điểm nhận dạng, MRZ..." /></label>
+                </div>
+                <div className="rental-subsection-title">Liên hệ & quản lý ra vào</div>
+                <div className="rental-form-grid tenant-ops-grid">
+                  <label>Số điện thoại <input value={form.tenantPhone} onChange={e => setForm({...form, tenantPhone: e.target.value})} placeholder="09xx..." /></label>
                   <label>Biển số xe <input value={form.tenantVehicle} onChange={e => setForm({...form, tenantVehicle: e.target.value})} /></label>
                   <label>Mã vân tay <input value={form.tenantFingerprintCode} onChange={e => setForm({...form, tenantFingerprintCode: e.target.value})} placeholder="VD: F502-01" /></label>
                   <label>Trạng thái vân tay
