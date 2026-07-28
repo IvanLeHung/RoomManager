@@ -1363,7 +1363,10 @@ function AppMain() {
       const timeout = setTimeout(() => controller.abort(), 8000);
       try {
         const res = await fetch('/api/data', { signal: controller.signal });
-        if (!res.ok) throw new Error('Network response was not ok');
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new Error(`GET /api/data ${res.status}: ${body.slice(0, 400) || res.statusText}`);
+        }
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
           setData(prev => ({
@@ -1411,9 +1414,9 @@ function AppMain() {
           cloudFailureRef.current = 0;
           setLastSynced(new Date());
         } else {
-          const errData = await res.json().catch(() => ({}));
+          const errData = await res.json().catch(async () => ({ raw: await res.text().catch(() => '') }));
           cloudFailureRef.current += 1;
-          console.info("Cloud sync failed; local data was saved.", errData);
+          console.info(`Cloud sync failed (${res.status}); local data was saved.`, errData);
           if (res.status >= 500 || cloudFailureRef.current >= 2) {
             setCloudEnabled(false);
           }

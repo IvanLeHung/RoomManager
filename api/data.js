@@ -16,11 +16,38 @@ async function retryNeonQuery(fn, retries = 2) {
   throw lastError;
 }
 
+async function ensureDatabaseShape(prisma) {
+  const statements = [
+    'ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "licensePlate" TEXT',
+    'ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "fingerprintCode" TEXT',
+    'ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "fingerprintStatus" TEXT',
+    'ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "birthday" TEXT',
+    'ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "status" TEXT',
+    'ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "lastRoomId" TEXT',
+    'ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "note" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "signedDate" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "noticeDate" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "expectedMoveOutDate" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "actualEndDate" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "endedAt" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "previousEndDate" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "renewedAt" TEXT',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "terms" JSONB',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "renewalHistory" JSONB',
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "note" TEXT'
+  ];
+
+  for (const sql of statements) {
+    await retryNeonQuery(() => prisma.$executeRawUnsafe(sql));
+  }
+}
+
 module.exports = async (req, res) => {
   const prisma = createPrismaClient();
 
   if (req.method === 'GET') {
     try {
+      await ensureDatabaseShape(prisma);
       const rooms = await retryNeonQuery(() => prisma.room.findMany());
       const tenants = await retryNeonQuery(() => prisma.tenant.findMany());
       const memberships = await retryNeonQuery(() => prisma.membership.findMany());
@@ -63,6 +90,7 @@ module.exports = async (req, res) => {
     
     try {
       if (type === 'full_sync') {
+        await ensureDatabaseShape(prisma);
         const { rooms = [], tenants = [], memberships = [], contracts = [], receipts = [], moveOutReports = [], contractRenewals = [], roomTransfers = [] } = payload;
 
         const pick = (obj, keys) => {
