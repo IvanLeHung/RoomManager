@@ -1085,6 +1085,30 @@ tr:hover td {
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
 }
 
+.paste-id-card {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px dashed #bfdbfe;
+  border-radius: 14px;
+  background: #eff6ff;
+}
+
+.paste-id-card textarea {
+  min-height: 74px;
+  max-height: 120px;
+  resize: vertical;
+  background: #fff;
+}
+
+.rental-subsection-title {
+  margin: 14px 0 10px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .rental-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1106,6 +1130,10 @@ tr:hover td {
 .rental-form-grid textarea {
   padding-top: 12px;
   resize: vertical;
+}
+
+.tenant-id-grid textarea {
+  min-height: 78px;
 }
 
 .rental-contract-footer {
