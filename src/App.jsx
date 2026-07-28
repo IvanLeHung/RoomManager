@@ -331,6 +331,28 @@ function getPrimaryTenantByContract(data, contractId) {
   return (data.tenants || []).find(t => t.id === primaryMember.tenantId) || null;
 }
 
+function getTenantForReceipt(data, receipt) {
+  if (!receipt) return null;
+  const byContract = getPrimaryTenantByContract(data, receipt.contractId);
+  if (byContract) return byContract;
+
+  const activeRoomMember = (data.memberships || []).find(m =>
+    m.roomId === receipt.roomId &&
+    m.status === 'active' &&
+    m.role === 'primary'
+  ) || (data.memberships || []).find(m =>
+    m.roomId === receipt.roomId &&
+    m.status === 'active'
+  );
+  if (activeRoomMember) {
+    const tenant = (data.tenants || []).find(t => t.id === activeRoomMember.tenantId);
+    if (tenant) return tenant;
+  }
+
+  const contractMember = (data.memberships || []).find(m => m.contractId === receipt.contractId);
+  return contractMember ? (data.tenants || []).find(t => t.id === contractMember.tenantId) || null : null;
+}
+
 function onlyDigits(value) {
   return String(value || '').split('').filter(c => c >= '0' && c <= '9').join('');
 }
@@ -1721,7 +1743,7 @@ function AppMain() {
 
         // 6. Sheet Phieu thang
         const monthlyReceiptsData = data.receipts.filter(r => r.type === 'monthly').map(r => {
-          const tenant = getPrimaryTenantByContract(data, r.contractId);
+          const tenant = getTenantForReceipt(data, r);
           return {
             'Mã phiếu': r.id,
             'Tháng': r.month,
@@ -1754,7 +1776,7 @@ function AppMain() {
 
         // 7. Sheet Thanh toan
         const paymentsData = data.receipts.map(r => {
-          const tenant = getPrimaryTenantByContract(data, r.contractId);
+          const tenant = getTenantForReceipt(data, r);
           return {
             'Mã phiếu': r.id,
             'Loại phiếu': r.type === 'monthly' ? 'Phiếu tháng' : 'Chốt trả phòng',
@@ -2661,7 +2683,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
             <thead><tr><th>Ngày tạo</th><th>Phòng</th><th>Người đứng tên</th><th>Loại</th><th>Tổng tiền</th><th>Đã trả</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
             <tbody>
               {filteredReceipts.map(r => {
-                const tenant = getPrimaryTenantByContract(data, r.contractId) || { name: 'N/A' };
+                const tenant = getTenantForReceipt(data, r) || { name: 'N/A' };
                 return (
                   <tr key={r.id}>
                     <td>{new Date(r.createdAt).toLocaleDateString('vi-VN')}</td>
@@ -3416,8 +3438,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
               <tbody>
                 {monthlyReceipts.sort((a,b) => a.roomId.localeCompare(b.roomId)).map(r => {
                   const room = data.rooms.find(rm => rm.id === r.roomId);
-                  const m = data.memberships.find(ms => ms.contractId === r.contractId && ms.role === 'primary');
-                  const tenant = m ? data.tenants.find(t => t.id === m.tenantId) : { name: 'N/A' };
+                  const tenant = getTenantForReceipt(data, r) || { name: 'N/A' };
                   
                   const eOld = r.electricOld ?? r.electricStart ?? 0;
                   const eNew = r.electricNew ?? r.electricEnd ?? eOld;
@@ -5430,7 +5451,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
   if (!receipt || !room) return null;
   const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
   const isMonthly = receipt.type === 'monthly';
-  const tenant = getPrimaryTenantByContract(data, displayReceipt.contractId) || { name: '—', phone: '—' };
+  const tenant = getTenantForReceipt(data, displayReceipt) || { name: '—', phone: '—' };
 
   function handlePrintReceipt() {
     const content = document.getElementById('printable-receipt');
@@ -5769,7 +5790,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
 
 function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
   const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
-  const tenant = getPrimaryTenantByContract(data, displayReceipt.contractId) || { name: 'N/A' };
+  const tenant = getTenantForReceipt(data, displayReceipt) || { name: 'N/A' };
   const isMonthly = displayReceipt.type === 'monthly';
   const transferOldUtility = displayReceipt.transferOldRoomUtility;
   const extraOther = Math.max(0, Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0));
