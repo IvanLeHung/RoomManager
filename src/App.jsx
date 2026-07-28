@@ -998,6 +998,16 @@ function recalculateReceipt(receipt, room) {
   };
 }
 
+function getReceiptPaymentState(receipt) {
+  const total = Number(receipt?.total || 0);
+  const paidAmount = Number(receipt?.paidAmount || 0);
+  const debt = Math.max(0, total - paidAmount);
+  if (receipt?.status === 'Đã hủy') return { status: 'Đã hủy', debt, paidAmount, isPaid: false, isPartial: false };
+  if (total > 0 && paidAmount >= total) return { status: 'Đã thanh toán', debt: 0, paidAmount, isPaid: true, isPartial: false };
+  if (paidAmount > 0) return { status: 'Nợ một phần', debt, paidAmount, isPaid: false, isPartial: true };
+  return { status: 'Chưa thanh toán', debt, paidAmount, isPaid: false, isPartial: false };
+}
+
 function App() {
   const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem('room_app_unlocked') === 'true');
   if (!unlocked) return <LoginScreen onUnlock={() => setUnlocked(true)} />;
@@ -2728,6 +2738,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
             <tbody>
               {filteredReceipts.map(r => {
                 const tenant = getTenantForReceipt(data, r) || { name: 'N/A' };
+                const paymentState = getReceiptPaymentState(r);
                 return (
                   <tr key={r.id}>
                     <td>{new Date(r.createdAt).toLocaleDateString('vi-VN')}</td>
@@ -2735,11 +2746,13 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
                     <td>{tenant.name}</td>
                     <td><span style={{ fontSize: '12px' }}>{r.type === 'monthly' ? '📅 Phiếu tháng' : '🚪 Chốt trả phòng'}</span></td>
                     <td style={{ fontWeight: '700' }}>{formatMoney(r.total)}</td>
-                    <td>{formatMoney(r.paidAmount || 0)}</td>
-                    <td><span className={`status-badge-liquid ${r.status === 'Đã thanh toán' ? 'active' : r.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{r.status}</span></td>
+                    <td>{formatMoney(paymentState.paidAmount)}</td>
+                    <td><span className={`status-badge-liquid ${paymentState.status === 'Đã thanh toán' ? 'active' : paymentState.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{paymentState.status}</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: '4px' }}>
-                        <button className="primary-btn sm" onClick={() => onPay(r)}>💸 Thu</button>
+                        {paymentState.isPaid
+                          ? <button className="secondary-btn sm paid-action" disabled>✓ Đã thu</button>
+                          : <button className="primary-btn sm" onClick={() => onPay(r)}>💸 Thu</button>}
                         <button className="secondary-btn sm" onClick={() => onView(r)}>📱 QR</button>
                         <button className="secondary-btn sm" style={{ color: '#ef4444' }} onClick={() => { if(window.confirm('Xóa phiếu này?')) onUpdateReceipt(null, r.id); }}>🗑️</button>
                       </div>
@@ -3564,12 +3577,15 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
             <table>
               <thead><tr><th>Phòng</th><th>Tháng</th><th>Tổng tiền</th><th>Đã trả</th><th>Còn nợ</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
               <tbody>
-                {monthlyReceipts.map(r => (
-                  <tr key={r.id}>
-                    <td><b>P{r.roomId}</b></td><td>{r.month}</td><td>{formatMoney(r.total)}</td><td>{formatMoney(r.paidAmount)}</td><td style={{ color: r.total - r.paidAmount > 0 ? 'var(--danger)' : 'inherit' }}>{formatMoney(r.total - r.paidAmount)}</td><td><span className={`status-badge-liquid ${r.status === 'Đã thanh toán' ? 'active' : r.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{r.status}</span></td>
-                    <td><div style={{ display: 'flex', gap: '8px' }}><button className="primary-btn sm" onClick={() => onPay(r)}>💸 Thu tiền</button><button className="secondary-btn sm" onClick={() => onView(r)}>📄 Chi tiết</button></div></td>
-                  </tr>
-                ))}
+                {monthlyReceipts.map(r => {
+                  const paymentState = getReceiptPaymentState(r);
+                  return (
+                    <tr key={r.id}>
+                      <td><b>P{r.roomId}</b></td><td>{r.month}</td><td>{formatMoney(r.total)}</td><td>{formatMoney(paymentState.paidAmount)}</td><td style={{ color: paymentState.debt > 0 ? 'var(--danger)' : 'inherit' }}>{formatMoney(paymentState.debt)}</td><td><span className={`status-badge-liquid ${paymentState.status === 'Đã thanh toán' ? 'active' : paymentState.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{paymentState.status}</span></td>
+                      <td><div style={{ display: 'flex', gap: '8px' }}>{paymentState.isPaid ? <button className="secondary-btn sm paid-action" disabled>✓ Đã thu</button> : <button className="primary-btn sm" onClick={() => onPay(r)}>💸 Thu tiền</button>}<button className="secondary-btn sm" onClick={() => onView(r)}>📄 Chi tiết</button></div></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -5631,7 +5647,13 @@ function RoommateModal({ room, contract, onClose, onSave }) {
 
 function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }) {
   if (!receipt || !room) return null;
-  const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
+  const enrichedReceipt = enrichReceiptWithTransferUtility(receipt, data);
+  const paymentState = getReceiptPaymentState(enrichedReceipt);
+  const displayReceipt = {
+    ...enrichedReceipt,
+    debt: paymentState.debt,
+    status: paymentState.status
+  };
   const isMonthly = receipt.type === 'monthly';
   const tenant = getTenantForReceipt(data, displayReceipt) || { name: '—', phone: '—' };
 
@@ -5676,6 +5698,9 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
         .receipt-header-v4 .brand { font-size: 14px !important; margin: 0 !important; }
         .receipt-header-v4 .sub { display: none !important; } /* Hide slogan to save space */
         .receipt-header-v4 h1 { font-size: 18px !important; margin: 0 !important; }
+        .paid-stamp-v4 { top: 20mm !important; right: 8mm !important; padding: 6px 12px !important; border-width: 3px !important; border-radius: 10px !important; }
+        .paid-stamp-v4 span { font-size: 14px !important; }
+        .paid-stamp-v4 small { font-size: 9px !important; }
         
         .info-bar-v4 { gap: 4px !important; padding: 4px 10px !important; margin-bottom: 8px !important; border-radius: 8px !important; }
         .info-bar-v4 .value { font-size: 13px !important; }
@@ -5757,6 +5782,8 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
 
 function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
   const isMonthly = receipt.type === 'monthly';
+  const paymentState = getReceiptPaymentState(receipt);
+  const normalizedReceipt = { ...receipt, status: paymentState.status, debt: paymentState.debt };
   const eOld = getElectricOld(receipt);
   const eNew = getElectricNew(receipt);
   const wOld = getWaterOld(receipt);
@@ -5768,11 +5795,17 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
   const showCurrentWater = !hasTransferBreakdown || Number(receipt.waterAmount || 0) > 0 || Number(receipt.waterUsed || 0) > 0;
   const currentMonthLabel = receipt.month ? `${String(Number(receipt.month.split('/')[0]))}/${receipt.month.split('/')[1]}` : '';
   
-  const statusColor = receipt.status === 'Đã thanh toán' ? '#166534' : receipt.status === 'Nợ một phần' ? '#92400e' : '#991b1b';
-  const statusBg = receipt.status === 'Đã thanh toán' ? '#dcfce7' : receipt.status === 'Nợ một phần' ? '#fef3c7' : '#fee2e2';
+  const statusColor = normalizedReceipt.status === 'Đã thanh toán' ? '#166534' : normalizedReceipt.status === 'Nợ một phần' ? '#92400e' : '#991b1b';
+  const statusBg = normalizedReceipt.status === 'Đã thanh toán' ? '#dcfce7' : normalizedReceipt.status === 'Nợ một phần' ? '#fef3c7' : '#fee2e2';
 
   return (
     <div id="printable-receipt" className="printable-receipt">
+      {paymentState.isPaid && (
+        <div className="paid-stamp-v4">
+          <span>ĐÃ THANH TOÁN</span>
+          <small>{formatMoney(paymentState.paidAmount)}</small>
+        </div>
+      )}
       <header className="receipt-header-v4">
         <div className="brand-box">
           <h3 className="brand">ROOM MANAGER</h3>
@@ -5782,7 +5815,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
           <h1 className="title">{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU TẤT TOÁN'}</h1>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span className="status-badge-liquid" style={{ background: statusBg, color: statusColor, fontSize: '11px' }}>
-              {receipt.status.toUpperCase()}
+              {normalizedReceipt.status.toUpperCase()}
             </span>
             <span className="code" style={{ fontSize: '12px', color: '#64748b' }}>{receiptCode(receipt)}</span>
           </div>
@@ -5918,13 +5951,21 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
 
         <div className="payment-column-v4">
           <div className="payment-card-v4">
-            <div className="qr-box-v4">
-              <img src={buildVietQrUrl(bankInfo, receipt)} alt="QR VietQR" />
-              <div style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: '11px', fontWeight: '700', margin: 0 }}>QUÉT MÃ THANH TOÁN</p>
-                <p style={{ fontSize: '10px', color: '#64748b' }}>Tự động điền số tiền & nội dung</p>
+            {paymentState.isPaid ? (
+              <div className="paid-confirm-card-v4">
+                <div className="paid-checkmark-v4">✓</div>
+                <p>Phiếu đã thanh toán đủ</p>
+                <span>Không cần quét QR thanh toán lại</span>
               </div>
-            </div>
+            ) : (
+              <div className="qr-box-v4">
+                <img src={buildVietQrUrl(bankInfo, receipt)} alt="QR VietQR" />
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '11px', fontWeight: '700', margin: 0 }}>QUÉT MÃ THANH TOÁN</p>
+                  <p style={{ fontSize: '10px', color: '#64748b' }}>Tự động điền số tiền & nội dung</p>
+                </div>
+              </div>
+            )}
 
             <div className="payment-details-v4">
               <div className="row"><span className="label">Ngân hàng</span><span className="val">{bankInfo.bankName}</span></div>
@@ -5934,8 +5975,9 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
             </div>
 
             <div className="total-summary-v4">
-              <p className="label">Tổng cộng cần trả</p>
+              <p className="label">{paymentState.isPaid ? 'Tổng cộng đã thu' : 'Tổng cộng cần trả'}</p>
               <p className="total-amount">{formatMoney(receipt.total)}</p>
+              {paymentState.isPartial && <p className="remaining-amount-v4">Còn nợ: {formatMoney(paymentState.debt)}</p>}
             </div>
           </div>
         </div>
