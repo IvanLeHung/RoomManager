@@ -271,10 +271,37 @@ function getDaysUntil(dateStr) {
   return Math.ceil((date.getTime() - now.getTime()) / 86400000);
 }
 
+function getLatestActiveMembershipForRoom(data, roomId) {
+  return (data.memberships || [])
+    .filter(m => m.roomId === roomId && m.status === 'active')
+    .sort((a, b) => {
+      const roleScore = (b.role === 'primary' ? 1 : 0) - (a.role === 'primary' ? 1 : 0);
+      if (roleScore !== 0) return roleScore;
+      const joinedDiff = (parseDateFlexible(b.joinedDate)?.getTime() || 0) - (parseDateFlexible(a.joinedDate)?.getTime() || 0);
+      if (joinedDiff !== 0) return joinedDiff;
+      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
+    })[0] || null;
+}
+
+function getCurrentContractForRoom(data, roomId) {
+  const activeMembership = getLatestActiveMembershipForRoom(data, roomId);
+  if (activeMembership?.contractId) {
+    const membershipContract = (data.contracts || []).find(c => c.id === activeMembership.contractId);
+    if (membershipContract) return membershipContract;
+  }
+  return (data.contracts || [])
+    .filter(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'))
+    .sort((a, b) => {
+      const startDiff = (parseDateFlexible(b.startDate)?.getTime() || 0) - (parseDateFlexible(a.startDate)?.getTime() || 0);
+      if (startDiff !== 0) return startDiff;
+      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
+    })[0] || null;
+}
+
 function getRoomStatusInfo(data, roomId) {
   const room = (data.rooms || []).find(r => r.id === roomId);
   const ownerOccupied = isOwnerOccupiedRoom(room);
-  const contract = (data.contracts || []).find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'));
+  const contract = getCurrentContractForRoom(data, roomId);
   const hasActiveMembers = (data.memberships || []).some(m => m.roomId === roomId && m.status === 'active');
   if (!contract && hasActiveMembers) return { label: 'Đang ở', color: 'green', contract: null, ownerOccupied };
   if (!contract) return { label: 'Trống', color: 'gray', contract: null, ownerOccupied };
@@ -589,15 +616,27 @@ function getTransferRoomLabel(receipt) {
   return `P${transfer.oldRoomId} → P${receipt.roomId}`;
 }
 
-function getPreviousReceiptByRoom(receipts, roomId, currentMonth) {
+function getPreviousReceiptByRoom(receipts, roomId, currentMonth, options = {}) {
   const currentValue = parseMonthValue(currentMonth);
   return (receipts || [])
     .filter(r =>
       r.roomId === roomId &&
       r.type === 'monthly' &&
-      parseMonthValue(r.month) < currentValue
+      r.id !== options.excludeReceiptId &&
+      (
+        parseMonthValue(r.month) < currentValue ||
+        (
+          options.includeSameMonth &&
+          parseMonthValue(r.month) === currentValue &&
+          r.contractId !== options.excludeSameMonthContractId
+        )
+      )
     )
-    .sort((a, b) => parseMonthValue(b.month) - parseMonthValue(a.month))[0] || null;
+    .sort((a, b) => {
+      const monthDiff = parseMonthValue(b.month) - parseMonthValue(a.month);
+      if (monthDiff !== 0) return monthDiff;
+      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
+    })[0] || null;
 }
 
 function getTransferBillingContext(data, contract, month) {
@@ -654,7 +693,13 @@ function findTransferTargetForOldRoom(data, oldRoomId, month) {
 }
 
 function getBillableContractsForMonth(data, month) {
-  const contracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
+  const activeMembershipContractIds = new Set((data.memberships || []).filter(m => m.status === 'active').map(m => m.contractId));
+  const roomsWithActiveMembership = new Set((data.memberships || []).filter(m => m.status === 'active').map(m => m.roomId));
+  const contracts = (data.contracts || []).filter(c => {
+    if (!(c.status === 'active' || c.status === 'notice')) return false;
+    if (roomsWithActiveMembership.has(c.roomId)) return activeMembershipContractIds.has(c.id);
+    return true;
+  });
   const byId = new Map(contracts.map(c => [c.id, c]));
   return [...byId.values()];
 }
@@ -1893,20 +1938,27 @@ function AppMain() {
       const roomId = roomOrTenant.id;
       const month = INITIAL_MONTH;
       const transferTarget = findTransferTargetForOldRoom(data, roomId, month);
-      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
+      const activeContract = getCurrentContractForRoom(data, roomId);
       const targetContract = transferTarget?.contract || activeContract;
       const targetRoom = transferTarget?.room || roomOrTenant;
       if (!targetContract) return alert('Phòng trống hoặc không có hợp đồng cần lập phiếu.');
-      const exists = (data.receipts || []).find(r => r.roomId === targetRoom.id && r.contractId === targetContract.id && r.month === month);
+      const exists = (data.receipts || []).find(r => r.roomId === targetRoom.id && r.contractId === targetContract.id && r.month === month && r.type === 'monthly');
       if (exists) {
-        if (!window.confirm(`Phòng ${targetRoom.id} đã có phiếu tháng ${month}. Bạn có muốn ghi đè?`)) return;
-        setData(old => ({ ...old, receipts: old.receipts.filter(r => r.id !== exists.id) }));
+        const tenant = getPrimaryTenantByContract(data, targetContract.id);
+        if (!window.confirm(`Hợp đồng ${targetContract.contractNo || targetContract.id} của ${tenant?.name || `P${targetRoom.id}`} đã có phiếu tháng ${month}. Bạn muốn làm mới/ghi đè phiếu của chính hợp đồng này?`)) return;
       }
-      const prev = getPreviousReceiptByRoom(data.receipts, targetRoom.id, month);
+      const prev = getPreviousReceiptByRoom(data.receipts, targetRoom.id, month, {
+        includeSameMonth: true,
+        excludeReceiptId: exists?.id,
+        excludeSameMonthContractId: targetContract.id
+      });
       const billingContext = getMonthlyBillingContext(data, targetContract, month);
       if (billingContext.mode === 'transfer_old_room_skip') return alert(`Phòng ${roomId} đã chuyển sang P${billingContext.transfer?.newRoomId}. Hãy lập phiếu gộp tại phòng mới.`);
       const newRec = createMonthlyReceipt(targetRoom, targetContract, prev, month, billingContext);
-      setData(old => ({ ...old, receipts: [...(old.receipts || []), newRec] }));
+      setData(old => ({
+        ...old,
+        receipts: [...(old.receipts || []).filter(r => r.id !== exists?.id), newRec]
+      }));
       alert(`Đã tạo phiếu tháng ${month} cho ${transferTarget ? `P${transferTarget.transfer.oldRoomId} → P${targetRoom.id}` : `P${targetRoom.id}`}`);
       setTab('receipts');
     } else if (type === 'delete_receipt') {
@@ -3258,7 +3310,10 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
       const exists = (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === selectedMonth && r.type === 'monthly');
       
       if (!exists) {
-        const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth);
+        const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth, {
+          includeSameMonth: true,
+          excludeSameMonthContractId: contract.id
+        });
         const billingContext = getMonthlyBillingContext(data, contract, selectedMonth);
         newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth, billingContext));
         createdCount++;
@@ -3287,7 +3342,11 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
         const previousReceipt = getPreviousReceiptByRoom(
           (data.receipts || []).filter(r => r.id !== receipt.id),
           receipt.roomId,
-          selectedMonth
+          selectedMonth,
+          {
+            includeSameMonth: true,
+            excludeSameMonthContractId: receipt.contractId
+          }
         );
         const billingContext = getMonthlyBillingContext(data, contract, selectedMonth);
         return {
