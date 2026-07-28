@@ -5408,8 +5408,56 @@ function RoommateModal({ room, contract, onClose, onSave }) {
     fingerprintCode: '',
     fingerprintStatus: 'Chưa đăng ký',
     joinedDate: new Date().toISOString().slice(0, 10),
-    note: ''
+    note: '',
+    idPaste: ''
   });
+
+  const readPastedField = (text, label) => {
+    const match = text.match(new RegExp(`${label}\\s*:\\s*([^\\n\\r]+)`, 'i'));
+    return match ? match[1].trim() : '';
+  };
+
+  const parseVietnameseDate = (value) => {
+    const match = String(value || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!match) return '';
+    const [, day, month, year] = match;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  };
+
+  const applyPastedIdInfo = (text) => {
+    const cccd = readPastedField(text, 'Số CCCD');
+    const name = readPastedField(text, 'Họ và tên');
+    const birthday = parseVietnameseDate(readPastedField(text, 'Ngày sinh'));
+    const address = readPastedField(text, 'Nơi thường trú');
+    const issueDate = parseVietnameseDate(readPastedField(text, 'Ngày cấp'));
+    const issuePlace = readPastedField(text, 'Nơi cấp');
+    const extraFields = [
+      ['Giới tính', readPastedField(text, 'Giới tính')],
+      ['Quốc tịch', readPastedField(text, 'Quốc tịch')],
+      ['Quê quán', readPastedField(text, 'Quê quán')],
+      ['Có giá trị đến', readPastedField(text, 'Có giá trị đến')],
+      ['Đặc điểm nhận dạng', readPastedField(text, 'Đặc điểm nhận dạng')],
+      ['Người ký', readPastedField(text, 'Người ký')]
+    ].filter(([, value]) => value);
+    const mrzIndex = text.toLowerCase().indexOf('mrz');
+    const mrzText = mrzIndex >= 0 ? text.slice(mrzIndex).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean).join('\n') : '';
+    const extraNote = [
+      ...extraFields.map(([label, value]) => `${label}: ${value}`),
+      mrzText ? `MRZ:\n${mrzText}` : ''
+    ].filter(Boolean).join('\n');
+
+    setForm(prev => ({
+      ...prev,
+      idPaste: text,
+      cccd: cccd || prev.cccd,
+      name: name || prev.name,
+      birthday: birthday || prev.birthday,
+      address: address || prev.address,
+      cccdDate: issueDate || prev.cccdDate,
+      cccdPlace: issuePlace || prev.cccdPlace,
+      note: extraNote || prev.note
+    }));
+  };
 
   const handleSave = () => {
     if (isSaving) return;
@@ -5475,13 +5523,31 @@ function RoommateModal({ room, contract, onClose, onSave }) {
           <button className="secondary-btn" onClick={onClose}>✕</button>
         </div>
         <div className="detail-body-v2 stack">
+          <div className="paste-id-card">
+            <label>Dán nhanh thông tin CCCD
+              <textarea
+                value={form.idPaste}
+                onChange={e => applyPastedIdInfo(e.target.value)}
+                placeholder="Dán nguyên nội dung CCCD ở đây, hệ thống tự điền: họ tên, số CCCD, ngày sinh, thường trú, ngày cấp..."
+              />
+            </label>
+          </div>
+          <div className="rental-subsection-title">CCCD mặt trước</div>
           <div className="form-grid-v2">
             <label style={{ gridColumn: 'span 2' }}>Họ và tên <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Nguyễn Văn A" /></label>
-            <label>Số điện thoại <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="09xx..." /></label>
             <label>Số CCCD <input value={form.cccd} onChange={e => setForm({...form, cccd: e.target.value})} /></label>
+            <label>Ngày sinh <input type="date" value={form.birthday} onChange={e => setForm({...form, birthday: e.target.value})} /></label>
+            <label style={{ gridColumn: 'span 2' }}>Địa chỉ thường trú <input value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></label>
+          </div>
+          <div className="rental-subsection-title">CCCD mặt sau</div>
+          <div className="form-grid-v2">
             <label>Ngày cấp CCCD <input type="date" value={form.cccdDate} onChange={e => setForm({...form, cccdDate: e.target.value})} /></label>
             <label>Nơi cấp <input value={form.cccdPlace} onChange={e => setForm({...form, cccdPlace: e.target.value})} /></label>
-            <label>Ngày sinh <input type="date" value={form.birthday} onChange={e => setForm({...form, birthday: e.target.value})} /></label>
+            <label style={{ gridColumn: 'span 2' }}>Ghi chú CCCD / MRZ <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="Giới tính, quốc tịch, quê quán, hạn CCCD, đặc điểm nhận dạng, MRZ..." /></label>
+          </div>
+          <div className="rental-subsection-title">Liên hệ & quản lý ra vào</div>
+          <div className="form-grid-v2">
+            <label>Số điện thoại <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="09xx..." /></label>
             <label>Ngày vào ở <input type="date" value={form.joinedDate} onChange={e => setForm({...form, joinedDate: e.target.value})} /></label>
             <label>Biển số xe <input value={form.licensePlate} onChange={e => setForm({...form, licensePlate: e.target.value})} /></label>
             <label>Mã vân tay <input value={form.fingerprintCode} onChange={e => setForm({...form, fingerprintCode: e.target.value})} placeholder="VD: F502-02" /></label>
@@ -5493,8 +5559,6 @@ function RoommateModal({ room, contract, onClose, onSave }) {
                 <option>Đã xóa</option>
               </select>
             </label>
-            <label style={{ gridColumn: 'span 2' }}>Địa chỉ thường trú <input value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></label>
-            <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} /></label>
           </div>
           <div className="op-action-footer">
             <button className="secondary-btn" onClick={onClose}>Hủy</button>
