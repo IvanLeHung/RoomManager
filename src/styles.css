@@ -1867,6 +1867,41 @@ textarea {
   border: 1px solid transparent;
 }
 
+.alert-item.actionable {
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.alert-content {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.alert-content span {
+  font-weight: 700;
+}
+
+.alert-content b,
+.alert-content small {
+  display: block;
+}
+
+.alert-content small {
+  color: currentColor;
+  opacity: 0.78;
+  font-weight: 700;
+}
+
+.alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .alert-item.warning { background: #fffbeb; color: #92400e; border-color: #fef3c7; }
 .alert-item.danger { background: #fef2f2; color: #991b1b; border-color: #fee2e2; }
 .alert-item.notice { background: #eff6ff; color: #1e40af; border-color: #dbeafe; }

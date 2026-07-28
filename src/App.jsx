@@ -1610,7 +1610,9 @@ function AppMain() {
       setEditingTenant(roomOrTenant);
     } else if (type === 'renew_contract') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
-      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
+      const activeContract = roomOrTenant.contractId
+        ? data.contracts.find(c => c.id === roomOrTenant.contractId)
+        : getCurrentContractForRoom(data, roomId);
       if (activeContract) setRenewingContract(activeContract);
     } else if (type === 'print_appendix') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
@@ -2847,6 +2849,16 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
     .filter(r => r.debt > 0)
     .sort((a, b) => b.debt - a.debt)
     .slice(0, 5);
+  const expiringAlerts = [...stats.expiringContracts]
+    .map(contract => ({
+      contract,
+      roomId: contract.roomId,
+      daysLeft: getDaysUntil(contract.endDate),
+      tenant: getPrimaryTenantByContract(data, contract.id)
+    }))
+    .filter(item => item.daysLeft !== null)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+  const nearestExpiring = expiringAlerts[0] || null;
   const chartRows = periodMonthKeys.map(key => {
     const income = periodReceipts.filter(r => r.month === key).reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
     const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
@@ -2916,9 +2928,25 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
             <h3 className="form-section-title">⚠️ Cảnh báo & Nhắc nhở</h3>
             <div className="alert-list stack" style={{ gap: '12px' }}>
               {stats.expiringContracts.length > 0 && (
-                <div className="alert-item warning">
-                  <span>🏠 {stats.expiringContracts.length} phòng sắp hết hạn HĐ: </span>
-                  <b>{stats.expiringContracts.map(c => c.roomId).join(', ')}</b>
+                <div className="alert-item warning actionable">
+                  <div className="alert-content">
+                    <span>📄 Hợp đồng gần nhất cần xử lý</span>
+                    <b>
+                      P{nearestExpiring?.roomId} • {nearestExpiring?.tenant?.name || 'Chưa rõ khách'} • {formatBusinessDate(nearestExpiring?.contract.endDate)}
+                    </b>
+                    <small>
+                      {nearestExpiring?.daysLeft < 0
+                        ? `Đã hết hạn ${Math.abs(nearestExpiring.daysLeft)} ngày`
+                        : nearestExpiring?.daysLeft === 0
+                          ? 'Hết hạn hôm nay'
+                          : `Còn ${nearestExpiring?.daysLeft} ngày`}
+                      {expiringAlerts.length > 1 ? ` • Còn ${expiringAlerts.length - 1} hợp đồng khác sắp hết hạn` : ''}
+                    </small>
+                  </div>
+                  <div className="alert-actions">
+                    <button className="secondary-btn sm" onClick={() => onAction('view_room', { id: nearestExpiring.roomId })}>Xem phòng</button>
+                    <button className="primary-btn sm" onClick={() => onAction('renew_contract', { roomId: nearestExpiring.roomId, contractId: nearestExpiring.contract.id })}>Gia hạn</button>
+                  </div>
                 </div>
               )}
               {stats.unpaidReceipts.length > 0 && (
