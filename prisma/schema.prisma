@@ -95,6 +95,11 @@ model Receipt {
   other          Int
   total          Int
   paidAmount     Int
+  adjustmentDueAmount Int?
+  adjustmentPaidAmount Int?
+  adjustmentPaidDate String?
+  adjustmentCreatedAt String?
+  adjustmentReason String?
   debt           Int
   status         String
   note           String?

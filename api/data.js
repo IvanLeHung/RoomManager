@@ -34,7 +34,12 @@ async function ensureDatabaseShape(prisma) {
     'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "renewedAt" TEXT',
     'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "terms" JSONB',
     'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "renewalHistory" JSONB',
-    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "note" TEXT'
+    'ALTER TABLE "Contract" ADD COLUMN IF NOT EXISTS "note" TEXT',
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentDueAmount" INTEGER',
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentPaidAmount" INTEGER',
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentPaidDate" TEXT',
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentCreatedAt" TEXT',
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentReason" TEXT'
   ];
 
   for (const sql of statements) {
@@ -105,7 +110,7 @@ module.exports = async (req, res) => {
         const tenantKeys = ['id', 'name', 'phone', 'cccd', 'cccdDate', 'cccdPlace', 'address', 'licensePlate', 'fingerprintCode', 'fingerprintStatus', 'birthday', 'status', 'lastRoomId', 'note', 'createdAt'];
         const membershipKeys = ['id', 'contractId', 'tenantId', 'roomId', 'role', 'status', 'joinedDate', 'leftDate', 'createdAt'];
         const contractKeys = ['id', 'roomId', 'contractNo', 'startDate', 'endDate', 'signedDate', 'deposit', 'rent', 'paymentCycleDay', 'status', 'noticeDate', 'expectedMoveOutDate', 'actualEndDate', 'endedAt', 'previousEndDate', 'renewedAt', 'terms', 'renewalHistory', 'note', 'createdAt'];
-        const receiptKeys = ['id', 'type', 'roomId', 'contractId', 'month', 'rent', 'fixedServices', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'other', 'total', 'paidAmount', 'debt', 'status', 'note', 'createdAt', 'savedAt'];
+        const receiptKeys = ['id', 'type', 'roomId', 'contractId', 'month', 'rent', 'fixedServices', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'other', 'total', 'paidAmount', 'adjustmentDueAmount', 'adjustmentPaidAmount', 'adjustmentPaidDate', 'adjustmentCreatedAt', 'adjustmentReason', 'debt', 'status', 'note', 'createdAt', 'savedAt'];
         const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'otherFee', 'totalIncurred', 'mustCollect', 'mustRefund', 'note', 'createdAt'];
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
         const transferKeys = ['id', 'tenantId', 'oldContractId', 'newContractId', 'oldRoomId', 'newRoomId', 'transferDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
@@ -124,7 +129,7 @@ module.exports = async (req, res) => {
         const prepareContract = (item) => ({ startDate: '', endDate: '', deposit: 0, rent: 0, status: 'active', createdAt: nowIso(), ...pick(item, contractKeys) });
         const prepareReceipt = (item) => {
           const data = { type: 'monthly', rent: 0, fixedServices: 0, electricOld: 0, electricNew: 0, electricUsed: 0, electricAmount: 0, waterOld: 0, waterNew: 0, waterUsed: 0, waterAmount: 0, other: 0, total: 0, paidAmount: 0, debt: 0, status: 'Chưa thanh toán', createdAt: nowIso(), ...pick(item, receiptKeys) };
-          ['rent', 'fixedServices', 'other', 'total', 'paidAmount', 'debt'].forEach(k => { data[k] = toInt(data[k]); });
+          ['rent', 'fixedServices', 'other', 'total', 'paidAmount', 'adjustmentDueAmount', 'adjustmentPaidAmount', 'debt'].forEach(k => { if (data[k] !== undefined) data[k] = toInt(data[k]); });
           ['electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount'].forEach(k => { data[k] = toFloat(data[k]); });
           return data;
         };
