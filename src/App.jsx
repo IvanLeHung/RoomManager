@@ -639,6 +639,20 @@ function getPreviousReceiptByRoom(receipts, roomId, currentMonth, options = {}) 
     })[0] || null;
 }
 
+function getLatestMonthlyReceiptForRoom(data, roomId, contractId = '') {
+  const receipts = (data.receipts || []).filter(r => r.roomId === roomId && r.type === 'monthly');
+  const sortLatest = (rows) => [...rows].sort((a, b) => {
+    const monthDiff = parseMonthValue(b.month) - parseMonthValue(a.month);
+    if (monthDiff !== 0) return monthDiff;
+    return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
+  })[0] || null;
+  if (contractId) {
+    const byContract = sortLatest(receipts.filter(r => r.contractId === contractId));
+    if (byContract) return byContract;
+  }
+  return sortLatest(receipts);
+}
+
 function getTransferBillingContext(data, contract, month) {
   const occupantCount = getContractOccupantCount(data, contract);
   const transfer = (data.roomTransfers || []).find(t =>
@@ -1563,7 +1577,9 @@ function AppMain() {
     } else if (type === 'moving_out') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const room = data.rooms.find(r => r.id === roomId);
-      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
+      const activeContract = roomOrTenant.contractId
+        ? data.contracts.find(c => c.id === roomOrTenant.contractId)
+        : getCurrentContractForRoom(data, roomId);
       if (activeContract && confirmDanger(
         `Bạn chắc chắn muốn tất toán/kết thúc thuê phòng ${roomId}?`,
         'Hệ thống sẽ chốt công nợ, cập nhật trạng thái hợp đồng, kết thúc cư trú và ghi lịch sử trả phòng.'
@@ -2215,6 +2231,13 @@ function AppMain() {
               .map(m => (data.tenants || []).find(t => t.id === m.tenantId))
               .filter(Boolean);
             setData(old => {
+              const updatedRooms = old.rooms.map(r => r.id === report.roomId ? {
+                ...r,
+                electricOld: report.electricOld,
+                electricNew: report.electricNew,
+                waterOld: report.waterOld,
+                waterNew: report.waterNew
+              } : r);
               const updatedContracts = old.contracts.map(c => c.id === report.contractId ? { ...c, status: 'ended', actualEndDate: report.actualEndDate, endedAt: new Date().toISOString() } : c);
               const updatedMemberships = old.memberships.map(m => m.contractId === report.contractId ? { ...m, status: 'ended', leftDate: report.actualEndDate } : m);
               const affectedTenantIds = old.memberships.filter(m => m.contractId === report.contractId).map(m => m.tenantId);
@@ -2297,7 +2320,7 @@ function AppMain() {
                 });
               }
               
-              return { ...old, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, expensePayments: newExpensePayments, moveOutReports: [{ ...report, accessRemovalTasks }, ...(old.moveOutReports || [])] };
+              return { ...old, rooms: updatedRooms, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, expensePayments: newExpensePayments, moveOutReports: [{ ...report, accessRemovalTasks }, ...(old.moveOutReports || [])] };
             });
             const completionMessages = [];
             if (report.mustRefund > 0) {
@@ -4716,11 +4739,21 @@ function TransferRoomModal({ contract, data, onClose, onSave }) {
 }
 
 function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
+  const latestMonthlyReceipt = getLatestMonthlyReceiptForRoom(data, room.id, contract.id);
+  const meterElectricOld = latestMonthlyReceipt
+    ? getElectricNew(latestMonthlyReceipt)
+    : Number(room.electricNew ?? room.electricEnd ?? room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0);
+  const meterWaterOld = latestMonthlyReceipt
+    ? getWaterNew(latestMonthlyReceipt)
+    : Number(room.waterNew ?? room.waterEnd ?? room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
+  const meterSourceText = latestMonthlyReceipt
+    ? `Lấy từ phiếu tháng ${latestMonthlyReceipt.month} của P${latestMonthlyReceipt.roomId}: điện ${formatLocaleNumber(meterElectricOld)}, nước ${formatLocaleNumber(meterWaterOld)}.`
+    : 'Chưa có phiếu tháng trước đó, hệ thống dùng chỉ số đang lưu trong phòng.';
   const [form, setForm] = useState({
     actualEndDate: new Date().toISOString().split('T')[0],
     settlementMode: 'offset_deposit',
-    electricNew: room.electricNew || room.electricEnd || 0,
-    waterNew: room.waterNew || room.waterEnd || 0,
+    electricNew: meterElectricOld,
+    waterNew: meterWaterOld,
     unpaidRent: 0,
     cleaningFee: 100000,
     damageFee: 0,
@@ -4741,8 +4774,8 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const fingerprintRemovalList = settlementMembers.filter(m => m.tenant.fingerprintCode);
 
   // Logic tính toán realtime
-  const electricOld = Number(room.electricOld || room.electricStart || room.initialElectric || 0);
-  const waterOld = Number(room.waterOld || room.waterStart || room.initialWater || 0);
+  const electricOld = Number(meterElectricOld || 0);
+  const waterOld = Number(meterWaterOld || 0);
   
   const electricUsed = Math.max(0, Number(form.electricNew) - electricOld);
   const waterUsed = Math.max(0, Number(form.waterNew) - waterOld);
@@ -4850,6 +4883,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
               <section>
                 <h3 className="form-section-title">⚡ Chỉ số điện nước</h3>
                 <div className="form-grid-v2">
+                  <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>{meterSourceText}</p>
                   <label>Điện: Chỉ số cũ <input value={electricOld} readOnly style={{ background: '#f1f5f9' }} /></label>
                   <label>Chỉ số mới <input type="number" value={form.electricNew} onChange={e => setForm({...form, electricNew: e.target.value})} /></label>
                   <label>Nước: Chỉ số cũ <input value={waterOld} readOnly style={{ background: '#f1f5f9' }} /></label>
