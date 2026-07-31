@@ -4826,9 +4826,12 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   
   const deposit = Number(contract.deposit || 0);
   const isOffsetDeposit = form.settlementMode === 'offset_deposit';
-  const depositUsed = isOffsetDeposit ? Math.min(deposit, totalIncurred) : 0;
-  const mustCollect = isOffsetDeposit ? Math.max(0, totalIncurred - deposit) : totalIncurred;
-  const mustRefund = isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : deposit;
+  const isPaySeparately = form.settlementMode === 'pay_separately';
+  const isForfeitDeposit = form.settlementMode === 'forfeit_deposit';
+  const depositUsed = (isOffsetDeposit || isForfeitDeposit) ? Math.min(deposit, totalIncurred) : 0;
+  const depositForfeited = isForfeitDeposit ? Math.max(0, deposit - depositUsed) : 0;
+  const mustCollect = isPaySeparately ? totalIncurred : Math.max(0, totalIncurred - deposit);
+  const mustRefund = isPaySeparately ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
   const isRefund = mustRefund > 0;
   const isDebt = mustCollect > 0;
   const settlementTransferContent = `P${room.id} TRA PHONG ${formatDisplayDate(form.actualEndDate, '').replace(/\//g, '')}`;
@@ -4883,10 +4886,14 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                     <input type="radio" name="settlementMode" checked={form.settlementMode === 'pay_separately'} onChange={() => setForm({...form, settlementMode: 'pay_separately'})} />
                     <span><b>Khách thanh toán điện nước/phí riêng, hoàn nguyên cọc</b><small>Tạo khoản khách cần trả cho phát sinh và hoàn lại toàn bộ tiền cọc.</small></span>
                   </label>
+                  <label className="option-row danger">
+                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'forfeit_deposit'} onChange={() => setForm({...form, settlementMode: 'forfeit_deposit'})} />
+                    <span><b>Trả sớm hợp đồng, không hoàn cọc</b><small>Cọc được bù công nợ trước; phần cọc còn lại ghi nhận giữ lại do khách trả phòng trước hạn.</small></span>
+                  </label>
                 </div>
               </section>
 
-              {mustRefund > 0 && (
+              {mustRefund > 0 && !isForfeitDeposit && (
                 <section>
                   <h3 className="form-section-title">🏦 Thông tin hoàn cọc cho khách</h3>
                   <div className="form-grid-v2">
@@ -4949,16 +4956,19 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 <div className="summary-row"><span>Phí khác</span><b>{formatMoney(Number(form.unpaidRent || 0) + Number(form.cleaningFee || 0) + Number(form.damageFee || 0) + Number(form.otherFee || 0))}</b></div>
                 <div className="summary-row"><span>Tổng phát sinh</span><b>{formatMoney(totalIncurred)}</b></div>
                 <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>
-                {!isOffsetDeposit && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
+                {isForfeitDeposit && <div className="summary-row"><span>Cọc giữ lại do trả sớm</span><b style={{ color: 'var(--danger)' }}>{formatMoney(depositForfeited)}</b></div>}
+                {isPaySeparately && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
                 {mustCollect > 0 && <div className="summary-row"><span>Khách thanh toán phát sinh</span><b style={{ color: 'var(--danger)' }}>{formatMoney(mustCollect)}</b></div>}
                 
                 <div className="summary-total">
-                  <span className="summary-label-main">{isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
+                  <span className="summary-label-main">{isForfeitDeposit ? 'Không hoàn cọc' : isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
                   <p className="summary-amount" style={{ color: isRefund ? 'var(--success)' : isDebt ? 'var(--danger)' : 'var(--text-main)' }}>
-                    {isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
+                    {isForfeitDeposit ? formatMoney(0) : isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
                   </p>
                   <p style={{ fontSize: '13px', fontWeight: '500' }}>
-                    {isOffsetDeposit
+                    {isForfeitDeposit
+                      ? '⚠️ Khách trả sớm hợp đồng, hệ thống không tạo phiếu chi hoàn cọc'
+                      : isOffsetDeposit
                       ? isRefund ? '✨ Cần hoàn phần cọc còn lại cho khách' : isDebt ? '⚠️ Khách thuê cần đóng thêm tiền sau khi trừ cọc' : '✅ Công nợ đã được tất toán đủ'
                       : '✨ Hoàn toàn bộ cọc, đồng thời thu riêng điện nước/phí phát sinh'}
                   </p>
@@ -4976,7 +4986,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   </div>
                 )}
 
-                {mustRefund > 0 && (
+                {mustRefund > 0 && !isForfeitDeposit && (
                   <div className="settlement-qr-card">
                     <h4>Phiếu chi hoàn cọc sẽ tạo</h4>
                     {form.refundQrImageUrl ? <img src={form.refundQrImageUrl} alt="QR người thuê nhận hoàn cọc" /> : <p className="small muted">Có thể dán link QR người thuê ở form bên trái để lưu kèm phiếu chi.</p>}
@@ -4995,6 +5005,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                     <li>Phòng {room.id} sẽ trở về trạng thái trống</li>
                     <li>Lịch sử tất toán sẽ được lưu lại</li>
                     {fingerprintRemovalList.length > 0 && <li>Admin cần xóa vân tay: {fingerprintRemovalList.map(m => `${m.tenant.name} (${m.tenant.fingerprintCode})`).join(', ')}</li>}
+                    {isForfeitDeposit && <li>Tiền cọc còn lại được ghi nhận giữ lại do khách trả sớm hợp đồng</li>}
                   </ul>
                 </div>
 
@@ -5025,6 +5036,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         waterAmount,
                         totalIncurred,
                         depositUsed,
+                        depositForfeited,
                         mustCollect,
                         mustRefund,
                         settlementMode: form.settlementMode,

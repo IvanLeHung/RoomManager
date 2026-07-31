@@ -39,7 +39,9 @@ async function ensureDatabaseShape(prisma) {
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentPaidAmount" INTEGER',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentPaidDate" TEXT',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentCreatedAt" TEXT',
-    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentReason" TEXT'
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentReason" TEXT',
+    'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "settlementMode" TEXT',
+    'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "depositForfeited" INTEGER'
   ];
 
   for (const sql of statements) {
@@ -111,7 +113,7 @@ module.exports = async (req, res) => {
         const membershipKeys = ['id', 'contractId', 'tenantId', 'roomId', 'role', 'status', 'joinedDate', 'leftDate', 'createdAt'];
         const contractKeys = ['id', 'roomId', 'contractNo', 'startDate', 'endDate', 'signedDate', 'deposit', 'rent', 'paymentCycleDay', 'status', 'noticeDate', 'expectedMoveOutDate', 'actualEndDate', 'endedAt', 'previousEndDate', 'renewedAt', 'terms', 'renewalHistory', 'note', 'createdAt'];
         const receiptKeys = ['id', 'type', 'roomId', 'contractId', 'month', 'rent', 'fixedServices', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'other', 'total', 'paidAmount', 'adjustmentDueAmount', 'adjustmentPaidAmount', 'adjustmentPaidDate', 'adjustmentCreatedAt', 'adjustmentReason', 'debt', 'status', 'note', 'createdAt', 'savedAt'];
-        const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'otherFee', 'totalIncurred', 'mustCollect', 'mustRefund', 'note', 'createdAt'];
+        const moveOutKeys = ['id', 'contractId', 'roomId', 'actualEndDate', 'electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'depositUsed', 'depositForfeited', 'settlementMode', 'unpaidRent', 'cleaningFee', 'damageFee', 'otherFee', 'totalIncurred', 'mustCollect', 'mustRefund', 'note', 'createdAt'];
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
         const transferKeys = ['id', 'tenantId', 'oldContractId', 'newContractId', 'oldRoomId', 'newRoomId', 'transferDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
@@ -134,8 +136,8 @@ module.exports = async (req, res) => {
           return data;
         };
         const prepareMoveOut = (item) => {
-          const data = { electricOld: 0, electricNew: 0, electricUsed: 0, electricAmount: 0, waterOld: 0, waterNew: 0, waterUsed: 0, waterAmount: 0, depositUsed: 0, unpaidRent: 0, cleaningFee: 0, damageFee: 0, mustCollect: 0, mustRefund: 0, createdAt: nowIso(), ...pick(item, moveOutKeys) };
-          ['depositUsed', 'unpaidRent', 'cleaningFee', 'damageFee', 'otherFee', 'mustCollect', 'mustRefund'].forEach(k => { if (data[k] !== undefined) data[k] = toInt(data[k]); });
+          const data = { electricOld: 0, electricNew: 0, electricUsed: 0, electricAmount: 0, waterOld: 0, waterNew: 0, waterUsed: 0, waterAmount: 0, depositUsed: 0, depositForfeited: 0, settlementMode: 'offset_deposit', unpaidRent: 0, cleaningFee: 0, damageFee: 0, mustCollect: 0, mustRefund: 0, createdAt: nowIso(), ...pick(item, moveOutKeys) };
+          ['depositUsed', 'depositForfeited', 'unpaidRent', 'cleaningFee', 'damageFee', 'otherFee', 'mustCollect', 'mustRefund'].forEach(k => { if (data[k] !== undefined) data[k] = toInt(data[k]); });
           ['electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount', 'totalIncurred'].forEach(k => { if (data[k] !== undefined) data[k] = toFloat(data[k]); });
           return data;
         };

@@ -121,6 +121,8 @@ model MoveOutReport {
   waterUsed      Float
   waterAmount    Float
   depositUsed    Int
+  depositForfeited Int?
+  settlementMode String?
   unpaidRent     Int
   cleaningFee    Int
   damageFee      Int
