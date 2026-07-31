@@ -5930,7 +5930,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
   return (
     <div className="modal no-print-backdrop" onClick={onClose}>
       <div className="receipt-modal-v3 liquid-glass" onClick={e => e.stopPropagation()}>
-        <div className="modal-header no-print" style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="modal-header no-print" style={{ padding: '10px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{ display: 'flex', gap: '4px' }}>
               <button className="secondary-btn" onClick={onPrev} disabled={!onPrev} style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0 }}>←</button>
@@ -5941,7 +5941,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
               <p className="muted small">Tháng {displayReceipt.month}</p>
             </div>
           </div>
-          <button className="secondary-btn" onClick={onClose} style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0 }}>✕</button>
+          <button className="secondary-btn" onClick={onClose} style={{ borderRadius: '50%', width: '36px', height: '36px', padding: 0 }}>✕</button>
         </div>
 
         <div className="modal-body-v3 scrollable">
@@ -5953,7 +5953,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
           />
         </div>
 
-        <div className="modal-footer-v3 no-print" style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+        <div className="modal-footer-v3 no-print" style={{ padding: '10px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button className="secondary-btn" onClick={handleCopyTransfer}>📋 Copy nội dung CK</button>
           <button className="primary-btn" onClick={handlePrintReceipt}>🖨️ In phiếu thu</button>
         </div>
@@ -6009,6 +6009,11 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
         <div className="item"><span className="label">Tháng thu</span><span className="value">{receipt.month}</span></div>
         <div className="item"><span className="label">Ngày lập</span><span className="value">{new Date(receipt.createdAt).toLocaleDateString('vi-VN')}</span></div>
         <div className="item"><span className="label">Hạn trả</span><span className="value">Trong 5 ngày</span></div>
+      </div>
+
+      <div className="receipt-tenant-note-v4">
+        <p><b>Khách thuê:</b> {tenant.name} • <b>SĐT:</b> {tenant.phone}</p>
+        <p><b>Ghi chú:</b> {receipt.note || 'Vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Xin cảm ơn!'}</p>
       </div>
 
       <div className="receipt-body-v4">
@@ -6167,12 +6172,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
       </div>
 
       <footer className="receipt-footer-v4">
-        <div style={{ marginBottom: '24px', padding: '16px', background: '#f8fafc', borderRadius: '12px', fontSize: '13px' }}>
-          <p><b>Khách thuê:</b> {tenant.name} • <b>SĐT:</b> {tenant.phone}</p>
-          {receipt.note && <p style={{ marginTop: '4px' }}><b>Ghi chú:</b> {receipt.note}</p>}
-        </div>
-
-        <div className="signatures-v4">
+        <div className="signatures-v4 screen-optional-signatures">
           <div className="signature-box">
             <h4>NGƯỜI THU TIỀN</h4>
             <p className="muted">(Ký và ghi rõ họ tên)</p>
