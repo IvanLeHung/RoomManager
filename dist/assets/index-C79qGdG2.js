@@ -172,15 +172,15 @@ Error generating stack: `+e.message+`
         .info-bar-v4 { gap: 4px !important; padding: 4px 10px !important; margin-bottom: 8px !important; border-radius: 8px !important; }
         .info-bar-v4 .value { font-size: 13px !important; }
         
-        .receipt-body-v4 { gap: 10px !important; grid-template-columns: 1fr 210px !important; }
+        .receipt-body-v4 { gap: 10px !important; grid-template-columns: 1fr 260px !important; }
         .receipt-items-section h3 { margin-bottom: 8px !important; padding-bottom: 4px !important; }
         .charge-row-v4 { padding: 4px 0 !important; }
         .charge-row-v4 .name { font-size: 13px !important; }
         .charge-row-v4 .amount { font-size: 14px !important; }
         
         .payment-card-v4 { padding: 10px !important; gap: 8px !important; border-radius: 12px !important; }
-        .qr-box-v4 { padding: 6px !important; gap: 2px !important; }
-        .qr-box-v4 img { width: 110px !important; height: 110px !important; }
+        .qr-box-v4 { padding: 8px !important; gap: 4px !important; }
+        .qr-box-v4 img { width: 170px !important; height: 170px !important; padding: 6px !important; image-rendering: crisp-edges !important; }
         .qr-box-v4 p { font-size: 9px !important; }
         
         .total-summary-v4 { padding: 10px !important; margin-top: 4px !important; border-radius: 10px !important; }
