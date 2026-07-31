@@ -245,6 +245,8 @@ function normalizeSearchText(value) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'D')
+    .replace(/[*/_`]/g, '')
+    .replace(/\s*\/\s*/g, '/')
     .toLowerCase();
 }
 
@@ -257,7 +259,9 @@ function cleanOcrValue(value) {
 
 function stripBilingualIdLabelTail(value) {
   return cleanOcrValue(value)
-    .replace(/^\/?\s*(full name|date of birth|sex|nationality|place of origin|place of residence|date of expiry|date of issue|personal identification|issued by|no\.?)\s*:?\s*/i, '')
+    .replace(/^[*/_`\s]*/, '')
+    .replace(/^\/?\s*(full name|date of birth|date,\s*month,\s*year|date month year|sex|nationality|place of origin|place of residence|date of expiry|date of issue|personal identification|issued by|no\.?)\s*:?\s*/i, '')
+    .replace(/^[*/_`\s:]*/, '')
     .trim();
 }
 
@@ -271,7 +275,9 @@ function readIdCardField(lines, labels, stopLabels = []) {
     if (!matchedLabel) continue;
 
     const labelIndex = normalizedLine.indexOf(matchedLabel);
-    const afterLabel = stripBilingualIdLabelTail(rawLine.slice(labelIndex + matchedLabel.length));
+    const markerlessLine = rawLine.replace(/[*/_`]/g, '');
+    const valueAfterColon = markerlessLine.match(/[:：]\s*(.+)$/)?.[1] || '';
+    const afterLabel = stripBilingualIdLabelTail(valueAfterColon || markerlessLine.slice(labelIndex + matchedLabel.length));
     if (afterLabel && !/^\/|^no\.?$/i.test(afterLabel)) return afterLabel;
 
     const collected = [];
@@ -318,26 +324,27 @@ function parseVietnameseIdCard(text) {
     'Họ và tên', 'Full name', 'Ngày sinh', 'Date of birth', 'Giới tính', 'Sex',
     'Quốc tịch', 'Nationality', 'Quê quán', 'Place of origin', 'Nơi thường trú',
     'Place of residence', 'Có giá trị đến', 'Date of expiry', 'Đặc điểm nhận dạng',
-    'Personal identification', 'Ngày cấp', 'Date of issue', 'Người ký', 'MRZ'
+    'Personal identification', 'Ngày cấp', 'Ngày, tháng, năm', 'Date, month, year', 'Date of issue', 'Người ký', 'Dòng mã', 'MRZ'
   ];
-  const labeledId = readIdCardField(lines, ['Số CCCD', 'Số', 'No.', 'No'], stopLabels);
+  const labeledId = readIdCardField(lines, ['Số CCCD', 'Số/No.', 'Số/No', 'Số', 'No.', 'No'], stopLabels);
   const standaloneId = rawText.match(/\b\d{12}\b/)?.[0] || '';
   const cccd = (labeledId.match(/\d{12}/)?.[0] || standaloneId).trim();
-  const name = readIdCardField(lines, ['Họ và tên', 'Full name'], stopLabels) || parseMrzName(rawText);
-  const birthdayText = readIdCardField(lines, ['Ngày sinh', 'Date of birth'], stopLabels);
+  const name = readIdCardField(lines, ['Họ và tên/Full name', 'Họ và tên', 'Full name'], stopLabels) || parseMrzName(rawText);
+  const birthdayText = readIdCardField(lines, ['Ngày sinh/Date of birth', 'Ngày sinh', 'Date of birth'], stopLabels);
   const birthday = parseVietnameseDateValue(birthdayText) || parseMrzBirthday(rawText);
-  const address = readIdCardField(lines, ['Nơi thường trú', 'Place of residence'], stopLabels);
-  const issueDate = parseVietnameseDateValue(readIdCardField(lines, ['Ngày cấp', 'Date of issue'], stopLabels));
+  const address = readIdCardField(lines, ['Nơi thường trú/Place of residence', 'Nơi thường trú', 'Place of residence'], stopLabels);
+  const issueDate = parseVietnameseDateValue(readIdCardField(lines, ['Ngày, tháng, năm/Date, month, year', 'Ngày, tháng, năm', 'Date, month, year', 'Ngày cấp', 'Date of issue'], stopLabels));
   const issuePlace = readIdCardField(lines, ['Nơi cấp', 'Cơ quan cấp', 'Issued by'], stopLabels);
   const extraFields = [
-    ['Giới tính', readIdCardField(lines, ['Giới tính', 'Sex'], stopLabels)],
-    ['Quốc tịch', readIdCardField(lines, ['Quốc tịch', 'Nationality'], stopLabels)],
-    ['Quê quán', readIdCardField(lines, ['Quê quán', 'Place of origin'], stopLabels)],
-    ['Có giá trị đến', readIdCardField(lines, ['Có giá trị đến', 'Date of expiry'], stopLabels)],
-    ['Đặc điểm nhận dạng', readIdCardField(lines, ['Đặc điểm nhận dạng', 'Personal identification'], stopLabels)],
-    ['Người ký', readIdCardField(lines, ['Người ký'], stopLabels)]
+    ['Giới tính', readIdCardField(lines, ['Giới tính/Sex', 'Giới tính', 'Sex'], stopLabels)],
+    ['Quốc tịch', readIdCardField(lines, ['Quốc tịch/Nationality', 'Quốc tịch', 'Nationality'], stopLabels)],
+    ['Quê quán', readIdCardField(lines, ['Quê quán/Place of origin', 'Quê quán', 'Place of origin'], stopLabels)],
+    ['Có giá trị đến', readIdCardField(lines, ['Có giá trị đến/Date of expiry', 'Có giá trị đến', 'Date of expiry'], stopLabels)],
+    ['Đặc điểm nhận dạng', readIdCardField(lines, ['Đặc điểm nhận dạng/Personal identification', 'Đặc điểm nhận dạng', 'Personal identification'], stopLabels)],
+    ['Người ký', readIdCardField(lines, ['Người ký', 'Cục trưởng Cục Cảnh sát quản lý hành chính về trật tự xã hội'], stopLabels)]
   ].filter(([, value]) => value);
-  const mrzIndex = normalizeSearchText(rawText).indexOf('mrz');
+  const normalizedRawText = normalizeSearchText(rawText);
+  const mrzIndex = normalizedRawText.indexOf('mrz') >= 0 ? normalizedRawText.indexOf('mrz') : normalizedRawText.indexOf('dong ma');
   const mrzText = mrzIndex >= 0
     ? rawText.slice(mrzIndex).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean).join('\n')
     : lines.filter(line => /^[A-Z0-9<]{15,}$/.test(line)).join('\n');
