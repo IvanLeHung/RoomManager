@@ -232,6 +232,123 @@ function isValidContractRange(startDate, endDate) {
   return parseDateFlexible(endDate) > parseDateFlexible(startDate);
 }
 
+function parseVietnameseDateValue(value) {
+  const match = String(value || '').match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (!match) return '';
+  const [, day, month, year] = match;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
+}
+
+function cleanOcrValue(value) {
+  return String(value || '')
+    .replace(/^[\s:：\-–—•]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripBilingualIdLabelTail(value) {
+  return cleanOcrValue(value)
+    .replace(/^\/?\s*(full name|date of birth|sex|nationality|place of origin|place of residence|date of expiry|date of issue|personal identification|issued by|no\.?)\s*:?\s*/i, '')
+    .trim();
+}
+
+function readIdCardField(lines, labels, stopLabels = []) {
+  const normalizedLabels = labels.map(normalizeSearchText);
+  const normalizedStops = [...labels, ...stopLabels].map(normalizeSearchText);
+  for (let i = 0; i < lines.length; i += 1) {
+    const rawLine = lines[i];
+    const normalizedLine = normalizeSearchText(rawLine);
+    const matchedLabel = normalizedLabels.find(label => normalizedLine.includes(label));
+    if (!matchedLabel) continue;
+
+    const labelIndex = normalizedLine.indexOf(matchedLabel);
+    const afterLabel = stripBilingualIdLabelTail(rawLine.slice(labelIndex + matchedLabel.length));
+    if (afterLabel && !/^\/|^no\.?$/i.test(afterLabel)) return afterLabel;
+
+    const collected = [];
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const next = lines[j];
+      const normalizedNext = normalizeSearchText(next);
+      if (normalizedStops.some(stop => normalizedNext.includes(stop))) break;
+      if (/^(mat truoc|mat sau|front|back|mrz|idvnm)/i.test(normalizedNext)) break;
+      if (next.trim()) collected.push(next.trim());
+      if (collected.length >= 3) break;
+    }
+    return cleanOcrValue(collected.join(', '));
+  }
+  return '';
+}
+
+function parseMrzName(text) {
+  const mrzLines = String(text || '').split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => /^[A-Z0-9<]{15,}$/.test(line));
+  const nameLine = [...mrzLines].reverse().find(line => line.includes('<<') && /[A-Z]/.test(line));
+  if (!nameLine) return '';
+  return nameLine
+    .replace(/<+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function parseMrzBirthday(text) {
+  const mrzLine = String(text || '').split(/\r?\n/).map(line => line.trim()).find(line => /^\d{6}\d?[MF]/i.test(line));
+  if (!mrzLine) return '';
+  const match = mrzLine.match(/^(\d{2})(\d{2})(\d{2})/);
+  if (!match) return '';
+  const [, yy, mm, dd] = match;
+  const yearPrefix = Number(yy) > 30 ? '19' : '20';
+  return `${yearPrefix}${yy}-${mm}-${dd}`;
+}
+
+function parseVietnameseIdCard(text) {
+  const rawText = String(text || '');
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const stopLabels = [
+    'Họ và tên', 'Full name', 'Ngày sinh', 'Date of birth', 'Giới tính', 'Sex',
+    'Quốc tịch', 'Nationality', 'Quê quán', 'Place of origin', 'Nơi thường trú',
+    'Place of residence', 'Có giá trị đến', 'Date of expiry', 'Đặc điểm nhận dạng',
+    'Personal identification', 'Ngày cấp', 'Date of issue', 'Người ký', 'MRZ'
+  ];
+  const labeledId = readIdCardField(lines, ['Số CCCD', 'Số', 'No.', 'No'], stopLabels);
+  const standaloneId = rawText.match(/\b\d{12}\b/)?.[0] || '';
+  const cccd = (labeledId.match(/\d{12}/)?.[0] || standaloneId).trim();
+  const name = readIdCardField(lines, ['Họ và tên', 'Full name'], stopLabels) || parseMrzName(rawText);
+  const birthdayText = readIdCardField(lines, ['Ngày sinh', 'Date of birth'], stopLabels);
+  const birthday = parseVietnameseDateValue(birthdayText) || parseMrzBirthday(rawText);
+  const address = readIdCardField(lines, ['Nơi thường trú', 'Place of residence'], stopLabels);
+  const issueDate = parseVietnameseDateValue(readIdCardField(lines, ['Ngày cấp', 'Date of issue'], stopLabels));
+  const issuePlace = readIdCardField(lines, ['Nơi cấp', 'Cơ quan cấp', 'Issued by'], stopLabels);
+  const extraFields = [
+    ['Giới tính', readIdCardField(lines, ['Giới tính', 'Sex'], stopLabels)],
+    ['Quốc tịch', readIdCardField(lines, ['Quốc tịch', 'Nationality'], stopLabels)],
+    ['Quê quán', readIdCardField(lines, ['Quê quán', 'Place of origin'], stopLabels)],
+    ['Có giá trị đến', readIdCardField(lines, ['Có giá trị đến', 'Date of expiry'], stopLabels)],
+    ['Đặc điểm nhận dạng', readIdCardField(lines, ['Đặc điểm nhận dạng', 'Personal identification'], stopLabels)],
+    ['Người ký', readIdCardField(lines, ['Người ký'], stopLabels)]
+  ].filter(([, value]) => value);
+  const mrzIndex = normalizeSearchText(rawText).indexOf('mrz');
+  const mrzText = mrzIndex >= 0
+    ? rawText.slice(mrzIndex).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean).join('\n')
+    : lines.filter(line => /^[A-Z0-9<]{15,}$/.test(line)).join('\n');
+  const note = [
+    ...extraFields.map(([label, value]) => `${label}: ${value}`),
+    mrzText ? `MRZ:\n${mrzText}` : ''
+  ].filter(Boolean).join('\n');
+
+  return { cccd, name: cleanOcrValue(name), birthday, address, issueDate, issuePlace, note };
+}
+
 function formatDateForInput(value) {
   return isInvalidContractDate(value) ? '' : String(value).slice(0, 10);
 }
@@ -4363,50 +4480,19 @@ function RentalFlowModal({ room, onClose, onSave }) {
   const previewAppliedFixedServiceTotal = fixedServiceTotal(room, 1);
   const previewFixedServiceDiscount = Math.max(0, previewBaseFixedServiceTotal - previewAppliedFixedServiceTotal);
 
-  const readPastedField = (text, label) => {
-    const match = text.match(new RegExp(`${label}\\s*:\\s*([^\\n\\r]+)`, 'i'));
-    return match ? match[1].trim() : '';
-  };
-
-  const parseVietnameseDate = (value) => {
-    const match = String(value || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (!match) return '';
-    const [, day, month, year] = match;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  };
-
   const applyPastedIdInfo = (text) => {
-    const cccd = readPastedField(text, 'Số CCCD');
-    const name = readPastedField(text, 'Họ và tên');
-    const birthday = parseVietnameseDate(readPastedField(text, 'Ngày sinh'));
-    const address = readPastedField(text, 'Nơi thường trú');
-    const issueDate = parseVietnameseDate(readPastedField(text, 'Ngày cấp'));
-    const issuePlace = readPastedField(text, 'Nơi cấp');
-    const extraFields = [
-      ['Giới tính', readPastedField(text, 'Giới tính')],
-      ['Quốc tịch', readPastedField(text, 'Quốc tịch')],
-      ['Quê quán', readPastedField(text, 'Quê quán')],
-      ['Có giá trị đến', readPastedField(text, 'Có giá trị đến')],
-      ['Đặc điểm nhận dạng', readPastedField(text, 'Đặc điểm nhận dạng')],
-      ['Người ký', readPastedField(text, 'Người ký')]
-    ].filter(([, value]) => value);
-    const mrzIndex = text.toLowerCase().indexOf('mrz');
-    const mrzText = mrzIndex >= 0 ? text.slice(mrzIndex).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean).join('\n') : '';
-    const extraNote = [
-      ...extraFields.map(([label, value]) => `${label}: ${value}`),
-      mrzText ? `MRZ:\n${mrzText}` : ''
-    ].filter(Boolean).join('\n');
+    const parsed = parseVietnameseIdCard(text);
 
     setForm(prev => ({
       ...prev,
       tenantIdPaste: text,
-      tenantCCCD: cccd || prev.tenantCCCD,
-      tenantName: name || prev.tenantName,
-      tenantBirthday: birthday || prev.tenantBirthday,
-      tenantAddress: address || prev.tenantAddress,
-      tenantCCCDDate: issueDate || prev.tenantCCCDDate,
-      tenantCCCDPlace: issuePlace || prev.tenantCCCDPlace,
-      tenantNote: extraNote || prev.tenantNote
+      tenantCCCD: parsed.cccd || prev.tenantCCCD,
+      tenantName: parsed.name || prev.tenantName,
+      tenantBirthday: parsed.birthday || prev.tenantBirthday,
+      tenantAddress: parsed.address || prev.tenantAddress,
+      tenantCCCDDate: parsed.issueDate || prev.tenantCCCDDate,
+      tenantCCCDPlace: parsed.issuePlace || prev.tenantCCCDPlace,
+      tenantNote: parsed.note || prev.tenantNote
     }));
   };
 
@@ -5591,50 +5677,19 @@ function RoommateModal({ room, contract, onClose, onSave }) {
     idPaste: ''
   });
 
-  const readPastedField = (text, label) => {
-    const match = text.match(new RegExp(`${label}\\s*:\\s*([^\\n\\r]+)`, 'i'));
-    return match ? match[1].trim() : '';
-  };
-
-  const parseVietnameseDate = (value) => {
-    const match = String(value || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (!match) return '';
-    const [, day, month, year] = match;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  };
-
   const applyPastedIdInfo = (text) => {
-    const cccd = readPastedField(text, 'Số CCCD');
-    const name = readPastedField(text, 'Họ và tên');
-    const birthday = parseVietnameseDate(readPastedField(text, 'Ngày sinh'));
-    const address = readPastedField(text, 'Nơi thường trú');
-    const issueDate = parseVietnameseDate(readPastedField(text, 'Ngày cấp'));
-    const issuePlace = readPastedField(text, 'Nơi cấp');
-    const extraFields = [
-      ['Giới tính', readPastedField(text, 'Giới tính')],
-      ['Quốc tịch', readPastedField(text, 'Quốc tịch')],
-      ['Quê quán', readPastedField(text, 'Quê quán')],
-      ['Có giá trị đến', readPastedField(text, 'Có giá trị đến')],
-      ['Đặc điểm nhận dạng', readPastedField(text, 'Đặc điểm nhận dạng')],
-      ['Người ký', readPastedField(text, 'Người ký')]
-    ].filter(([, value]) => value);
-    const mrzIndex = text.toLowerCase().indexOf('mrz');
-    const mrzText = mrzIndex >= 0 ? text.slice(mrzIndex).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean).join('\n') : '';
-    const extraNote = [
-      ...extraFields.map(([label, value]) => `${label}: ${value}`),
-      mrzText ? `MRZ:\n${mrzText}` : ''
-    ].filter(Boolean).join('\n');
+    const parsed = parseVietnameseIdCard(text);
 
     setForm(prev => ({
       ...prev,
       idPaste: text,
-      cccd: cccd || prev.cccd,
-      name: name || prev.name,
-      birthday: birthday || prev.birthday,
-      address: address || prev.address,
-      cccdDate: issueDate || prev.cccdDate,
-      cccdPlace: issuePlace || prev.cccdPlace,
-      note: extraNote || prev.note
+      cccd: parsed.cccd || prev.cccd,
+      name: parsed.name || prev.name,
+      birthday: parsed.birthday || prev.birthday,
+      address: parsed.address || prev.address,
+      cccdDate: parsed.issueDate || prev.cccdDate,
+      cccdPlace: parsed.issuePlace || prev.cccdPlace,
+      note: parsed.note || prev.note
     }));
   };
 
