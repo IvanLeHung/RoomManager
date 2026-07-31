@@ -13,8 +13,9 @@ const DEFAULT_BANK = {
   accountName: 'DIỆM THỊ BÌNH',
 };
 
-const now = new Date();
-const INITIAL_MONTH = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+function getCurrentMonthLabel(date = new Date()) {
+  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
 
 const DEFAULT_DATA = {
   rooms: [
@@ -1858,7 +1859,7 @@ function AppMain() {
         const wb = XLSX.utils.book_new();
         const now = new Date();
         const dateStr = now.toISOString().slice(0, 10);
-        const stats = getDashboardStats(data, INITIAL_MONTH);
+        const stats = getDashboardStats(data, getCurrentMonthLabel());
 
         // 1. Sheet Tong quan
         const overviewData = [
@@ -2108,7 +2109,7 @@ function AppMain() {
       }
     } else if (type === 'create_receipt') {
       const roomId = roomOrTenant.id;
-      const month = INITIAL_MONTH;
+      const month = getCurrentMonthLabel();
       const transferTarget = findTransferTargetForOldRoom(data, roomId, month);
       const activeContract = getCurrentContractForRoom(data, roomId);
       const targetContract = transferTarget?.contract || activeContract;
@@ -2997,7 +2998,8 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
-  const stats = getDashboardStats(data, INITIAL_MONTH);
+  const currentMonth = getCurrentMonthLabel();
+  const stats = getDashboardStats(data, currentMonth);
   const periodReceipts = (data.receipts || []).filter(r => periodMonthKeys.includes(r.month) || inPeriod(r.createdAt));
   const periodExpenses = (data.expensePayments || []).filter(e => periodMonthKeys.includes(e.month) || inPeriod(e.paymentDate || e.date || e.createdAt));
   const periodContracts = (data.contracts || []).filter(c => inPeriod(c.createdAt || c.startDate));
@@ -3118,7 +3120,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
               )}
               {stats.unpaidReceipts.length > 0 && (
                 <div className="alert-item danger">
-                  <span>💸 {stats.unpaidReceipts.length} phòng chưa đóng tiền tháng {INITIAL_MONTH}: </span>
+                  <span>💸 {stats.unpaidReceipts.length} phòng chưa đóng tiền tháng {currentMonth}: </span>
                   <b>{stats.unpaidReceipts.map(r => r.roomId).join(', ')}</b>
                 </div>
               )}
@@ -3222,6 +3224,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
 function RoomsTab({ data, onAction, onSelect, query }) {
   const [caseFilter, setCaseFilter] = useState('all');
   const [selectedRoomId, setSelectedRoomId] = useState(null);
+  const currentMonth = getCurrentMonthLabel();
   const roomCards = useMemo(() => {
     const q = query.toLowerCase();
     return (data.rooms || []).map(room => {
@@ -3232,12 +3235,12 @@ function RoomsTab({ data, onAction, onSelect, query }) {
       const primaryTenant = contract
         ? (getPrimaryTenantByContract(data, contract.id) || (roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null))
         : roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null;
-      const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
+      const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
       const debt = currentReceipt ? getReceiptPaymentState(currentReceipt).debt : 0;
       const caseType = ownerOccupied ? 'owner' : label === 'Trống' ? 'vacant' : debt > 0 ? 'debt' : 'occupied';
       return { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType };
     }).filter(item => item.room.id.toLowerCase().includes(q));
-  }, [data, query]);
+  }, [data, query, currentMonth]);
 
   const caseOptions = [
     ['all', 'Tất cả', roomCards.length],
@@ -3359,6 +3362,7 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
   const [statusFilter, setStatusFilter] = useState('active');
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [contractFilter, setContractFilter] = useState('all');
+  const currentMonth = getCurrentMonthLabel();
 
   const tenantRows = useMemo(() => {
     return (data.memberships || []).map(m => {
@@ -3366,14 +3370,14 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
       if (!tenant) return null;
       const contract = (data.contracts || []).find(c => c.id === m.contractId);
       const room = (data.rooms || []).find(r => r.id === m.roomId);
-      const receipt = contract ? (data.receipts || []).find(r => r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
+      const receipt = contract ? (data.receipts || []).find(r => r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
       const debt = receipt ? getReceiptPaymentState(receipt).debt : 0;
       const contractDaysLeft = contract ? getDaysUntil(contract.endDate) : null;
       const contractState = !contract || isOwnerOccupiedRoom(room) ? 'none' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'expired' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'expiring' : 'valid';
       const paymentState = debt > 0 ? 'debt' : receipt ? 'paid' : 'missing';
       return { tenant, membership: m, contract, room, receipt, debt, contractDaysLeft, contractState, paymentState };
     }).filter(Boolean).sort((a, b) => String(a.room?.id || a.membership.roomId).localeCompare(String(b.room?.id || b.membership.roomId), 'vi', { numeric: true }));
-  }, [data]);
+  }, [data, currentMonth]);
 
   const activeRows = tenantRows.filter(r => r.membership.status === 'active');
   const moveOutThisMonth = (data.moveOutReports || []).filter(r => String(r.actualEndDate || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length;
@@ -3412,7 +3416,7 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
 
       <div className="tenant-stats-grid">
         <div className="tenant-stat-card active"><b>{activeRows.length}</b><span>Đang thuê</span><small>+{tenantRows.filter(r => String(r.membership.createdAt || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length} tháng này</small></div>
-        <div className="tenant-stat-card notice"><b>{moveOutThisMonth}</b><span>Rời đi</span><small>{INITIAL_MONTH}</small></div>
+        <div className="tenant-stat-card notice"><b>{moveOutThisMonth}</b><span>Rời đi</span><small>{currentMonth}</small></div>
         <div className="tenant-stat-card debt"><b>{debtRows.length}</b><span>Đang nợ</span><small>{formatMoney(debtRows.reduce((s, r) => s + r.debt, 0))}</small></div>
         <div className="tenant-stat-card warning"><b>{expiringRows.length}</b><span>HĐ cảnh báo</span><small>Hết hạn / 30 ngày</small></div>
       </div>
@@ -3497,7 +3501,7 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
 }
 
 function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onDeleteReceipt, onGoToPayment }) {
-  const [selectedMonth, setSelectedMonth] = useState(INITIAL_MONTH);
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthLabel());
   const [activeTab, setActiveTab] = useState('entry');
   const [saveModal, setSaveModal] = useState(null);
 
@@ -3928,13 +3932,14 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
   const [historyFilter, setHistoryFilter] = useState('all');
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [showRoommateForm, setShowRoommateForm] = useState(false);
+  const currentMonth = getCurrentMonthLabel();
   const { label, color, contract, ownerOccupied } = getRoomStatusInfo(data, room.id);
   const roomActiveMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
   const roomPrimaryMember = roomActiveMembers.find(m => m.role === 'primary') || roomActiveMembers[0];
   const primaryTenant = contract
     ? (getPrimaryTenantByContract(data, contract.id) || (roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null))
     : roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null;
-  const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
+  const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
   const allMembers = contract
     ? (data.memberships || []).filter(m => m.contractId === contract.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }))
     : (data.memberships || []).filter(m => m.roomId === room.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }));
@@ -4068,7 +4073,7 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
       </div>
 
       <div className="op-card" style={{ gridColumn: 'span 2' }}>
-        <h3 className="op-card-title">Công nợ tháng {INITIAL_MONTH}</h3>
+        <h3 className="op-card-title">Công nợ tháng {currentMonth}</h3>
         {currentReceipt ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -4233,7 +4238,7 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
     if (activeTab === 'payments') return (
       <div className="stack" style={{ gap: '16px' }}>
         <div className="op-card">
-          <h3 className="op-card-title">Chi tiết phiếu tháng {INITIAL_MONTH}</h3>
+          <h3 className="op-card-title">Chi tiết phiếu tháng {currentMonth}</h3>
           {renderReceiptBreakdown(currentReceipt)}
         </div>
         <div className="op-card" style={{ padding: 0 }}>
@@ -4245,7 +4250,7 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
                   const paymentState = getReceiptPaymentState(r);
                   const debt = paymentState.debt;
                   const status = paymentState.status === 'Nợ một phần' ? 'Thanh toán một phần' : paymentState.status;
-                  const dueText = `${String(paymentDay).padStart(2, '0')}/${String(r.month || INITIAL_MONTH).padStart(7, '0')}`;
+                  const dueText = `${String(paymentDay).padStart(2, '0')}/${String(r.month || getCurrentMonthLabel()).padStart(7, '0')}`;
                   return (
                     <tr key={r.id}>
                       <td>Phiếu {r.month}</td>
@@ -5577,7 +5582,7 @@ function TenantDetailModal({ tenant, data, onClose }) {
   const contract = activeMembership ? (data.contracts || []).find(c => c.id === activeMembership.contractId) : null;
   const room = activeMembership ? (data.rooms || []).find(r => r.id === activeMembership.roomId) : null;
   const receipts = contract ? (data.receipts || []).filter(r => r.contractId === contract.id).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : [];
-  const currentReceipt = receipts.find(r => r.month === INITIAL_MONTH && r.type === 'monthly');
+  const currentReceipt = receipts.find(r => r.month === getCurrentMonthLabel() && r.type === 'monthly');
   const debt = currentReceipt ? getReceiptPaymentState(currentReceipt).debt : 0;
   const timeline = [
     { date: tenant.createdAt, title: 'Tạo khách', detail: tenant.name },
@@ -6496,7 +6501,7 @@ function PaymentModal({ receipt, onClose, onSave }) {
 }
 
 function ExpensesTab({ data, onAction }) {
-  const [filter, setFilter] = useState({ supplierId: '', categoryId: '', status: 'all', month: INITIAL_MONTH });
+  const [filter, setFilter] = useState(() => ({ supplierId: '', categoryId: '', status: 'all', month: getCurrentMonthLabel() }));
 
   const filteredExpenses = useMemo(() => {
     return (data.expensePayments || []).filter(e => {
@@ -6604,7 +6609,7 @@ function SuppliersTab({ data, onAction }) {
 }
 
 function FinancialReportTab({ data, onAction }) {
-  const [selectedMonth, setSelectedMonth] = useState(INITIAL_MONTH);
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthLabel());
 
   const stats = useMemo(() => {
     const monthIncome = (data.receipts || []).filter(r => r.month === selectedMonth);
@@ -6725,7 +6730,7 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
     id: uid('exp'),
     supplierId: '',
     categoryId: 'cat_other',
-    month: INITIAL_MONTH,
+    month: getCurrentMonthLabel(),
     paymentDate: new Date().toISOString().slice(0, 10),
     title: '',
     description: '',
@@ -6739,7 +6744,7 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
   // Tự sinh mã phiếu chi
   useEffect(() => {
     if (!expense && !form.expenseCode) {
-      const [m, y] = (form.month || INITIAL_MONTH).split('/');
+      const [m, y] = (form.month || getCurrentMonthLabel()).split('/');
       const prefix = `PC-${y}${m}`;
       const count = (data.expensePayments || []).filter(e => e.expenseCode && e.expenseCode.startsWith(prefix)).length + 1;
       const code = `${prefix}-${String(count).padStart(3, '0')}`;
