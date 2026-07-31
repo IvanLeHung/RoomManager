@@ -329,11 +329,10 @@ function getDashboardStats(data, currentMonth) {
   const currentTenants = (data.memberships || []).filter(m => m.status === 'active').length;
   
   const monthReceipts = (data.receipts || []).filter(r => r.month === currentMonth && r.type === 'monthly');
-  const unpaidReceipts = monthReceipts.filter(r => r.status === 'Chưa thanh toán' || r.status === 'Nợ một phần');
+  const unpaidReceipts = monthReceipts.filter(r => getReceiptPaymentState(r).debt > 0);
   
   const totalDebt = (data.receipts || []).reduce((sum, r) => {
-    const debt = Number(r.total || 0) - Number(r.paidAmount || 0);
-    return sum + (debt > 0 ? debt : 0);
+    return sum + getReceiptPaymentState(r).debt;
   }, 0);
 
   const notifyingMoveOut = activeContracts.filter(c => c.status === 'notice');
@@ -466,8 +465,10 @@ function transferContent(receipt) {
 
 function buildVietQrUrl(bankInfo, receipt) {
   if (!bankInfo.bankCode || !bankInfo.accountNo || !receipt) return '';
+  const paymentState = getReceiptPaymentState(receipt);
+  const amount = paymentState.debt > 0 ? paymentState.debt : Number(receipt.total || 0);
   const params = new URLSearchParams({
-    amount: String(Math.round(Number(receipt.total || 0))),
+    amount: String(Math.round(amount)),
     addInfo: transferContent(receipt),
     accountName: bankInfo.accountName || '',
   });
@@ -1015,11 +1016,30 @@ function recalculateReceipt(receipt, room) {
 function getReceiptPaymentState(receipt) {
   const total = Number(receipt?.total || 0);
   const paidAmount = Number(receipt?.paidAmount || 0);
+  const explicitAdjustmentDue = Number(receipt?.adjustmentDueAmount || 0);
+  const looksLikeUtilityCheckoutAdjustment =
+    receipt?.type === 'monthly' &&
+    receipt?.isFinalized &&
+    paidAmount >= total &&
+    total > 0 &&
+    Number(receipt?.rent || 0) === 0 &&
+    Number(receipt?.fixedServices || 0) === 0 &&
+    (Number(receipt?.electricAmount || 0) + Number(receipt?.waterAmount || 0) + Number(receipt?.other || 0)) > 0 &&
+    !receipt?.adjustmentPaidAmount;
+  const adjustmentDue = explicitAdjustmentDue > 0 ? explicitAdjustmentDue : looksLikeUtilityCheckoutAdjustment ? total : 0;
+  if (adjustmentDue > 0) {
+    const adjustmentPaidAmount = Number(receipt?.adjustmentPaidAmount || 0);
+    const adjustmentDebt = Math.max(0, adjustmentDue - adjustmentPaidAmount);
+    if (receipt?.status === 'Đã hủy') return { status: 'Đã hủy', debt: adjustmentDebt, paidAmount: adjustmentPaidAmount, basePaidAmount: paidAmount, adjustmentDue, isPaid: false, isPartial: false, isAdjustment: true };
+    if (adjustmentPaidAmount >= adjustmentDue) return { status: 'Đã thanh toán', debt: 0, paidAmount: adjustmentPaidAmount, basePaidAmount: paidAmount, adjustmentDue, isPaid: true, isPartial: false, isAdjustment: true };
+    if (adjustmentPaidAmount > 0) return { status: 'Nợ một phần', debt: adjustmentDebt, paidAmount: adjustmentPaidAmount, basePaidAmount: paidAmount, adjustmentDue, isPaid: false, isPartial: true, isAdjustment: true };
+    return { status: 'Chưa thanh toán', debt: adjustmentDebt, paidAmount: 0, basePaidAmount: paidAmount, adjustmentDue, isPaid: false, isPartial: false, isAdjustment: true };
+  }
   const debt = Math.max(0, total - paidAmount);
-  if (receipt?.status === 'Đã hủy') return { status: 'Đã hủy', debt, paidAmount, isPaid: false, isPartial: false };
-  if (total > 0 && paidAmount >= total) return { status: 'Đã thanh toán', debt: 0, paidAmount, isPaid: true, isPartial: false };
-  if (paidAmount > 0) return { status: 'Nợ một phần', debt, paidAmount, isPaid: false, isPartial: true };
-  return { status: 'Chưa thanh toán', debt, paidAmount, isPaid: false, isPartial: false };
+  if (receipt?.status === 'Đã hủy') return { status: 'Đã hủy', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: false, isAdjustment: false };
+  if (total > 0 && paidAmount >= total) return { status: 'Đã thanh toán', debt: 0, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: true, isPartial: false, isAdjustment: false };
+  if (paidAmount > 0) return { status: 'Nợ một phần', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: true, isAdjustment: false };
+  return { status: 'Chưa thanh toán', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: false, isAdjustment: false };
 }
 
 function App() {
@@ -2868,7 +2888,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
   const occupancyRate = stats.totalRooms > 0 ? (stats.occupiedRooms / stats.totalRooms) * 100 : 0;
   const recentReceipts = [...periodReceipts].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
   const topDebtRooms = [...periodReceipts]
-    .map(r => ({ ...r, debt: Math.max(0, Number(r.total || 0) - Number(r.paidAmount || 0)) }))
+    .map(r => ({ ...r, debt: getReceiptPaymentState(r).debt }))
     .filter(r => r.debt > 0)
     .sort((a, b) => b.debt - a.debt)
     .slice(0, 5);
@@ -3089,7 +3109,7 @@ function RoomsTab({ data, onAction, onSelect, query }) {
         ? (getPrimaryTenantByContract(data, contract.id) || (roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null))
         : roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null;
       const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
-      const debt = currentReceipt ? Math.max(0, Number(currentReceipt.total || 0) - Number(currentReceipt.paidAmount || 0)) : 0;
+      const debt = currentReceipt ? getReceiptPaymentState(currentReceipt).debt : 0;
       const caseType = ownerOccupied ? 'owner' : label === 'Trống' ? 'vacant' : debt > 0 ? 'debt' : 'occupied';
       return { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType };
     }).filter(item => item.room.id.toLowerCase().includes(q));
@@ -3223,7 +3243,7 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
       const contract = (data.contracts || []).find(c => c.id === m.contractId);
       const room = (data.rooms || []).find(r => r.id === m.roomId);
       const receipt = contract ? (data.receipts || []).find(r => r.contractId === contract.id && r.month === INITIAL_MONTH && r.type === 'monthly') : null;
-      const debt = receipt ? Math.max(0, Number(receipt.total || 0) - Number(receipt.paidAmount || 0)) : 0;
+      const debt = receipt ? getReceiptPaymentState(receipt).debt : 0;
       const contractDaysLeft = contract ? getDaysUntil(contract.endDate) : null;
       const contractState = !contract || isOwnerOccupiedRoom(room) ? 'none' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'expired' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'expiring' : 'valid';
       const paymentState = debt > 0 ? 'debt' : receipt ? 'paid' : 'missing';
@@ -3477,6 +3497,16 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
         : "Phiếu tháng này đã được lưu chính thức. Nếu cập nhật chỉ số, tổng tiền và mã QR sẽ thay đổi. Bạn vẫn muốn cập nhật?";
       
       if (!window.confirm(msg)) return;
+      const originalState = getReceiptPaymentState(original);
+      if (originalState.isPaid) {
+        updated = {
+          ...updated,
+          adjustmentDueAmount: Number(updated.total || 0),
+          adjustmentPaidAmount: Number(updated.adjustmentPaidAmount || 0),
+          adjustmentCreatedAt: updated.adjustmentCreatedAt || new Date().toISOString(),
+          adjustmentReason: updated.adjustmentReason || 'Phát sinh/chỉnh lại điện nước sau khi phiếu đã thanh toán'
+        };
+      }
     }
     onUpdateReceipt(updated);
   }
@@ -4088,15 +4118,15 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
               <thead><tr><th>Phiếu</th><th>Tổng tiền</th><th>Đã thu</th><th>Còn nợ</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
               <tbody>
                 {roomReceipts.map(r => {
-                  const debt = Math.max(0, Number(r.total || 0) - Number(r.paidAmount || 0));
-                  const paid = Number(r.paidAmount || 0);
-                  const status = r.status === 'Đã hủy' ? 'Đã hủy' : debt === 0 && paid > 0 ? 'Đã thanh toán' : paid > 0 ? 'Thanh toán một phần' : 'Chưa thanh toán';
+                  const paymentState = getReceiptPaymentState(r);
+                  const debt = paymentState.debt;
+                  const status = paymentState.status === 'Nợ một phần' ? 'Thanh toán một phần' : paymentState.status;
                   const dueText = `${String(paymentDay).padStart(2, '0')}/${String(r.month || INITIAL_MONTH).padStart(7, '0')}`;
                   return (
                     <tr key={r.id}>
                       <td>Phiếu {r.month}</td>
                       <td>{formatMoney(r.total || 0)}</td>
-                      <td>{formatMoney(r.paidAmount || 0)}</td>
+                      <td>{formatMoney(paymentState.paidAmount || 0)}</td>
                       <td style={{ color: debt > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>{formatMoney(debt)}</td>
                       <td>{dueText}</td>
                       <td><span className={`status-badge-liquid ${status === 'Đã thanh toán' ? 'active' : status === 'Thanh toán một phần' ? 'notice' : 'debt'}`}>{status}</span></td>
@@ -4807,9 +4837,12 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   
   const deposit = Number(contract.deposit || 0);
   const isOffsetDeposit = form.settlementMode === 'offset_deposit';
+  const isPaySeparately = form.settlementMode === 'pay_separately';
+  const isForfeitDeposit = form.settlementMode === 'forfeit_deposit';
   const depositUsed = isOffsetDeposit ? Math.min(deposit, totalIncurred) : 0;
-  const mustCollect = isOffsetDeposit ? Math.max(0, totalIncurred - deposit) : totalIncurred;
-  const mustRefund = isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : deposit;
+  const depositForfeited = isForfeitDeposit ? deposit : 0;
+  const mustCollect = (isPaySeparately || isForfeitDeposit) ? totalIncurred : Math.max(0, totalIncurred - deposit);
+  const mustRefund = isPaySeparately ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
   const isRefund = mustRefund > 0;
   const isDebt = mustCollect > 0;
   const settlementTransferContent = `P${room.id} TRA PHONG ${formatDisplayDate(form.actualEndDate, '').replace(/\//g, '')}`;
@@ -4864,10 +4897,14 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                     <input type="radio" name="settlementMode" checked={form.settlementMode === 'pay_separately'} onChange={() => setForm({...form, settlementMode: 'pay_separately'})} />
                     <span><b>Khách thanh toán điện nước/phí riêng, hoàn nguyên cọc</b><small>Tạo khoản khách cần trả cho phát sinh và hoàn lại toàn bộ tiền cọc.</small></span>
                   </label>
+                  <label className="option-row danger">
+                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'forfeit_deposit'} onChange={() => setForm({...form, settlementMode: 'forfeit_deposit'})} />
+                    <span><b>Trả sớm hợp đồng, không hoàn cọc</b><small>Cọc được bù công nợ trước; phần cọc còn lại ghi nhận giữ lại do khách trả phòng trước hạn.</small></span>
+                  </label>
                 </div>
               </section>
 
-              {mustRefund > 0 && (
+              {mustRefund > 0 && !isForfeitDeposit && (
                 <section>
                   <h3 className="form-section-title">🏦 Thông tin hoàn cọc cho khách</h3>
                   <div className="form-grid-v2">
@@ -4929,17 +4966,20 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 <div className="summary-row"><span>Tiền nước</span><b>{formatMoney(waterAmount)}</b></div>
                 <div className="summary-row"><span>Phí khác</span><b>{formatMoney(Number(form.unpaidRent || 0) + Number(form.cleaningFee || 0) + Number(form.damageFee || 0) + Number(form.otherFee || 0))}</b></div>
                 <div className="summary-row"><span>Tổng phát sinh</span><b>{formatMoney(totalIncurred)}</b></div>
-                <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>
-                {!isOffsetDeposit && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
+                {isOffsetDeposit && <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>}
+                {isForfeitDeposit && <div className="summary-row"><span>Cọc giữ lại do trả sớm</span><b style={{ color: 'var(--danger)' }}>{formatMoney(depositForfeited)}</b></div>}
+                {isPaySeparately && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
                 {mustCollect > 0 && <div className="summary-row"><span>Khách thanh toán phát sinh</span><b style={{ color: 'var(--danger)' }}>{formatMoney(mustCollect)}</b></div>}
                 
                 <div className="summary-total">
-                  <span className="summary-label-main">{isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
+                  <span className="summary-label-main">{isForfeitDeposit ? 'Khách cần thanh toán' : isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
                   <p className="summary-amount" style={{ color: isRefund ? 'var(--success)' : isDebt ? 'var(--danger)' : 'var(--text-main)' }}>
-                    {isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
+                    {isForfeitDeposit ? formatMoney(mustCollect) : isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
                   </p>
                   <p style={{ fontSize: '13px', fontWeight: '500' }}>
-                    {isOffsetDeposit
+                    {isForfeitDeposit
+                      ? '⚠️ Khách trả sớm hợp đồng: không hoàn cọc, phát sinh vẫn thu riêng'
+                      : isOffsetDeposit
                       ? isRefund ? '✨ Cần hoàn phần cọc còn lại cho khách' : isDebt ? '⚠️ Khách thuê cần đóng thêm tiền sau khi trừ cọc' : '✅ Công nợ đã được tất toán đủ'
                       : '✨ Hoàn toàn bộ cọc, đồng thời thu riêng điện nước/phí phát sinh'}
                   </p>
@@ -4957,7 +4997,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   </div>
                 )}
 
-                {mustRefund > 0 && (
+                {mustRefund > 0 && !isForfeitDeposit && (
                   <div className="settlement-qr-card">
                     <h4>Phiếu chi hoàn cọc sẽ tạo</h4>
                     {form.refundQrImageUrl ? <img src={form.refundQrImageUrl} alt="QR người thuê nhận hoàn cọc" /> : <p className="small muted">Có thể dán link QR người thuê ở form bên trái để lưu kèm phiếu chi.</p>}
@@ -4976,6 +5016,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                     <li>Phòng {room.id} sẽ trở về trạng thái trống</li>
                     <li>Lịch sử tất toán sẽ được lưu lại</li>
                     {fingerprintRemovalList.length > 0 && <li>Admin cần xóa vân tay: {fingerprintRemovalList.map(m => `${m.tenant.name} (${m.tenant.fingerprintCode})`).join(', ')}</li>}
+                    {isForfeitDeposit && <li>Tiền cọc còn lại được ghi nhận giữ lại do khách trả sớm hợp đồng</li>}
                   </ul>
                 </div>
 
@@ -5006,6 +5047,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         waterAmount,
                         totalIncurred,
                         depositUsed,
+                        depositForfeited,
                         mustCollect,
                         mustRefund,
                         settlementMode: form.settlementMode,
@@ -5443,7 +5485,7 @@ function TenantDetailModal({ tenant, data, onClose }) {
   const room = activeMembership ? (data.rooms || []).find(r => r.id === activeMembership.roomId) : null;
   const receipts = contract ? (data.receipts || []).filter(r => r.contractId === contract.id).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : [];
   const currentReceipt = receipts.find(r => r.month === INITIAL_MONTH && r.type === 'monthly');
-  const debt = currentReceipt ? Math.max(0, Number(currentReceipt.total || 0) - Number(currentReceipt.paidAmount || 0)) : 0;
+  const debt = currentReceipt ? getReceiptPaymentState(currentReceipt).debt : 0;
   const timeline = [
     { date: tenant.createdAt, title: 'Tạo khách', detail: tenant.name },
     ...memberships.map(m => ({ date: m.joinedDate || m.createdAt, title: 'Vào ở', detail: `P${m.roomId} - ${m.role === 'primary' ? 'Đại diện' : 'Ở cùng'}` })),
@@ -6048,8 +6090,9 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
             </div>
 
             <div className="total-summary-v4">
-              <p className="label">{paymentState.isPaid ? 'Tổng cộng đã thu' : 'Tổng cộng cần trả'}</p>
-              <p className="total-amount">{formatMoney(receipt.total)}</p>
+              <p className="label">{paymentState.isPaid ? 'Tổng cộng đã thu' : paymentState.isAdjustment ? 'Cần thu thêm' : 'Tổng cộng cần trả'}</p>
+              <p className="total-amount">{formatMoney(paymentState.isPaid ? receipt.total : (paymentState.debt || receipt.total))}</p>
+              {paymentState.isAdjustment && paymentState.basePaidAmount > 0 && <p className="remaining-amount-v4" style={{ color: '#475569' }}>Đã thu trước đó: {formatMoney(paymentState.basePaidAmount)}</p>}
               {paymentState.isPartial && <p className="remaining-amount-v4">Còn nợ: {formatMoney(paymentState.debt)}</p>}
             </div>
           </div>
@@ -6327,7 +6370,8 @@ function RoomOpsModal({ mode, room, onClose, onSave }) {
 }
 
 function PaymentModal({ receipt, onClose, onSave }) {
-  const [paidAmount, setPaidAmount] = useState(receipt?.paidAmount || receipt?.total || 0);
+  const receiptPaymentState = getReceiptPaymentState(receipt || {});
+  const [paidAmount, setPaidAmount] = useState(receiptPaymentState.debt || receipt?.total || 0);
   const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
   
   if (!receipt) return null;
@@ -6342,7 +6386,8 @@ function PaymentModal({ receipt, onClose, onSave }) {
         <div className="detail-body-v2 stack">
           <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
             <p>Phòng: <b>{getTransferRoomLabel(receipt)}</b></p>
-            <p>Tổng tiền: <b>{formatMoney(receipt.total)}</b></p>
+            <p>{receiptPaymentState.isAdjustment ? 'Khoản cần thu thêm' : 'Tổng tiền'}: <b>{formatMoney(receiptPaymentState.debt || receipt.total)}</b></p>
+            {receiptPaymentState.isAdjustment && <p className="muted small">Đã thu trước đó: {formatMoney(receiptPaymentState.basePaidAmount)}</p>}
             <p className="muted small">Tháng {receipt.month}</p>
           </div>
           <label>
@@ -6354,7 +6399,7 @@ function PaymentModal({ receipt, onClose, onSave }) {
             <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} />
           </label>
           <div style={{ marginTop: '10px' }}>
-            {Number(paidAmount) >= receipt.total ? 
+            {Number(paidAmount) >= (receiptPaymentState.debt || receipt.total) ? 
               <span className="status-badge-liquid active">Thanh toán đủ</span> : 
               Number(paidAmount) > 0 ? 
                 <span className="status-badge-liquid notice">Thanh toán một phần</span> : 
@@ -6362,6 +6407,21 @@ function PaymentModal({ receipt, onClose, onSave }) {
             }
           </div>
           <button className="primary-btn wide" onClick={() => { 
+            if (receiptPaymentState.isAdjustment) {
+              const adjustmentDue = Number(receipt.adjustmentDueAmount || receiptPaymentState.adjustmentDue || receipt.total || 0);
+              const nextAdjustmentPaid = Number(receipt.adjustmentPaidAmount || 0) + Number(paidAmount || 0);
+              let status = 'Chưa thanh toán';
+              if (nextAdjustmentPaid >= adjustmentDue) status = 'Đã thanh toán';
+              else if (nextAdjustmentPaid > 0) status = 'Nợ một phần';
+              onSave({
+                ...receipt,
+                adjustmentDueAmount: adjustmentDue,
+                adjustmentPaidAmount: nextAdjustmentPaid,
+                adjustmentPaidDate: paidDate,
+                status
+              });
+              return;
+            }
             let status = 'Chưa thanh toán'; 
             if (Number(paidAmount) >= receipt.total) status = 'Đã thanh toán'; 
             else if (Number(paidAmount) > 0) status = 'Nợ một phần'; 

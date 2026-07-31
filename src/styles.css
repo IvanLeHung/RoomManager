@@ -1556,6 +1556,15 @@ textarea {
   line-height: 1.4;
 }
 
+.option-row.danger {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.option-row.danger b {
+  color: #b91c1c;
+}
+
 .settlement-qr-card {
   border: 1px solid #dbeafe;
   background: #f8fbff;
