@@ -4828,9 +4828,9 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const isOffsetDeposit = form.settlementMode === 'offset_deposit';
   const isPaySeparately = form.settlementMode === 'pay_separately';
   const isForfeitDeposit = form.settlementMode === 'forfeit_deposit';
-  const depositUsed = (isOffsetDeposit || isForfeitDeposit) ? Math.min(deposit, totalIncurred) : 0;
-  const depositForfeited = isForfeitDeposit ? Math.max(0, deposit - depositUsed) : 0;
-  const mustCollect = isPaySeparately ? totalIncurred : Math.max(0, totalIncurred - deposit);
+  const depositUsed = isOffsetDeposit ? Math.min(deposit, totalIncurred) : 0;
+  const depositForfeited = isForfeitDeposit ? deposit : 0;
+  const mustCollect = (isPaySeparately || isForfeitDeposit) ? totalIncurred : Math.max(0, totalIncurred - deposit);
   const mustRefund = isPaySeparately ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
   const isRefund = mustRefund > 0;
   const isDebt = mustCollect > 0;
@@ -4955,19 +4955,19 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 <div className="summary-row"><span>Tiền nước</span><b>{formatMoney(waterAmount)}</b></div>
                 <div className="summary-row"><span>Phí khác</span><b>{formatMoney(Number(form.unpaidRent || 0) + Number(form.cleaningFee || 0) + Number(form.damageFee || 0) + Number(form.otherFee || 0))}</b></div>
                 <div className="summary-row"><span>Tổng phát sinh</span><b>{formatMoney(totalIncurred)}</b></div>
-                <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>
+                {isOffsetDeposit && <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>}
                 {isForfeitDeposit && <div className="summary-row"><span>Cọc giữ lại do trả sớm</span><b style={{ color: 'var(--danger)' }}>{formatMoney(depositForfeited)}</b></div>}
                 {isPaySeparately && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
                 {mustCollect > 0 && <div className="summary-row"><span>Khách thanh toán phát sinh</span><b style={{ color: 'var(--danger)' }}>{formatMoney(mustCollect)}</b></div>}
                 
                 <div className="summary-total">
-                  <span className="summary-label-main">{isForfeitDeposit ? 'Không hoàn cọc' : isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
+                  <span className="summary-label-main">{isForfeitDeposit ? 'Khách cần thanh toán' : isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
                   <p className="summary-amount" style={{ color: isRefund ? 'var(--success)' : isDebt ? 'var(--danger)' : 'var(--text-main)' }}>
-                    {isForfeitDeposit ? formatMoney(0) : isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
+                    {isForfeitDeposit ? formatMoney(mustCollect) : isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
                   </p>
                   <p style={{ fontSize: '13px', fontWeight: '500' }}>
                     {isForfeitDeposit
-                      ? '⚠️ Khách trả sớm hợp đồng, hệ thống không tạo phiếu chi hoàn cọc'
+                      ? '⚠️ Khách trả sớm hợp đồng: không hoàn cọc, phát sinh vẫn thu riêng'
                       : isOffsetDeposit
                       ? isRefund ? '✨ Cần hoàn phần cọc còn lại cho khách' : isDebt ? '⚠️ Khách thuê cần đóng thêm tiền sau khi trừ cọc' : '✅ Công nợ đã được tất toán đủ'
                       : '✨ Hoàn toàn bộ cọc, đồng thời thu riêng điện nước/phí phát sinh'}
