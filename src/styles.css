@@ -2277,7 +2277,7 @@ textarea {
 .qr-box-v4 {
   background: #f8fafc;
   border-radius: 16px;
-  padding: 16px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2286,12 +2286,13 @@ textarea {
 }
 
 .qr-box-v4 img {
-  width: 180px;
-  height: 180px;
+  width: 240px;
+  height: 240px;
   border-radius: 12px;
   background: #fff;
-  padding: 8px;
+  padding: 10px;
   box-shadow: var(--shadow-sm);
+  image-rendering: crisp-edges;
 }
 
 .payment-details-v4 {
