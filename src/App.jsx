@@ -3135,9 +3135,19 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
                 </div>
               )}
               {stats.unpaidReceipts.length > 0 && (
-                <div className="alert-item danger">
-                  <span>💸 {stats.unpaidReceipts.length} phòng chưa đóng tiền tháng {currentMonth}: </span>
-                  <b>{stats.unpaidReceipts.map(r => r.roomId).join(', ')}</b>
+                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
+                  <span>💸 <b>{stats.unpaidReceipts.length} phòng chưa đóng tiền tháng {currentMonth}</b></span>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
+                    {stats.unpaidReceipts
+                      .map(r => ({ ...r, debt: getReceiptPaymentState(r).debt }))
+                      .sort((a, b) => Number(b.debt || 0) - Number(a.debt || 0))
+                      .map(r => (
+                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                          <span>• Phòng P{r.roomId}</span>
+                          <b>{formatMoney(r.debt)}</b>
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
               {stats.notifyingMoveOut.length > 0 && (
@@ -3152,9 +3162,16 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
                 </div>
               )}
               {topDebtRooms.length > 0 && (
-                <div className="alert-item danger">
-                  <span>📌 Top nợ: </span>
-                  <b>{topDebtRooms.map(r => `P${r.roomId} ${formatMoney(r.debt)}`).join(', ')}</b>
+                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
+                  <span>📌 <b>Top nợ</b></span>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
+                    {topDebtRooms.map((r, index) => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                        <span>{index + 1}. Phòng P{r.roomId}</span>
+                        <b>{formatMoney(r.debt)}</b>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {stats.expiringContracts.length === 0 && stats.unpaidReceipts.length === 0 && stats.notifyingMoveOut.length === 0 && (
