@@ -115,6 +115,7 @@ model MoveOutReport {
   monthlyRent    Int?
   monthlyFixedServices Int?
   roomChargeDays Int?
+  billingMonthDays Int?
   dailyRent      Float?
   dailyFixedServices Float?
   proratedRent   Int?
