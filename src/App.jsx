@@ -4938,13 +4938,14 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const waterAmount = waterUsed * Number(room.waterPrice || 32000);
   const endDate = new Date(form.actualEndDate);
   const roomChargeDays = Number.isNaN(endDate.getTime()) ? 0 : endDate.getDate();
+  const billingMonthDays = Number.isNaN(endDate.getTime()) ? 30 : new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
   const monthlyRent = Number(contract.rent || room.rent || 0);
   const occupantCount = getContractOccupantCount(data, contract);
   const monthlyFixedServices = fixedServiceTotal(room, occupantCount);
-  const proratedRent = Math.round((monthlyRent / 30) * roomChargeDays);
-  const proratedFixedServices = Math.round((monthlyFixedServices / 30) * roomChargeDays);
-  const dailyRent = monthlyRent / 30;
-  const dailyFixedServices = monthlyFixedServices / 30;
+  const proratedRent = Math.round((monthlyRent / billingMonthDays) * roomChargeDays);
+  const proratedFixedServices = Math.round((monthlyFixedServices / billingMonthDays) * roomChargeDays);
+  const dailyRent = monthlyRent / billingMonthDays;
+  const dailyFixedServices = monthlyFixedServices / billingMonthDays;
 
   const totalIncurred = proratedRent + proratedFixedServices + electricAmount + waterAmount + Number(form.unpaidRent) +
                         Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
@@ -4991,10 +4992,10 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   <label>Tiền phòng phát sinh <input value={formatMoney(proratedRent)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                   <label>Dịch vụ phát sinh <input value={formatMoney(proratedFixedServices)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                   <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / 30 x {roomChargeDays} ngày = {formatMoney(proratedRent)}
+                    Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(proratedRent)}
                   </p>
                   <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    Dịch vụ cố định: {formatMoney(monthlyFixedServices)}/tháng ({occupantCount} người) / 30 x {roomChargeDays} ngày = {formatMoney(proratedFixedServices)}
+                    Dịch vụ cố định: {formatMoney(monthlyFixedServices)}/tháng ({occupantCount} người) / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(proratedFixedServices)}
                   </p>
                   <label style={{ gridColumn: 'span 2' }}>Tiền cọc đang giữ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                 </div>
@@ -5144,6 +5145,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         monthlyRent,
                         monthlyFixedServices,
                         roomChargeDays,
+                        billingMonthDays,
                         dailyRent,
                         dailyFixedServices,
                         proratedRent,
@@ -5983,9 +5985,25 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
 }
 
 function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
+  const roomChargeDays = Number(report?.roomChargeDays || 0);
+  const reportEndDate = report?.actualEndDate ? new Date(report.actualEndDate) : null;
+  const inferredMonthDays = reportEndDate && !Number.isNaN(reportEndDate.getTime())
+    ? new Date(reportEndDate.getFullYear(), reportEndDate.getMonth() + 1, 0).getDate()
+    : 30;
+  const billingMonthDays = Number(report?.billingMonthDays || inferredMonthDays);
+  const monthlyRent = Number(report?.monthlyRent ?? room?.rent ?? 0);
+  const monthlyServices = Number(report?.monthlyFixedServices ?? 0);
+  const proratedRent = Number(report?.proratedRent ?? receipt?.rent ?? 0);
+  const proratedServices = Number(report?.proratedFixedServices ?? receipt?.fixedServices ?? 0);
+  const rentDetails = roomChargeDays
+    ? `${formatMoney(monthlyRent)} / ${billingMonthDays} ngày × ${roomChargeDays} ngày`
+    : (monthlyRent ? `Tiền phòng tháng: ${formatMoney(monthlyRent)}` : '');
+  const serviceDetails = roomChargeDays && monthlyServices
+    ? `${formatMoney(monthlyServices)} / ${billingMonthDays} ngày × ${roomChargeDays} ngày`
+    : '';
   const rowData = report ? [
-    ['Tiền phòng phát sinh', report.proratedRent, report.roomChargeDays ? `${report.roomChargeDays} ngày` : ''],
-    ['Dịch vụ phát sinh', report.proratedFixedServices, report.roomChargeDays ? `${report.roomChargeDays} ngày` : ''],
+    ['Tiền phòng phát sinh', proratedRent, rentDetails],
+    ['Dịch vụ phát sinh', proratedServices, serviceDetails],
     ['Tiền điện', report.electricAmount, `${report.electricOld ?? 0} → ${report.electricNew ?? 0} (${report.electricUsed ?? 0} kWh)`],
     ['Tiền nước', report.waterAmount, `${report.waterOld ?? 0} → ${report.waterNew ?? 0} (${report.waterUsed ?? 0} m³)`],
     ['Tiền phòng / công nợ khác', report.unpaidRent, ''],
