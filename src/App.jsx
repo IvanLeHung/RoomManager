@@ -7,10 +7,10 @@ const BANK_KEY = 'room_manager_bank_v1';
 const PIN_KEY = 'room_manager_pin_v1';
 
 const DEFAULT_BANK = {
-  bankName: 'MBBank',
-  bankCode: 'MB',
-  accountNo: '0123456789',
-  accountName: 'DIỆM THỊ BÌNH',
+  bankName: 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam',
+  bankCode: 'BIDV',
+  accountNo: '8847214661',
+  accountName: 'HỘ KINH DOANH DIỆM THỊ BÌNH',
 };
 
 function getCurrentMonthLabel(date = new Date()) {
@@ -1549,7 +1549,12 @@ function AppMain() {
       roomTransfers: loaded.roomTransfers || [],
     };
   });
-  const [bankInfo, setBankInfo] = useState(() => safeRead(BANK_KEY, DEFAULT_BANK));
+  const [bankInfo, setBankInfo] = useState(() => {
+    const saved = safeRead(BANK_KEY, DEFAULT_BANK);
+    // Replace the old demo account while preserving any real account configured by the user.
+    if (!saved?.accountNo || saved.accountNo === '0123456789') return DEFAULT_BANK;
+    return { ...DEFAULT_BANK, ...saved };
+  });
   const [tab, setTab] = useState('dashboard');
   const [query, setQuery] = useState('');
   const [paymentFilters, setPaymentFilters] = useState(null);
@@ -5849,6 +5854,9 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
   };
   const isMonthly = receipt.type === 'monthly';
   const tenant = getTenantForReceipt(data, displayReceipt) || { name: '—', phone: '—' };
+  const settlementReport = !isMonthly
+    ? (data.moveOutReports || []).find(report => report.contractId === displayReceipt.contractId && report.roomId === displayReceipt.roomId)
+    : null;
 
   function handlePrintReceipt() {
     const content = document.getElementById('printable-receipt');
@@ -5961,6 +5969,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
             room={room} 
             tenant={tenant} 
             bankInfo={bankInfo} 
+            settlementReport={settlementReport}
           />
         </div>
 
@@ -5973,7 +5982,47 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
   );
 }
 
-function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
+function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
+  const rowData = report ? [
+    ['Tiền phòng phát sinh', report.proratedRent, report.roomChargeDays ? `${report.roomChargeDays} ngày` : ''],
+    ['Dịch vụ phát sinh', report.proratedFixedServices, report.roomChargeDays ? `${report.roomChargeDays} ngày` : ''],
+    ['Tiền điện', report.electricAmount, `${report.electricOld ?? 0} → ${report.electricNew ?? 0} (${report.electricUsed ?? 0} kWh)`],
+    ['Tiền nước', report.waterAmount, `${report.waterOld ?? 0} → ${report.waterNew ?? 0} (${report.waterUsed ?? 0} m³)`],
+    ['Tiền phòng / công nợ khác', report.unpaidRent, ''],
+    ['Phí vệ sinh', report.cleaningFee, ''],
+    ['Phí hư hỏng', report.damageFee, ''],
+    ['Phí khác', report.otherFee, ''],
+  ].filter(([, amount], index) => index < 4 || Number(amount || 0) !== 0) : [];
+
+  if (!report) {
+    return table
+      ? <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phí chốt tất toán trả phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.total)}</td></tr>
+      : <div className="charge-row-v4"><div className="row-main"><span className="name">📝 Phí tất toán trả phòng</span><span className="amount">{formatMoney(receipt.total)}</span></div></div>;
+  }
+
+  if (table) return <>
+    {rowData.map(([label, amount, details]) => <tr key={label}><td style={{ border: '1px solid black', padding: '8px' }}>{label}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{details || '-'}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(amount || 0)}</td></tr>)}
+    <tr style={{ fontWeight: 'bold', background: '#f8fafc' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>TỔNG PHÁT SINH</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.totalIncurred || 0)}</td></tr>
+    {Number(report.depositUsed || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Tiền cọc đối trừ</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>- {formatMoney(report.depositUsed)}</td></tr>}
+    {Number(report.depositForfeited || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Cọc giữ lại do trả sớm</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.depositForfeited)}</td></tr>}
+    {Number(report.mustRefund || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Chủ nhà hoàn khách</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.mustRefund)}</td></tr>}
+  </>;
+
+  return <div className="receipt-charge-group settlement-breakdown">
+    <div className="group-title">CHI TIẾT TẤT TOÁN / TRẢ PHÒNG</div>
+    {rowData.map(([label, amount, details]) => <div className="charge-row-v4" key={label}>
+      <div className="row-main"><span className="name">{label}</span><span className="amount">{formatMoney(amount || 0)}</span></div>
+      {details && <p className="details">{details}</p>}
+    </div>)}
+    <div className="charge-row-v4"><div className="row-main"><span className="name"><b>Tổng phát sinh</b></span><span className="amount">{formatMoney(report.totalIncurred || 0)}</span></div></div>
+    {Number(report.depositUsed || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Tiền cọc đối trừ</span><span className="amount">- {formatMoney(report.depositUsed)}</span></div></div>}
+    {Number(report.depositForfeited || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Cọc giữ lại do trả sớm</span><span className="amount">{formatMoney(report.depositForfeited)}</span></div></div>}
+    {Number(report.mustRefund || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Chủ nhà hoàn khách</span><span className="amount">{formatMoney(report.mustRefund)}</span></div></div>}
+    <div className="charge-row-v4"><div className="row-main"><span className="name"><b>Khách cần thanh toán</b></span><span className="amount">{formatMoney(report.mustCollect || 0)}</span></div></div>
+  </div>;
+}
+
+function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport }) {
   const isMonthly = receipt.type === 'monthly';
   const paymentState = getReceiptPaymentState(receipt);
   const normalizedReceipt = { ...receipt, status: paymentState.status, debt: paymentState.debt };
@@ -6141,9 +6190,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
               )}
             </>
           ) : (
-            <div className="charge-row-v4">
-              <div className="row-main"><span className="name">📝 Phí tất toán trả phòng</span><span className="amount">{formatMoney(receipt.total)}</span></div>
-            </div>
+            <SettlementReceiptBreakdown report={settlementReport} receipt={receipt} room={room} />
           )}
         </div>
 
@@ -6214,6 +6261,9 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
   const extraOther = Math.max(0, Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0));
   const showCurrentElectric = !transferOldUtility || Number(displayReceipt.electricAmount || 0) > 0 || Number(displayReceipt.electricUsed || 0) > 0;
   const showCurrentWater = !transferOldUtility || Number(displayReceipt.waterAmount || 0) > 0 || Number(displayReceipt.waterUsed || 0) > 0;
+  const settlementReport = !isMonthly
+    ? (data.moveOutReports || []).find(report => report.contractId === displayReceipt.contractId && report.roomId === displayReceipt.roomId)
+    : null;
   return (
     <div className="receipt-page" style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'serif', position: 'relative', borderBottom: '1px dashed #eee' }}>
       <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${displayReceipt.month}` : 'Quyết toán trả phòng'}</p></div>
@@ -6275,7 +6325,7 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
               {extraOther > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phụ phí khác</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
             </>
           ) : (
-            <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phí chốt tất toán trả phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.total)}</td></tr>
+            <SettlementReceiptBreakdown report={settlementReport} receipt={displayReceipt} room={room} table />
           )}
           <tr style={{ fontWeight: 'bold' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>TỔNG CỘNG</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.total)}</td></tr>
         </tbody>
