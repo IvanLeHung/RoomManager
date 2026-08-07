@@ -5983,9 +5983,20 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
 }
 
 function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
+  const roomChargeDays = Number(report?.roomChargeDays || 0);
+  const monthlyRent = Number(report?.monthlyRent ?? room?.rent ?? 0);
+  const monthlyServices = Number(report?.monthlyFixedServices ?? 0);
+  const proratedRent = Number(report?.proratedRent ?? receipt?.rent ?? 0);
+  const proratedServices = Number(report?.proratedFixedServices ?? receipt?.fixedServices ?? 0);
+  const rentDetails = roomChargeDays
+    ? `${formatMoney(monthlyRent)} / 30 ngày × ${roomChargeDays} ngày`
+    : (monthlyRent ? `Tiền phòng tháng: ${formatMoney(monthlyRent)}` : '');
+  const serviceDetails = roomChargeDays && monthlyServices
+    ? `${formatMoney(monthlyServices)} / 30 ngày × ${roomChargeDays} ngày`
+    : '';
   const rowData = report ? [
-    ['Tiền phòng phát sinh', report.proratedRent, report.roomChargeDays ? `${report.roomChargeDays} ngày` : ''],
-    ['Dịch vụ phát sinh', report.proratedFixedServices, report.roomChargeDays ? `${report.roomChargeDays} ngày` : ''],
+    ['Tiền phòng phát sinh', proratedRent, rentDetails],
+    ['Dịch vụ phát sinh', proratedServices, serviceDetails],
     ['Tiền điện', report.electricAmount, `${report.electricOld ?? 0} → ${report.electricNew ?? 0} (${report.electricUsed ?? 0} kWh)`],
     ['Tiền nước', report.waterAmount, `${report.waterOld ?? 0} → ${report.waterNew ?? 0} (${report.waterUsed ?? 0} m³)`],
     ['Tiền phòng / công nợ khác', report.unpaidRent, ''],

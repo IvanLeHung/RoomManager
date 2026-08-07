@@ -112,6 +112,13 @@ model MoveOutReport {
   contractId     String
   roomId         String
   actualEndDate  String
+  monthlyRent    Int?
+  monthlyFixedServices Int?
+  roomChargeDays Int?
+  dailyRent      Float?
+  dailyFixedServices Float?
+  proratedRent   Int?
+  proratedFixedServices Int?
   electricOld    Float
   electricNew    Float
   electricUsed   Float
