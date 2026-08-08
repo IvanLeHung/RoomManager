@@ -1605,16 +1605,17 @@ function AppMain() {
         }
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
+          // Cloud is authoritative after a successful fetch. Choosing the newer
+          // local timestamp can resurrect records that were intentionally deleted
+          // or restored directly on the server.
           setData(prev => ({
-            ...(getDataVersion(prev) > getDataVersion(cloudData) ? prev : {
-              ...prev,
-              ...cloudData,
-              suppliers: cloudData.suppliers || prev.suppliers || [],
-              expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
-              expensePayments: cloudData.expensePayments || prev.expensePayments || [],
-              contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
-              roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
-            })
+            ...prev,
+            ...cloudData,
+            suppliers: cloudData.suppliers || prev.suppliers || [],
+            expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
+            expensePayments: cloudData.expensePayments || prev.expensePayments || [],
+            contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
+            roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
           }));
           setLastSynced(new Date());
           setCloudEnabled(true);
