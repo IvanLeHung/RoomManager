@@ -652,6 +652,12 @@ function receiptCode(receipt) {
   return "PT-" + receipt.roomId + "-" + onlyDigits(receipt.month);
 }
 
+function receiptTypeLabel(type, withIcon = false) {
+  if (type === 'monthly') return withIcon ? '📅 Phiếu tháng' : 'Phiếu tháng';
+  if (type === 'renewal_adjustment') return withIcon ? '🔁 Điều chỉnh gia hạn' : 'Điều chỉnh gia hạn';
+  return withIcon ? '🚪 Chốt trả phòng' : 'Chốt trả phòng';
+}
+
 function parseMonthValue(month) {
   if (!month) return 0;
   const [m, y] = month.split('/').map(Number);
@@ -2016,7 +2022,7 @@ function AppMain() {
           const tenant = getTenantForReceipt(data, r);
           return {
             'Mã phiếu': r.id,
-            'Loại phiếu': r.type === 'monthly' ? 'Phiếu tháng' : 'Chốt trả phòng',
+            'Loại phiếu': receiptTypeLabel(r.type),
             'Tháng': r.month,
             'Phòng': r.roomId,
             'Người đứng tên': tenant ? tenant.name : '',
@@ -2535,6 +2541,78 @@ function AppMain() {
                 createdAt: new Date().toISOString()
               };
 
+              const oldRent = Number(renewingContract.rent || 0);
+              const newRent = Number(renewalRecord.newRent || 0);
+              const oldDeposit = Number(renewingContract.deposit || 0);
+              const newDeposit = Number(renewalRecord.newDeposit || 0);
+              const rentDelta = newRent - oldRent;
+              const depositDelta = newDeposit - oldDeposit;
+              const rentIncrease = Math.max(0, rentDelta);
+              const depositIncrease = Math.max(0, depositDelta);
+              const rentRefund = Math.max(0, -rentDelta);
+              const depositRefund = Math.max(0, -depositDelta);
+              const amountToCollect = rentIncrease + depositIncrease;
+              const amountToRefund = rentRefund + depositRefund;
+              const renewalMonth = monthFromDate(form.newStartDate) || getCurrentMonthLabel();
+              const primaryTenant = getPrimaryTenantByContract(old, renewingContract.id) || {};
+              const adjustmentDetails = [
+                rentDelta !== 0 ? `Giá thuê: ${formatMoney(oldRent)} → ${formatMoney(newRent)} (${rentDelta > 0 ? 'tăng' : 'giảm'} ${formatMoney(Math.abs(rentDelta))})` : '',
+                depositDelta !== 0 ? `Tiền cọc: ${formatMoney(oldDeposit)} → ${formatMoney(newDeposit)} (${depositDelta > 0 ? 'tăng' : 'giảm'} ${formatMoney(Math.abs(depositDelta))})` : '',
+                `Áp dụng từ ${formatDisplayDate(form.newStartDate)}`
+              ].filter(Boolean).join('. ');
+
+              const updatedReceipts = [...(old.receipts || [])];
+              if (amountToCollect > 0) {
+                updatedReceipts.unshift({
+                  id: uid('receipt'),
+                  roomId: renewingContract.roomId,
+                  contractId: renewingContract.id,
+                  type: 'renewal_adjustment',
+                  month: renewalMonth,
+                  rent: rentIncrease,
+                  fixedServices: 0,
+                  electricOld: 0,
+                  electricNew: 0,
+                  electricUsed: 0,
+                  electricAmount: 0,
+                  waterOld: 0,
+                  waterNew: 0,
+                  waterUsed: 0,
+                  waterAmount: 0,
+                  other: depositIncrease,
+                  total: amountToCollect,
+                  paidAmount: 0,
+                  debt: amountToCollect,
+                  status: 'Chưa thanh toán',
+                  note: `Điều chỉnh gia hạn. ${adjustmentDetails}`,
+                  createdAt: new Date().toISOString()
+                });
+              }
+
+              const updatedExpenses = [...(old.expensePayments || [])];
+              if (amountToRefund > 0) {
+                const expensePrefix = `PC-${onlyDigits(renewalMonth)}-GH`;
+                const expenseCount = updatedExpenses.filter(e => String(e.expenseCode || '').startsWith(expensePrefix)).length + 1;
+                updatedExpenses.unshift({
+                  id: uid('exp'),
+                  expenseCode: `${expensePrefix}-${String(expenseCount).padStart(3, '0')}`,
+                  recipientName: primaryTenant.name || 'Khách thuê',
+                  supplierId: '',
+                  categoryId: 'cat_other',
+                  month: renewalMonth,
+                  paymentDate: form.newStartDate,
+                  title: `Hoàn chênh lệch gia hạn P${renewingContract.roomId}`,
+                  description: adjustmentDetails,
+                  totalAmount: amountToRefund,
+                  paidAmount: 0,
+                  status: 'unpaid',
+                  paymentMethod: 'transfer',
+                  note: form.note || 'Tự tạo khi giảm giá thuê hoặc tiền cọc lúc gia hạn',
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                });
+              }
+
               const updatedContracts = old.contracts.map(c => c.id === renewingContract.id ? { 
                 ...c, 
                 endDate: form.newEndDate,
@@ -2548,6 +2626,8 @@ function AppMain() {
               return { 
                 ...old, 
                 contracts: updatedContracts, 
+                receipts: updatedReceipts,
+                expensePayments: updatedExpenses,
                 contractRenewals: [renewalRecord, ...(old.contractRenewals || [])] 
               };
             });
@@ -2924,7 +3004,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
           }} /></label>
           <label style={{ margin: 0 }}>Phòng <select value={filter.roomId} onChange={e => setFilter({...filter, roomId: e.target.value})}><option value="">Tất cả</option>{data.rooms.map(r => <option key={r.id} value={r.id}>P{r.id}</option>)}</select></label>
           <label style={{ margin: 0 }}>Trạng thái <select value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}><option value="all">Tất cả</option><option value="Đã thanh toán">Đã thanh toán</option><option value="Chưa thanh toán">Chưa thanh toán</option><option value="Nợ một phần">Nợ một phần</option></select></label>
-          <label style={{ margin: 0 }}>Loại phiếu <select value={filter.type} onChange={e => setFilter({...filter, type: e.target.value})}><option value="all">Tất cả</option><option value="monthly">Phiếu tháng</option><option value="move_out_settlement">Chốt trả phòng</option></select></label>
+          <label style={{ margin: 0 }}>Loại phiếu <select value={filter.type} onChange={e => setFilter({...filter, type: e.target.value})}><option value="all">Tất cả</option><option value="monthly">Phiếu tháng</option><option value="renewal_adjustment">Điều chỉnh gia hạn</option><option value="move_out_settlement">Chốt trả phòng</option></select></label>
           <button className="secondary-btn" onClick={() => setFilter({ roomId: '', status: 'all', type: 'all', month: '' })}>🔄 Reset</button>
         </div>
       </div>
@@ -2941,7 +3021,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
                     <td>{new Date(r.createdAt).toLocaleDateString('vi-VN')}</td>
                     <td><b>P{r.roomId}</b></td>
                     <td>{tenant.name}</td>
-                    <td><span style={{ fontSize: '12px' }}>{r.type === 'monthly' ? '📅 Phiếu tháng' : '🚪 Chốt trả phòng'}</span></td>
+                    <td><span style={{ fontSize: '12px' }}>{receiptTypeLabel(r.type, true)}</span></td>
                     <td style={{ fontWeight: '700' }}>{formatMoney(r.total)}</td>
                     <td>{formatMoney(paymentState.paidAmount)}</td>
                     <td><span className={`status-badge-liquid ${paymentState.status === 'Đã thanh toán' ? 'active' : paymentState.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{paymentState.status}</span></td>
@@ -5232,6 +5312,8 @@ function RenewalModal({ contract, data, onClose, onSave }) {
   const isValid = form.newEndDate && (!hasValidCurrentEndDate || form.newEndDate > contract.endDate);
   const rentChanged = !form.keepPricing && Number(form.newRent) !== Number(contract.rent);
   const depositChanged = !form.keepPricing && Number(form.newDeposit) !== Number(contract.deposit);
+  const rentDelta = form.keepPricing ? 0 : Number(form.newRent || 0) - Number(contract.rent || 0);
+  const depositDelta = form.keepPricing ? 0 : Number(form.newDeposit || 0) - Number(contract.deposit || 0);
   const draftAppendixPrintId = `draft-renewal-appendix-${contract.id}`;
 
   const handlePrintAppendix = () => {
@@ -5430,6 +5512,15 @@ function RenewalModal({ contract, data, onClose, onSave }) {
                     <input type="number" value={form.newDeposit} onChange={e => setForm({...form, newDeposit: e.target.value})} />
                     {depositChanged && <span className="status-badge-liquid notice" style={{ fontSize: '10px' }}>Thay đổi cọc</span>}
                   </label>
+                </div>
+              )}
+              {(rentDelta !== 0 || depositDelta !== 0) && (
+                <div className="warning-box" style={{ marginTop: '12px' }}>
+                  <b>Chứng từ sẽ tự động tạo sau khi gia hạn:</b>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px' }}>
+                    {(Math.max(0, rentDelta) + Math.max(0, depositDelta)) > 0 && <span>• Phiếu thu: {formatMoney(Math.max(0, rentDelta) + Math.max(0, depositDelta))}</span>}
+                    {(Math.max(0, -rentDelta) + Math.max(0, -depositDelta)) > 0 && <span>• Phiếu chi hoàn khách: {formatMoney(Math.max(0, -rentDelta) + Math.max(0, -depositDelta))}</span>}
+                  </div>
                 </div>
               )}
             </div>
@@ -6061,6 +6152,7 @@ function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
 
 function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport }) {
   const isMonthly = receipt.type === 'monthly';
+  const isRenewalAdjustment = receipt.type === 'renewal_adjustment';
   const paymentState = getReceiptPaymentState(receipt);
   const normalizedReceipt = { ...receipt, status: paymentState.status, debt: paymentState.debt };
   const eOld = getElectricOld(receipt);
@@ -6091,7 +6183,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport })
           <p className="sub">Hệ thống quản lý phòng trọ chuyên nghiệp</p>
         </div>
         <div className="status-section">
-          <h1 className="title">{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU TẤT TOÁN'}</h1>
+          <h1 className="title">{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : isRenewalAdjustment ? 'PHIẾU THU ĐIỀU CHỈNH GIA HẠN' : 'PHIẾU TẤT TOÁN'}</h1>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span className="status-badge-liquid" style={{ background: statusBg, color: statusColor, fontSize: '11px' }}>
               {normalizedReceipt.status.toUpperCase()}
@@ -6226,6 +6318,12 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport })
                 </div>
               )}
             </>
+          ) : isRenewalAdjustment ? (
+            <div className="receipt-charge-group renewal-adjustment-breakdown">
+              <div className="group-title">CHI TIẾT ĐIỀU CHỈNH GIA HẠN</div>
+              {Number(receipt.rent || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Chênh lệch tăng giá thuê</span><span className="amount">{formatMoney(receipt.rent)}</span></div></div>}
+              {Number(receipt.other || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Chênh lệch tăng tiền cọc</span><span className="amount">{formatMoney(receipt.other)}</span></div></div>}
+            </div>
           ) : (
             <SettlementReceiptBreakdown report={settlementReport} receipt={receipt} room={room} />
           )}
@@ -6294,6 +6392,7 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
   const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
   const tenant = getTenantForReceipt(data, displayReceipt) || { name: 'N/A' };
   const isMonthly = displayReceipt.type === 'monthly';
+  const isRenewalAdjustment = displayReceipt.type === 'renewal_adjustment';
   const transferOldUtility = displayReceipt.transferOldRoomUtility;
   const extraOther = Math.max(0, Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0));
   const showCurrentElectric = !transferOldUtility || Number(displayReceipt.electricAmount || 0) > 0 || Number(displayReceipt.electricUsed || 0) > 0;
@@ -6303,7 +6402,7 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
     : null;
   return (
     <div className="receipt-page" style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'serif', position: 'relative', borderBottom: '1px dashed #eee' }}>
-      <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${displayReceipt.month}` : 'Quyết toán trả phòng'}</p></div>
+      <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : isRenewalAdjustment ? 'PHIẾU THU ĐIỀU CHỈNH GIA HẠN' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${displayReceipt.month}` : isRenewalAdjustment ? `Áp dụng tháng ${displayReceipt.month}` : 'Quyết toán trả phòng'}</p></div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><p>Phòng: <b>{getTransferRoomLabel(displayReceipt)}</b></p><p>Khách thuê: <b>{tenant.name}</b></p><p>Ngày lập: {new Date(displayReceipt.createdAt).toLocaleDateString('vi-VN')}</p></div><div style={{ textAlign: 'right' }}><p>Trạng thái: <b>{displayReceipt.status}</b></p></div></div>
       <table className="contract-table" style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
         <thead><tr style={{ background: '#f8fafc' }}><th style={{ border: '1px solid black', padding: '8px' }}>Nội dung</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Chỉ số</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Thành tiền</th></tr></thead>
@@ -6360,6 +6459,11 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
                 </>
               )}
               {extraOther > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phụ phí khác</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
+            </>
+          ) : isRenewalAdjustment ? (
+            <>
+              {Number(displayReceipt.rent || 0) > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Chênh lệch tăng giá thuê</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Theo phụ lục gia hạn</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.rent)}</td></tr>}
+              {Number(displayReceipt.other || 0) > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Chênh lệch tăng tiền cọc</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Theo phụ lục gia hạn</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.other)}</td></tr>}
             </>
           ) : (
             <SettlementReceiptBreakdown report={settlementReport} receipt={displayReceipt} room={room} table />
@@ -6782,7 +6886,7 @@ function FinancialReportTab({ data, onAction }) {
                 {stats.incomeVouchers.map(r => (
                   <tr key={r.id}>
                     <td><b>P{r.roomId}</b></td>
-                    <td><span className="small muted">{r.type === 'monthly' ? 'Phiếu tháng' : 'Tất toán'}</span></td>
+                    <td><span className="small muted">{receiptTypeLabel(r.type)}</span></td>
                     <td>{formatMoney(r.total)}</td>
                     <td style={{ color: 'var(--success)', fontWeight: '600' }}>{formatMoney(r.paidAmount)}</td>
                   </tr>
