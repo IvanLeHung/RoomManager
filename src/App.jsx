@@ -1791,7 +1791,17 @@ function AppMain() {
     } else if (type === 'detail_tenant') {
       setDetailTenant(roomOrTenant);
     } else if (type === 'edit_tenant') {
-      setEditingTenant(roomOrTenant);
+      const activeMemberships = (data.memberships || []).filter(m => m.tenantId === roomOrTenant.id && m.status === 'active');
+      const targetMembership = activeMemberships.find(m => m.contractId === roomOrTenant.contractId)
+        || activeMemberships.find(m => m.roomId === roomOrTenant.roomId)
+        || activeMemberships[0];
+      setEditingTenant({
+        ...roomOrTenant,
+        role: targetMembership?.role || roomOrTenant.role || 'secondary',
+        membershipId: targetMembership?.id || roomOrTenant.membershipId || '',
+        contractId: targetMembership?.contractId || roomOrTenant.contractId || '',
+        roomId: targetMembership?.roomId || roomOrTenant.roomId || ''
+      });
     } else if (type === 'renew_contract') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const activeContract = roomOrTenant.contractId
@@ -2511,7 +2521,8 @@ function AppMain() {
             const tenant = (data.tenants || []).find(t => t.id === m.tenantId);
             return tenant ? { ...tenant, role: m.role, membershipStatus: m.status } : null;
           })
-          .filter(Boolean)}
+          .filter(Boolean)
+          .sort((a, b) => (b.role === 'primary' ? 1 : 0) - (a.role === 'primary' ? 1 : 0))}
         bankInfo={bankInfo}
         onClose={() => setViewingContract(null)}
       />}
@@ -2736,9 +2747,21 @@ function AppMain() {
           onClose={() => setEditingTenant(null)} 
           onSave={(updated) => {
             setData(old => {
-              const updatedTenants = old.tenants.map(t => t.id === updated.id ? updated : t);
-              // Cập nhật role trong membership nếu thay đổi
-              const updatedMemberships = old.memberships.map(m => (m.tenantId === updated.id && m.status === 'active') ? { ...m, role: updated.role } : m);
+              const { membershipId, contractId, roomId, role, ...tenantPatch } = updated;
+              const updatedTenants = old.tenants.map(t => t.id === updated.id ? { ...tenantPatch, role } : t);
+              const targetMembership = (old.memberships || []).find(m => m.id === updated.membershipId)
+                || (old.memberships || []).find(m => m.tenantId === updated.id && m.status === 'active' && (!updated.contractId || m.contractId === updated.contractId))
+                || (old.memberships || []).find(m => m.tenantId === updated.id && m.status === 'active');
+              const targetContractId = targetMembership?.contractId || updated.contractId;
+              const updatedMemberships = old.memberships.map(m => {
+                if (updated.role === 'primary' && targetContractId && m.contractId === targetContractId && m.status === 'active') {
+                  return { ...m, role: m.id === targetMembership?.id ? 'primary' : 'secondary' };
+                }
+                if (m.id === targetMembership?.id || (m.tenantId === updated.id && m.status === 'active' && (!targetContractId || m.contractId === targetContractId))) {
+                  return { ...m, role: updated.role || m.role };
+                }
+                return m;
+              });
               return { ...old, tenants: updatedTenants, memberships: updatedMemberships };
             });
             setEditingTenant(null);
