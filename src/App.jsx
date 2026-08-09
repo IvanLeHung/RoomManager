@@ -7,10 +7,10 @@ const BANK_KEY = 'room_manager_bank_v1';
 const PIN_KEY = 'room_manager_pin_v1';
 
 const DEFAULT_BANK = {
-  bankName: 'MBBank',
-  bankCode: 'MB',
-  accountNo: '0123456789',
-  accountName: 'DIỆM THỊ BÌNH',
+  bankName: 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam',
+  bankCode: 'BIDV',
+  accountNo: '8847214661',
+  accountName: 'HỘ KINH DOANH DIỆM THỊ BÌNH',
 };
 
 function getCurrentMonthLabel(date = new Date()) {
@@ -650,6 +650,12 @@ function getWaterNew(receipt) {
 
 function receiptCode(receipt) {
   return "PT-" + receipt.roomId + "-" + onlyDigits(receipt.month);
+}
+
+function receiptTypeLabel(type, withIcon = false) {
+  if (type === 'monthly') return withIcon ? '📅 Phiếu tháng' : 'Phiếu tháng';
+  if (type === 'renewal_adjustment') return withIcon ? '🔁 Điều chỉnh gia hạn' : 'Điều chỉnh gia hạn';
+  return withIcon ? '🚪 Chốt trả phòng' : 'Chốt trả phòng';
 }
 
 function parseMonthValue(month) {
@@ -1549,7 +1555,12 @@ function AppMain() {
       roomTransfers: loaded.roomTransfers || [],
     };
   });
-  const [bankInfo, setBankInfo] = useState(() => safeRead(BANK_KEY, DEFAULT_BANK));
+  const [bankInfo, setBankInfo] = useState(() => {
+    const saved = safeRead(BANK_KEY, DEFAULT_BANK);
+    // Replace the old demo account while preserving any real account configured by the user.
+    if (!saved?.accountNo || saved.accountNo === '0123456789') return DEFAULT_BANK;
+    return { ...DEFAULT_BANK, ...saved };
+  });
   const [tab, setTab] = useState('dashboard');
   const [query, setQuery] = useState('');
   const [paymentFilters, setPaymentFilters] = useState(null);
@@ -1594,16 +1605,17 @@ function AppMain() {
         }
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
+          // Cloud is authoritative after a successful fetch. Choosing the newer
+          // local timestamp can resurrect records that were intentionally deleted
+          // or restored directly on the server.
           setData(prev => ({
-            ...(getDataVersion(prev) > getDataVersion(cloudData) ? prev : {
-              ...prev,
-              ...cloudData,
-              suppliers: cloudData.suppliers || prev.suppliers || [],
-              expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
-              expensePayments: cloudData.expensePayments || prev.expensePayments || [],
-              contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
-              roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
-            })
+            ...prev,
+            ...cloudData,
+            suppliers: cloudData.suppliers || prev.suppliers || [],
+            expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
+            expensePayments: cloudData.expensePayments || prev.expensePayments || [],
+            contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
+            roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
           }));
           setLastSynced(new Date());
           setCloudEnabled(true);
@@ -2021,7 +2033,7 @@ function AppMain() {
           const tenant = getTenantForReceipt(data, r);
           return {
             'Mã phiếu': r.id,
-            'Loại phiếu': r.type === 'monthly' ? 'Phiếu tháng' : 'Chốt trả phòng',
+            'Loại phiếu': receiptTypeLabel(r.type),
             'Tháng': r.month,
             'Phòng': r.roomId,
             'Người đứng tên': tenant ? tenant.name : '',
@@ -2541,6 +2553,78 @@ function AppMain() {
                 createdAt: new Date().toISOString()
               };
 
+              const oldRent = Number(renewingContract.rent || 0);
+              const newRent = Number(renewalRecord.newRent || 0);
+              const oldDeposit = Number(renewingContract.deposit || 0);
+              const newDeposit = Number(renewalRecord.newDeposit || 0);
+              const rentDelta = newRent - oldRent;
+              const depositDelta = newDeposit - oldDeposit;
+              const rentIncrease = Math.max(0, rentDelta);
+              const depositIncrease = Math.max(0, depositDelta);
+              const rentRefund = Math.max(0, -rentDelta);
+              const depositRefund = Math.max(0, -depositDelta);
+              const amountToCollect = rentIncrease + depositIncrease;
+              const amountToRefund = rentRefund + depositRefund;
+              const renewalMonth = monthFromDate(form.newStartDate) || getCurrentMonthLabel();
+              const primaryTenant = getPrimaryTenantByContract(old, renewingContract.id) || {};
+              const adjustmentDetails = [
+                rentDelta !== 0 ? `Giá thuê: ${formatMoney(oldRent)} → ${formatMoney(newRent)} (${rentDelta > 0 ? 'tăng' : 'giảm'} ${formatMoney(Math.abs(rentDelta))})` : '',
+                depositDelta !== 0 ? `Tiền cọc: ${formatMoney(oldDeposit)} → ${formatMoney(newDeposit)} (${depositDelta > 0 ? 'tăng' : 'giảm'} ${formatMoney(Math.abs(depositDelta))})` : '',
+                `Áp dụng từ ${formatDisplayDate(form.newStartDate)}`
+              ].filter(Boolean).join('. ');
+
+              const updatedReceipts = [...(old.receipts || [])];
+              if (amountToCollect > 0) {
+                updatedReceipts.unshift({
+                  id: uid('receipt'),
+                  roomId: renewingContract.roomId,
+                  contractId: renewingContract.id,
+                  type: 'renewal_adjustment',
+                  month: renewalMonth,
+                  rent: rentIncrease,
+                  fixedServices: 0,
+                  electricOld: 0,
+                  electricNew: 0,
+                  electricUsed: 0,
+                  electricAmount: 0,
+                  waterOld: 0,
+                  waterNew: 0,
+                  waterUsed: 0,
+                  waterAmount: 0,
+                  other: depositIncrease,
+                  total: amountToCollect,
+                  paidAmount: 0,
+                  debt: amountToCollect,
+                  status: 'Chưa thanh toán',
+                  note: `Điều chỉnh gia hạn. ${adjustmentDetails}`,
+                  createdAt: new Date().toISOString()
+                });
+              }
+
+              const updatedExpenses = [...(old.expensePayments || [])];
+              if (amountToRefund > 0) {
+                const expensePrefix = `PC-${onlyDigits(renewalMonth)}-GH`;
+                const expenseCount = updatedExpenses.filter(e => String(e.expenseCode || '').startsWith(expensePrefix)).length + 1;
+                updatedExpenses.unshift({
+                  id: uid('exp'),
+                  expenseCode: `${expensePrefix}-${String(expenseCount).padStart(3, '0')}`,
+                  recipientName: primaryTenant.name || 'Khách thuê',
+                  supplierId: '',
+                  categoryId: 'cat_other',
+                  month: renewalMonth,
+                  paymentDate: form.newStartDate,
+                  title: `Hoàn chênh lệch gia hạn P${renewingContract.roomId}`,
+                  description: adjustmentDetails,
+                  totalAmount: amountToRefund,
+                  paidAmount: 0,
+                  status: 'unpaid',
+                  paymentMethod: 'transfer',
+                  note: form.note || 'Tự tạo khi giảm giá thuê hoặc tiền cọc lúc gia hạn',
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                });
+              }
+
               const updatedContracts = old.contracts.map(c => c.id === renewingContract.id ? { 
                 ...c, 
                 endDate: form.newEndDate,
@@ -2554,6 +2638,8 @@ function AppMain() {
               return { 
                 ...old, 
                 contracts: updatedContracts, 
+                receipts: updatedReceipts,
+                expensePayments: updatedExpenses,
                 contractRenewals: [renewalRecord, ...(old.contractRenewals || [])] 
               };
             });
@@ -2942,7 +3028,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
           }} /></label>
           <label style={{ margin: 0 }}>Phòng <select value={filter.roomId} onChange={e => setFilter({...filter, roomId: e.target.value})}><option value="">Tất cả</option>{data.rooms.map(r => <option key={r.id} value={r.id}>P{r.id}</option>)}</select></label>
           <label style={{ margin: 0 }}>Trạng thái <select value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}><option value="all">Tất cả</option><option value="Đã thanh toán">Đã thanh toán</option><option value="Chưa thanh toán">Chưa thanh toán</option><option value="Nợ một phần">Nợ một phần</option></select></label>
-          <label style={{ margin: 0 }}>Loại phiếu <select value={filter.type} onChange={e => setFilter({...filter, type: e.target.value})}><option value="all">Tất cả</option><option value="monthly">Phiếu tháng</option><option value="move_out_settlement">Chốt trả phòng</option></select></label>
+          <label style={{ margin: 0 }}>Loại phiếu <select value={filter.type} onChange={e => setFilter({...filter, type: e.target.value})}><option value="all">Tất cả</option><option value="monthly">Phiếu tháng</option><option value="renewal_adjustment">Điều chỉnh gia hạn</option><option value="move_out_settlement">Chốt trả phòng</option></select></label>
           <button className="secondary-btn" onClick={() => setFilter({ roomId: '', status: 'all', type: 'all', month: '' })}>🔄 Reset</button>
         </div>
       </div>
@@ -2959,7 +3045,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
                     <td>{new Date(r.createdAt).toLocaleDateString('vi-VN')}</td>
                     <td><b>P{r.roomId}</b></td>
                     <td>{tenant.name}</td>
-                    <td><span style={{ fontSize: '12px' }}>{r.type === 'monthly' ? '📅 Phiếu tháng' : '🚪 Chốt trả phòng'}</span></td>
+                    <td><span style={{ fontSize: '12px' }}>{receiptTypeLabel(r.type, true)}</span></td>
                     <td style={{ fontWeight: '700' }}>{formatMoney(r.total)}</td>
                     <td>{formatMoney(paymentState.paidAmount)}</td>
                     <td><span className={`status-badge-liquid ${paymentState.status === 'Đã thanh toán' ? 'active' : paymentState.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{paymentState.status}</span></td>
@@ -3061,7 +3147,6 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
     }))
     .filter(item => item.daysLeft !== null)
     .sort((a, b) => a.daysLeft - b.daysLeft);
-  const nearestExpiring = expiringAlerts[0] || null;
   const chartRows = periodMonthKeys.map(key => {
     const income = periodReceipts.filter(r => r.month === key).reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
     const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
@@ -3131,31 +3216,44 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
             <h3 className="form-section-title">⚠️ Cảnh báo & Nhắc nhở</h3>
             <div className="alert-list stack" style={{ gap: '12px' }}>
               {stats.expiringContracts.length > 0 && (
-                <div className="alert-item warning actionable">
-                  <div className="alert-content">
-                    <span>📄 Hợp đồng gần nhất cần xử lý</span>
-                    <b>
-                      P{nearestExpiring?.roomId} • {nearestExpiring?.tenant?.name || 'Chưa rõ khách'} • {formatBusinessDate(nearestExpiring?.contract.endDate)}
-                    </b>
-                    <small>
-                      {nearestExpiring?.daysLeft < 0
-                        ? `Đã hết hạn ${Math.abs(nearestExpiring.daysLeft)} ngày`
-                        : nearestExpiring?.daysLeft === 0
-                          ? 'Hết hạn hôm nay'
-                          : `Còn ${nearestExpiring?.daysLeft} ngày`}
-                      {expiringAlerts.length > 1 ? ` • Còn ${expiringAlerts.length - 1} hợp đồng khác sắp hết hạn` : ''}
-                    </small>
-                  </div>
-                  <div className="alert-actions">
-                    <button className="secondary-btn sm" onClick={() => onAction('view_room', { id: nearestExpiring.roomId })}>Xem phòng</button>
-                    <button className="primary-btn sm" onClick={() => onAction('renew_contract', { roomId: nearestExpiring.roomId, contractId: nearestExpiring.contract.id })}>Gia hạn</button>
+                <div className="alert-item warning" style={{ alignItems: 'flex-start' }}>
+                  <span>📄 <b>{expiringAlerts.length} hợp đồng sắp hết hạn cần xử lý</b></span>
+                  <div className="stack" style={{ gap: '8px', marginTop: '8px', width: '100%' }}>
+                    {expiringAlerts.map(item => (
+                      <div key={item.contract.id} className="actionable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', paddingTop: '8px', borderTop: '1px solid rgba(146, 64, 14, 0.15)' }}>
+                        <div className="alert-content">
+                          <b>P{item.roomId} • {item.tenant?.name || 'Chưa rõ khách'} • {formatBusinessDate(item.contract.endDate)}</b>
+                          <small>
+                            {item.daysLeft < 0
+                              ? `Đã hết hạn ${Math.abs(item.daysLeft)} ngày`
+                              : item.daysLeft === 0
+                                ? 'Hết hạn hôm nay'
+                                : `Còn ${item.daysLeft} ngày`}
+                          </small>
+                        </div>
+                        <div className="alert-actions">
+                          <button className="secondary-btn sm" onClick={() => onAction('view_room', { id: item.roomId })}>Xem phòng</button>
+                          <button className="primary-btn sm" onClick={() => onAction('renew_contract', { roomId: item.roomId, contractId: item.contract.id })}>Gia hạn</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
               {stats.unpaidReceipts.length > 0 && (
-                <div className="alert-item danger">
-                  <span>💸 {stats.unpaidReceipts.length} phòng chưa đóng tiền tháng {currentMonth}: </span>
-                  <b>{stats.unpaidReceipts.map(r => r.roomId).join(', ')}</b>
+                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
+                  <span>💸 <b>{stats.unpaidReceipts.length} phòng chưa đóng tiền tháng {currentMonth}</b></span>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
+                    {stats.unpaidReceipts
+                      .map(r => ({ ...r, debt: getReceiptPaymentState(r).debt }))
+                      .sort((a, b) => Number(b.debt || 0) - Number(a.debt || 0))
+                      .map(r => (
+                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                          <span>• Phòng P{r.roomId}</span>
+                          <b>{formatMoney(r.debt)}</b>
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
               {stats.notifyingMoveOut.length > 0 && (
@@ -3170,9 +3268,16 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
                 </div>
               )}
               {topDebtRooms.length > 0 && (
-                <div className="alert-item danger">
-                  <span>📌 Top nợ: </span>
-                  <b>{topDebtRooms.map(r => `P${r.roomId} ${formatMoney(r.debt)}`).join(', ')}</b>
+                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
+                  <span>📌 <b>Top nợ</b></span>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
+                    {topDebtRooms.map((r, index) => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                        <span>{index + 1}. Phòng P{r.roomId}</span>
+                        <b>{formatMoney(r.debt)}</b>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {stats.expiringContracts.length === 0 && stats.unpaidReceipts.length === 0 && stats.notifyingMoveOut.length === 0 && (
@@ -4956,13 +5061,14 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const waterAmount = waterUsed * Number(room.waterPrice || 32000);
   const endDate = new Date(form.actualEndDate);
   const roomChargeDays = Number.isNaN(endDate.getTime()) ? 0 : endDate.getDate();
+  const billingMonthDays = Number.isNaN(endDate.getTime()) ? 30 : new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
   const monthlyRent = Number(contract.rent || room.rent || 0);
   const occupantCount = getContractOccupantCount(data, contract);
   const monthlyFixedServices = fixedServiceTotal(room, occupantCount);
-  const proratedRent = Math.round((monthlyRent / 30) * roomChargeDays);
-  const proratedFixedServices = Math.round((monthlyFixedServices / 30) * roomChargeDays);
-  const dailyRent = monthlyRent / 30;
-  const dailyFixedServices = monthlyFixedServices / 30;
+  const proratedRent = Math.round((monthlyRent / billingMonthDays) * roomChargeDays);
+  const proratedFixedServices = Math.round((monthlyFixedServices / billingMonthDays) * roomChargeDays);
+  const dailyRent = monthlyRent / billingMonthDays;
+  const dailyFixedServices = monthlyFixedServices / billingMonthDays;
 
   const totalIncurred = proratedRent + proratedFixedServices + electricAmount + waterAmount + Number(form.unpaidRent) +
                         Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
@@ -5009,10 +5115,10 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   <label>Tiền phòng phát sinh <input value={formatMoney(proratedRent)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                   <label>Dịch vụ phát sinh <input value={formatMoney(proratedFixedServices)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                   <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / 30 x {roomChargeDays} ngày = {formatMoney(proratedRent)}
+                    Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(proratedRent)}
                   </p>
                   <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    Dịch vụ cố định: {formatMoney(monthlyFixedServices)}/tháng ({occupantCount} người) / 30 x {roomChargeDays} ngày = {formatMoney(proratedFixedServices)}
+                    Dịch vụ cố định: {formatMoney(monthlyFixedServices)}/tháng ({occupantCount} người) / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(proratedFixedServices)}
                   </p>
                   <label style={{ gridColumn: 'span 2' }}>Tiền cọc đang giữ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                 </div>
@@ -5162,6 +5268,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         monthlyRent,
                         monthlyFixedServices,
                         roomChargeDays,
+                        billingMonthDays,
                         dailyRent,
                         dailyFixedServices,
                         proratedRent,
@@ -5229,6 +5336,8 @@ function RenewalModal({ contract, data, onClose, onSave }) {
   const isValid = form.newEndDate && (!hasValidCurrentEndDate || form.newEndDate > contract.endDate);
   const rentChanged = !form.keepPricing && Number(form.newRent) !== Number(contract.rent);
   const depositChanged = !form.keepPricing && Number(form.newDeposit) !== Number(contract.deposit);
+  const rentDelta = form.keepPricing ? 0 : Number(form.newRent || 0) - Number(contract.rent || 0);
+  const depositDelta = form.keepPricing ? 0 : Number(form.newDeposit || 0) - Number(contract.deposit || 0);
   const draftAppendixPrintId = `draft-renewal-appendix-${contract.id}`;
 
   const handlePrintAppendix = () => {
@@ -5427,6 +5536,15 @@ function RenewalModal({ contract, data, onClose, onSave }) {
                     <input type="number" value={form.newDeposit} onChange={e => setForm({...form, newDeposit: e.target.value})} />
                     {depositChanged && <span className="status-badge-liquid notice" style={{ fontSize: '10px' }}>Thay đổi cọc</span>}
                   </label>
+                </div>
+              )}
+              {(rentDelta !== 0 || depositDelta !== 0) && (
+                <div className="warning-box" style={{ marginTop: '12px' }}>
+                  <b>Chứng từ sẽ tự động tạo sau khi gia hạn:</b>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px' }}>
+                    {(Math.max(0, rentDelta) + Math.max(0, depositDelta)) > 0 && <span>• Phiếu thu: {formatMoney(Math.max(0, rentDelta) + Math.max(0, depositDelta))}</span>}
+                    {(Math.max(0, -rentDelta) + Math.max(0, -depositDelta)) > 0 && <span>• Phiếu chi hoàn khách: {formatMoney(Math.max(0, -rentDelta) + Math.max(0, -depositDelta))}</span>}
+                  </div>
                 </div>
               )}
             </div>
@@ -5872,6 +5990,9 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
   };
   const isMonthly = receipt.type === 'monthly';
   const tenant = getTenantForReceipt(data, displayReceipt) || { name: '—', phone: '—' };
+  const settlementReport = !isMonthly
+    ? (data.moveOutReports || []).find(report => report.contractId === displayReceipt.contractId && report.roomId === displayReceipt.roomId)
+    : null;
 
   function handlePrintReceipt() {
     const content = document.getElementById('printable-receipt');
@@ -5984,6 +6105,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
             room={room} 
             tenant={tenant} 
             bankInfo={bankInfo} 
+            settlementReport={settlementReport}
           />
         </div>
 
@@ -5996,8 +6118,65 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
   );
 }
 
-function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
+function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
+  const roomChargeDays = Number(report?.roomChargeDays || 0);
+  const reportEndDate = report?.actualEndDate ? new Date(report.actualEndDate) : null;
+  const inferredMonthDays = reportEndDate && !Number.isNaN(reportEndDate.getTime())
+    ? new Date(reportEndDate.getFullYear(), reportEndDate.getMonth() + 1, 0).getDate()
+    : 30;
+  const billingMonthDays = Number(report?.billingMonthDays || inferredMonthDays);
+  const monthlyRent = Number(report?.monthlyRent ?? room?.rent ?? 0);
+  const monthlyServices = Number(report?.monthlyFixedServices ?? 0);
+  const proratedRent = Number(report?.proratedRent ?? receipt?.rent ?? 0);
+  const proratedServices = Number(report?.proratedFixedServices ?? receipt?.fixedServices ?? 0);
+  const rentDetails = roomChargeDays
+    ? `${formatMoney(monthlyRent)} / ${billingMonthDays} ngày × ${roomChargeDays} ngày`
+    : (monthlyRent ? `Tiền phòng tháng: ${formatMoney(monthlyRent)}` : '');
+  const serviceDetails = roomChargeDays && monthlyServices
+    ? `${formatMoney(monthlyServices)} / ${billingMonthDays} ngày × ${roomChargeDays} ngày`
+    : '';
+  const rowData = report ? [
+    ['Tiền phòng phát sinh', proratedRent, rentDetails],
+    ['Dịch vụ phát sinh', proratedServices, serviceDetails],
+    ['Tiền điện', report.electricAmount, `${report.electricOld ?? 0} → ${report.electricNew ?? 0} (${report.electricUsed ?? 0} kWh)`],
+    ['Tiền nước', report.waterAmount, `${report.waterOld ?? 0} → ${report.waterNew ?? 0} (${report.waterUsed ?? 0} m³)`],
+    ['Tiền phòng / công nợ khác', report.unpaidRent, ''],
+    ['Phí vệ sinh', report.cleaningFee, ''],
+    ['Phí hư hỏng', report.damageFee, ''],
+    ['Phí khác', report.otherFee, ''],
+  ].filter(([, amount], index) => index < 4 || Number(amount || 0) !== 0) : [];
+
+  if (!report) {
+    return table
+      ? <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phí chốt tất toán trả phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.total)}</td></tr>
+      : <div className="charge-row-v4"><div className="row-main"><span className="name">📝 Phí tất toán trả phòng</span><span className="amount">{formatMoney(receipt.total)}</span></div></div>;
+  }
+
+  if (table) return <>
+    {rowData.map(([label, amount, details]) => <tr key={label}><td style={{ border: '1px solid black', padding: '8px' }}>{label}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{details || '-'}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(amount || 0)}</td></tr>)}
+    <tr style={{ fontWeight: 'bold', background: '#f8fafc' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>TỔNG PHÁT SINH</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.totalIncurred || 0)}</td></tr>
+    {Number(report.depositUsed || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Tiền cọc đối trừ</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>- {formatMoney(report.depositUsed)}</td></tr>}
+    {Number(report.depositForfeited || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Cọc giữ lại do trả sớm</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.depositForfeited)}</td></tr>}
+    {Number(report.mustRefund || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Chủ nhà hoàn khách</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.mustRefund)}</td></tr>}
+  </>;
+
+  return <div className="receipt-charge-group settlement-breakdown">
+    <div className="group-title">CHI TIẾT TẤT TOÁN / TRẢ PHÒNG</div>
+    {rowData.map(([label, amount, details]) => <div className="charge-row-v4" key={label}>
+      <div className="row-main"><span className="name">{label}</span><span className="amount">{formatMoney(amount || 0)}</span></div>
+      {details && <p className="details">{details}</p>}
+    </div>)}
+    <div className="charge-row-v4"><div className="row-main"><span className="name"><b>Tổng phát sinh</b></span><span className="amount">{formatMoney(report.totalIncurred || 0)}</span></div></div>
+    {Number(report.depositUsed || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Tiền cọc đối trừ</span><span className="amount">- {formatMoney(report.depositUsed)}</span></div></div>}
+    {Number(report.depositForfeited || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Cọc giữ lại do trả sớm</span><span className="amount">{formatMoney(report.depositForfeited)}</span></div></div>}
+    {Number(report.mustRefund || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Chủ nhà hoàn khách</span><span className="amount">{formatMoney(report.mustRefund)}</span></div></div>}
+    <div className="charge-row-v4"><div className="row-main"><span className="name"><b>Khách cần thanh toán</b></span><span className="amount">{formatMoney(report.mustCollect || 0)}</span></div></div>
+  </div>;
+}
+
+function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport }) {
   const isMonthly = receipt.type === 'monthly';
+  const isRenewalAdjustment = receipt.type === 'renewal_adjustment';
   const paymentState = getReceiptPaymentState(receipt);
   const normalizedReceipt = { ...receipt, status: paymentState.status, debt: paymentState.debt };
   const eOld = getElectricOld(receipt);
@@ -6028,7 +6207,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
           <p className="sub">Hệ thống quản lý phòng trọ chuyên nghiệp</p>
         </div>
         <div className="status-section">
-          <h1 className="title">{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU TẤT TOÁN'}</h1>
+          <h1 className="title">{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : isRenewalAdjustment ? 'PHIẾU THU ĐIỀU CHỈNH GIA HẠN' : 'PHIẾU TẤT TOÁN'}</h1>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span className="status-badge-liquid" style={{ background: statusBg, color: statusColor, fontSize: '11px' }}>
               {normalizedReceipt.status.toUpperCase()}
@@ -6163,10 +6342,14 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo }) {
                 </div>
               )}
             </>
-          ) : (
-            <div className="charge-row-v4">
-              <div className="row-main"><span className="name">📝 Phí tất toán trả phòng</span><span className="amount">{formatMoney(receipt.total)}</span></div>
+          ) : isRenewalAdjustment ? (
+            <div className="receipt-charge-group renewal-adjustment-breakdown">
+              <div className="group-title">CHI TIẾT ĐIỀU CHỈNH GIA HẠN</div>
+              {Number(receipt.rent || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Chênh lệch tăng giá thuê</span><span className="amount">{formatMoney(receipt.rent)}</span></div></div>}
+              {Number(receipt.other || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Chênh lệch tăng tiền cọc</span><span className="amount">{formatMoney(receipt.other)}</span></div></div>}
             </div>
+          ) : (
+            <SettlementReceiptBreakdown report={settlementReport} receipt={receipt} room={room} />
           )}
         </div>
 
@@ -6233,13 +6416,17 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
   const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
   const tenant = getTenantForReceipt(data, displayReceipt) || { name: 'N/A' };
   const isMonthly = displayReceipt.type === 'monthly';
+  const isRenewalAdjustment = displayReceipt.type === 'renewal_adjustment';
   const transferOldUtility = displayReceipt.transferOldRoomUtility;
   const extraOther = Math.max(0, Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0));
   const showCurrentElectric = !transferOldUtility || Number(displayReceipt.electricAmount || 0) > 0 || Number(displayReceipt.electricUsed || 0) > 0;
   const showCurrentWater = !transferOldUtility || Number(displayReceipt.waterAmount || 0) > 0 || Number(displayReceipt.waterUsed || 0) > 0;
+  const settlementReport = !isMonthly
+    ? (data.moveOutReports || []).find(report => report.contractId === displayReceipt.contractId && report.roomId === displayReceipt.roomId)
+    : null;
   return (
     <div className="receipt-page" style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'serif', position: 'relative', borderBottom: '1px dashed #eee' }}>
-      <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${displayReceipt.month}` : 'Quyết toán trả phòng'}</p></div>
+      <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : isRenewalAdjustment ? 'PHIẾU THU ĐIỀU CHỈNH GIA HẠN' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${displayReceipt.month}` : isRenewalAdjustment ? `Áp dụng tháng ${displayReceipt.month}` : 'Quyết toán trả phòng'}</p></div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><p>Phòng: <b>{getTransferRoomLabel(displayReceipt)}</b></p><p>Khách thuê: <b>{tenant.name}</b></p><p>Ngày lập: {new Date(displayReceipt.createdAt).toLocaleDateString('vi-VN')}</p></div><div style={{ textAlign: 'right' }}><p>Trạng thái: <b>{displayReceipt.status}</b></p></div></div>
       <table className="contract-table" style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
         <thead><tr style={{ background: '#f8fafc' }}><th style={{ border: '1px solid black', padding: '8px' }}>Nội dung</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Chỉ số</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Thành tiền</th></tr></thead>
@@ -6297,8 +6484,13 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
               )}
               {extraOther > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phụ phí khác</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
             </>
+          ) : isRenewalAdjustment ? (
+            <>
+              {Number(displayReceipt.rent || 0) > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Chênh lệch tăng giá thuê</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Theo phụ lục gia hạn</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.rent)}</td></tr>}
+              {Number(displayReceipt.other || 0) > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Chênh lệch tăng tiền cọc</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Theo phụ lục gia hạn</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.other)}</td></tr>}
+            </>
           ) : (
-            <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phí chốt tất toán trả phòng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.total)}</td></tr>
+            <SettlementReceiptBreakdown report={settlementReport} receipt={displayReceipt} room={room} table />
           )}
           <tr style={{ fontWeight: 'bold' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>TỔNG CỘNG</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.total)}</td></tr>
         </tbody>
@@ -6718,7 +6910,7 @@ function FinancialReportTab({ data, onAction }) {
                 {stats.incomeVouchers.map(r => (
                   <tr key={r.id}>
                     <td><b>P{r.roomId}</b></td>
-                    <td><span className="small muted">{r.type === 'monthly' ? 'Phiếu tháng' : 'Tất toán'}</span></td>
+                    <td><span className="small muted">{receiptTypeLabel(r.type)}</span></td>
                     <td>{formatMoney(r.total)}</td>
                     <td style={{ color: 'var(--success)', fontWeight: '600' }}>{formatMoney(r.paidAmount)}</td>
                   </tr>
