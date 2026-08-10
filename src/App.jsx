@@ -3152,6 +3152,23 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
     const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
     return { key, income, expense: out, net: income - out };
   });
+  const utilityRows = periodMonthKeys.map(key => {
+    const receipts = (data.receipts || []).filter(r => r.type === 'monthly' && r.month === key);
+    return {
+      key,
+      roomCount: new Set(receipts.map(r => r.roomId).filter(Boolean)).size,
+      electricUsed: receipts.reduce((sum, r) => sum + Number(r.electricUsed || 0), 0),
+      electricAmount: receipts.reduce((sum, r) => sum + Number(r.electricAmount || 0), 0),
+      waterUsed: receipts.reduce((sum, r) => sum + Number(r.waterUsed || 0), 0),
+      waterAmount: receipts.reduce((sum, r) => sum + Number(r.waterAmount || 0), 0),
+    };
+  });
+  const utilityTotals = utilityRows.reduce((totals, row) => ({
+    electricUsed: totals.electricUsed + row.electricUsed,
+    electricAmount: totals.electricAmount + row.electricAmount,
+    waterUsed: totals.waterUsed + row.waterUsed,
+    waterAmount: totals.waterAmount + row.waterAmount,
+  }), { electricUsed: 0, electricAmount: 0, waterUsed: 0, waterAmount: 0 });
   const chartMax = Math.max(1, ...chartRows.flatMap(r => [r.income, r.expense, Math.abs(r.net)]));
 
   return (
@@ -3209,6 +3226,45 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
               ))}
             </div>
             <div className="chart-legend"><span className="income"></span>Tiền vào <span className="expense"></span>Tiền ra <span className="net-positive"></span>Ròng</div>
+          </div>
+
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">⚡💧 Điện nước theo tháng thu tiền</h3>
+            <p className="small muted" style={{ marginBottom: '12px' }}>Tổng hợp từ phiếu thu tháng của toàn bộ các phòng trong kỳ đã chọn.</p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tháng thu</th>
+                    <th>Số phòng</th>
+                    <th>Số điện (kWh)</th>
+                    <th>Tiền điện</th>
+                    <th>Số nước (m³)</th>
+                    <th>Tiền nước</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {utilityRows.map(row => (
+                    <tr key={row.key}>
+                      <td><b>{row.key}</b></td>
+                      <td>{row.roomCount}</td>
+                      <td style={{ fontWeight: '700', color: 'var(--warning)' }}>{formatLocaleNumber(Math.round(row.electricUsed * 100) / 100)}</td>
+                      <td>{formatMoney(row.electricAmount)}</td>
+                      <td style={{ fontWeight: '700', color: 'var(--success)' }}>{formatLocaleNumber(Math.round(row.waterUsed * 100) / 100)}</td>
+                      <td>{formatMoney(row.waterAmount)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td><b>Tổng kỳ</b></td>
+                    <td>—</td>
+                    <td><b>{formatLocaleNumber(Math.round(utilityTotals.electricUsed * 100) / 100)}</b></td>
+                    <td><b>{formatMoney(utilityTotals.electricAmount)}</b></td>
+                    <td><b>{formatLocaleNumber(Math.round(utilityTotals.waterUsed * 100) / 100)}</b></td>
+                    <td><b>{formatMoney(utilityTotals.waterAmount)}</b></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Cảnh báo */}
