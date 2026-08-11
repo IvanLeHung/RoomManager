@@ -3334,7 +3334,8 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
                       <td>
                         <b>P{row.contract.roomId}</b><br />
                         <span className="small muted">{row.tenant?.name || 'Chưa cập nhật'}</span><br />
-                        <span className="small muted">CCCD: {row.tenant?.cccd || 'Chưa cập nhật'}</span>
+                        <span className="small muted">CCCD: {row.tenant?.cccd || 'Chưa cập nhật'}</span><br />
+                        <span className="small muted">Số HĐ: {row.contract.contractNo || row.contract.id}</span>
                       </td>
                       <td><span className="small">{formatBusinessDate(row.contract.startDate)} → {formatBusinessDate(row.contract.endDate)}</span><br /><b>{row.durationMonths} tháng</b></td>
                       <td style={{ minWidth: '120px' }}>
