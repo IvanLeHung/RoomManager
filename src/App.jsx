@@ -3331,7 +3331,11 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
                 <tbody>
                   {contractValueRows.map(row => (
                     <tr key={row.contract.id}>
-                      <td><b>P{row.contract.roomId}</b><br /><span className="small muted">{row.tenant?.name || 'Chưa cập nhật'}</span></td>
+                      <td>
+                        <b>P{row.contract.roomId}</b><br />
+                        <span className="small muted">{row.tenant?.name || 'Chưa cập nhật'}</span><br />
+                        <span className="small muted">CCCD: {row.tenant?.cccd || 'Chưa cập nhật'}</span>
+                      </td>
                       <td><span className="small">{formatBusinessDate(row.contract.startDate)} → {formatBusinessDate(row.contract.endDate)}</span><br /><b>{row.durationMonths} tháng</b></td>
                       <td style={{ minWidth: '120px' }}>
                         <div style={{ height: '8px', borderRadius: '999px', background: 'rgba(148,163,184,.25)', overflow: 'hidden' }}>
