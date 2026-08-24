@@ -1589,6 +1589,7 @@ function AppMain() {
   const [viewingExpense, setViewingExpense] = useState(null);
   const [editingExpense, setEditingExpense] = useState(null);
   const [addingExpense, setAddingExpense] = useState(false);
+  const [expenseFocusFilter, setExpenseFocusFilter] = useState(null);
   const [viewingSupplier, setViewingSupplier] = useState(null);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [addingSupplier, setAddingSupplier] = useState(false);
@@ -2299,6 +2300,8 @@ function AppMain() {
           {tab === 'expenses' && (
             <ExpensesTab 
               data={data} 
+              focusFilter={expenseFocusFilter}
+              onFocusConsumed={() => setExpenseFocusFilter(null)}
               onAction={(type, item) => {
                 if (type === 'create_expense') setAddingExpense(true);
                 else if (type === 'edit_expense') setEditingExpense(item);
@@ -2476,12 +2479,13 @@ function AppMain() {
               }
 
               let newExpensePayments = [...(old.expensePayments || [])];
+              let createdExpense = null;
               if (report.mustRefund > 0) {
                 const [m, y] = report.actualEndDate.split('-').slice(0, 2).reverse();
                 const prefix = `PC-${y}${m}`;
                 const count = newExpensePayments.filter(e => e.expenseCode && e.expenseCode.startsWith(prefix)).length + 1;
                 const expenseCode = `${prefix}-${String(count).padStart(3, '0')}`;
-                newExpensePayments.push({
+                createdExpense = {
                   id: uid('exp'),
                   expenseCode,
                   type: 'deposit_refund',
@@ -2510,8 +2514,10 @@ function AppMain() {
                   status: 'paid',
                   paymentMethod: report.refundQrImageUrl || report.refundBankAccount ? 'transfer' : 'cash',
                   note: report.note || 'Tự tạo từ luồng hoàn tất trả phòng',
-                  createdAt: new Date().toISOString()
-                });
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                };
+                newExpensePayments.push(createdExpense);
               }
               
               return { ...old, rooms: updatedRooms, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, expensePayments: newExpensePayments, moveOutReports: [{ ...report, accessRemovalTasks }, ...(old.moveOutReports || [])] };
@@ -2519,6 +2525,13 @@ function AppMain() {
             const completionMessages = [];
             if (report.mustRefund > 0) {
               completionMessages.push(`Đã tạo phiếu chi ${formatMoney(report.mustRefund)} cho ${report.tenantName || 'khách thuê'}.`);
+              setExpenseFocusFilter({
+                month: report.actualEndDate.split('-').slice(0, 2).reverse().join('/'),
+                status: 'all',
+                supplierId: '',
+                categoryId: ''
+              });
+              setTab('expenses');
             }
             const fingerprintNames = affectedTenants.filter(t => t.fingerprintCode).map(t => `${t.name} (${t.fingerprintCode})`);
             if (fingerprintNames.length > 0) {
@@ -6940,8 +6953,14 @@ function PaymentModal({ receipt, onClose, onSave }) {
   );
 }
 
-function ExpensesTab({ data, onAction }) {
+function ExpensesTab({ data, onAction, focusFilter, onFocusConsumed }) {
   const [filter, setFilter] = useState(() => ({ supplierId: '', categoryId: '', status: 'all', month: getCurrentMonthLabel() }));
+
+  useEffect(() => {
+    if (!focusFilter) return;
+    setFilter(prev => ({ ...prev, ...focusFilter }));
+    onFocusConsumed?.();
+  }, [focusFilter, onFocusConsumed]);
 
   const filteredExpenses = useMemo(() => {
     return (data.expensePayments || []).filter(e => {
