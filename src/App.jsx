@@ -1084,6 +1084,8 @@ function createMonthlyReceipt(room, contract, previousReceipt, month, billingCon
 
 function enrichReceiptWithTransferUtility(receipt, data) {
   if (!receipt || receipt.type !== 'monthly') return receipt;
+  const currentPaymentState = getReceiptPaymentState(receipt);
+  if (currentPaymentState.isPaid || Number(receipt.paidAmount || 0) > 0 || receipt.isFinalized) return receipt;
   const contract = (data.contracts || []).find(c => c.id === receipt.contractId);
   if (!contract) return receipt;
   const billingContext = getMonthlyBillingContext(data, contract, receipt.month);
