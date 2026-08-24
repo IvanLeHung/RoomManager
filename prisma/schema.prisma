@@ -207,15 +207,27 @@ model ExpenseCategory {
 
 model ExpensePayment {
   id            String   @id
+  type          String?
+  source        String?
+  sourceReportId String?
+  roomId        String?
+  contractId    String?
+  tenantId      String?
   supplierId    String?
   categoryId    String
   expenseCode   String?
   recipientName String?
+  recipientPhone String?
+  recipientBankName String?
+  recipientBankAccount String?
+  recipientBankOwner String?
+  recipientQrImageUrl String?
   month         String
   paymentDate   String
   title         String
   description   String?
   totalAmount   Int
+  amount        Int?
   paidAmount    Int
   status        String   // 'unpaid' | 'partial' | 'paid'
   paymentMethod String   // 'cash' | 'transfer' | 'qr'

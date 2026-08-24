@@ -56,7 +56,19 @@ async function ensureDatabaseShape(prisma) {
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "prepaidFixedServicesCovered" INTEGER',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "prepaidUnusedRentRefund" INTEGER',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "prepaidUnusedServicesRefund" INTEGER',
-    'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "prepaidUnusedRefund" INTEGER'
+    'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "prepaidUnusedRefund" INTEGER',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "type" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "source" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "sourceReportId" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "roomId" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "contractId" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "tenantId" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "recipientPhone" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "recipientBankName" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "recipientBankAccount" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "recipientBankOwner" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "recipientQrImageUrl" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "amount" INTEGER'
   ];
 
   for (const sql of statements) {
@@ -134,7 +146,7 @@ module.exports = async (req, res) => {
 
         const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
         const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
-        const expenseKeys = ['id', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
+        const expenseKeys = ['id', 'type', 'source', 'sourceReportId', 'roomId', 'contractId', 'tenantId', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'recipientPhone', 'recipientBankName', 'recipientBankAccount', 'recipientBankOwner', 'recipientQrImageUrl', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'amount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
 
         const ids = (items) => items.filter(i => i && i.id).map(i => i.id);
         const nowIso = () => new Date().toISOString();
@@ -161,7 +173,11 @@ module.exports = async (req, res) => {
         const prepareTransfer = (item) => ({ transferDate: '', oldRent: 0, newRent: 0, oldDeposit: 0, newDeposit: 0, createdAt: nowIso(), ...pick(item, transferKeys) });
         const prepareSupplier = (item) => ({ name: 'Vãng lai', createdAt: nowIso(), updatedAt: nowIso(), ...pick(item, supplierKeys) });
         const prepareCategory = (item) => ({ name: 'Khác', createdAt: nowIso(), updatedAt: nowIso(), ...pick(item, categoryKeys) });
-        const prepareExpense = (item) => ({ categoryId: 'cat_other', month: '', paymentDate: nowIso().slice(0, 10), title: 'Chi phí', totalAmount: 0, paidAmount: 0, status: 'unpaid', paymentMethod: 'transfer', createdAt: nowIso(), updatedAt: nowIso(), ...pick(item, expenseKeys) });
+        const prepareExpense = (item) => {
+          const data = { categoryId: 'cat_other', month: '', paymentDate: nowIso().slice(0, 10), title: 'Chi phí', totalAmount: 0, paidAmount: 0, status: 'unpaid', paymentMethod: 'transfer', createdAt: nowIso(), updatedAt: nowIso(), ...pick(item, expenseKeys) };
+          ['totalAmount', 'amount', 'paidAmount'].forEach(k => { if (data[k] !== undefined) data[k] = toInt(data[k]); });
+          return data;
+        };
 
         const runInBatches = async (operations, batchSize = 12) => {
           for (let i = 0; i < operations.length; i += batchSize) {
