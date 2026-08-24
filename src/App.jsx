@@ -785,6 +785,61 @@ function getLatestMonthlyReceiptForRoom(data, roomId, contractId = '') {
   return sortLatest(receipts);
 }
 
+function getLatestMonthlyReceiptForContract(data, roomId, contractId = '') {
+  if (!contractId) return null;
+  return [...(data.receipts || [])]
+    .filter(r => r.roomId === roomId && r.contractId === contractId && r.type === 'monthly')
+    .sort((a, b) => {
+      const monthDiff = parseMonthValue(b.month) - parseMonthValue(a.month);
+      if (monthDiff !== 0) return monthDiff;
+      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
+    })[0] || null;
+}
+
+const KNOWN_CONTRACT_METER_STARTS = {
+  'HĐ-301-202608': { electricOld: 0 }
+};
+
+function hasMeterStartValue(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function getContractMeterStarts(contract) {
+  const terms = contract?.terms && typeof contract.terms === 'object' ? contract.terms : {};
+  const configured = terms.meterStart || terms.meterReset || {};
+  const known = KNOWN_CONTRACT_METER_STARTS[contract?.contractNo] || {};
+  return { ...known, ...configured };
+}
+
+function getContractMeterStart(contract, key) {
+  const starts = getContractMeterStarts(contract);
+  return hasMeterStartValue(starts[key]) ? Number(starts[key]) : null;
+}
+
+function getRoomMeterStart(room, key) {
+  if (key === 'electricOld') {
+    return Number(room.electricNew ?? room.electricEnd ?? room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0);
+  }
+  return Number(room.waterNew ?? room.waterEnd ?? room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
+}
+
+function getMonthlyStartMeter(room, contract, previousReceipt, key) {
+  const latestSameContract = previousReceipt?.contractId === contract?.id ? previousReceipt : null;
+  if (latestSameContract) {
+    return key === 'electricOld'
+      ? Number(latestSameContract.electricNew ?? latestSameContract.electricEnd ?? 0)
+      : Number(latestSameContract.waterNew ?? latestSameContract.waterEnd ?? 0);
+  }
+  const contractMeterStart = getContractMeterStart(contract, key);
+  if (contractMeterStart !== null) return contractMeterStart;
+  if (previousReceipt) {
+    return key === 'electricOld'
+      ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
+      : Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0);
+  }
+  return getRoomMeterStart(room, key);
+}
+
 function getTransferBillingContext(data, contract, month) {
   const occupantCount = getContractOccupantCount(data, contract);
   const transfer = (data.roomTransfers || []).find(t =>
@@ -964,13 +1019,8 @@ function buildTransferOldRoomUtility(data, transfer, month) {
 }
 
 function createMonthlyReceipt(room, contract, previousReceipt, month, billingContext = { mode: 'normal' }) {
-  const electricOld = previousReceipt
-    ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
-    : Number(room.electricNew ?? room.electricEnd ?? room.initialElectric ?? room.electricStart ?? 0);
-
-  const waterOld = previousReceipt
-    ? Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0)
-    : Number(room.waterNew ?? room.waterEnd ?? room.initialWater ?? room.waterStart ?? 0);
+  const electricOld = getMonthlyStartMeter(room, contract, previousReceipt, 'electricOld');
+  const waterOld = getMonthlyStartMeter(room, contract, previousReceipt, 'waterOld');
 
   const isOldTransferRoom = billingContext.mode === 'transfer_old_room' || billingContext.mode === 'transfer_old_room_skip';
   const isNewTransferSameMonth = billingContext.mode === 'transfer_new_room' && monthFromDate(billingContext.transfer?.transferDate) === month;
@@ -4277,11 +4327,11 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
   const receiptTotal = Number(currentReceipt?.total || 0);
   const receiptDebt = Math.max(0, receiptTotal - receiptPaid);
   const isReceiptOverdue = currentReceipt && receiptDebt > 0 && new Date() > dueDate;
-  const latestReceipt = roomReceipts.find(r => r.type === 'monthly') || null;
-  const electricOld = latestReceipt ? getElectricOld(latestReceipt) : (room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0);
-  const electricNew = latestReceipt ? getElectricNew(latestReceipt) : (room.electricNew ?? electricOld);
-  const waterOld = latestReceipt ? getWaterOld(latestReceipt) : (room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
-  const waterNew = latestReceipt ? getWaterNew(latestReceipt) : (room.waterNew ?? waterOld);
+  const latestReceipt = contract ? getLatestMonthlyReceiptForContract(data, room.id, contract.id) : roomReceipts.find(r => r.type === 'monthly') || null;
+  const electricOld = latestReceipt ? getElectricOld(latestReceipt) : getMonthlyStartMeter(room, contract, null, 'electricOld');
+  const electricNew = latestReceipt ? getElectricNew(latestReceipt) : electricOld;
+  const waterOld = latestReceipt ? getWaterOld(latestReceipt) : getMonthlyStartMeter(room, contract, null, 'waterOld');
+  const waterNew = latestReceipt ? getWaterNew(latestReceipt) : waterOld;
   const tenantInitial = primaryTenant?.name ? primaryTenant.name.trim().charAt(0).toUpperCase() : 'P';
   const formatDate = formatContractDate;
   const dateDiffDays = (value) => {
@@ -4737,11 +4787,14 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
 }
 
 function EditContractModal({ contract, data, onClose, onSave }) {
+  const initialMeterStarts = getContractMeterStarts(contract);
   const [form, setForm] = useState({
     ...contract,
     signedDate: formatDateForInput(contract.signedDate),
     startDate: formatDateForInput(contract.startDate),
-    endDate: formatDateForInput(contract.endDate)
+    endDate: formatDateForInput(contract.endDate),
+    meterElectricOld: hasMeterStartValue(initialMeterStarts.electricOld) ? initialMeterStarts.electricOld : '',
+    meterWaterOld: hasMeterStartValue(initialMeterStarts.waterOld) ? initialMeterStarts.waterOld : ''
   });
   const errors = {};
   if (!form.signedDate) errors.signedDate = 'Vui lòng nhập ngày ký hợp đồng';
@@ -4754,7 +4807,18 @@ function EditContractModal({ contract, data, onClose, onSave }) {
       alert(Object.values(errors).join('\n'));
       return;
     }
-    onSave(form);
+    const meterStart = {};
+    if (hasMeterStartValue(form.meterElectricOld)) meterStart.electricOld = Number(form.meterElectricOld);
+    if (hasMeterStartValue(form.meterWaterOld)) meterStart.waterOld = Number(form.meterWaterOld);
+    const terms = { ...(form.terms || {}) };
+    if (Object.keys(meterStart).length > 0) {
+      terms.meterStart = meterStart;
+    } else {
+      delete terms.meterStart;
+      delete terms.meterReset;
+    }
+    const { meterElectricOld, meterWaterOld, ...updatedContract } = form;
+    onSave({ ...updatedContract, terms });
   };
   return (
     <div className="modal" onClick={onClose}>
@@ -4771,6 +4835,8 @@ function EditContractModal({ contract, data, onClose, onSave }) {
             <label>Ngày hết hạn <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} /></label>
             <label>Giá thuê <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} /></label>
             <label>Tiền đặt cọc <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} /></label>
+            <label>Chỉ số điện đầu HĐ <input type="number" value={form.meterElectricOld} onChange={e => setForm({...form, meterElectricOld: e.target.value})} placeholder="Để trống nếu dùng chỉ số phòng" /><span className="small muted">Dùng khi thay công tơ hoặc hợp đồng mới cần reset chỉ số.</span></label>
+            <label>Chỉ số nước đầu HĐ <input type="number" value={form.meterWaterOld} onChange={e => setForm({...form, meterWaterOld: e.target.value})} placeholder="Để trống nếu dùng chỉ số phòng" /></label>
             <label style={{ gridColumn: 'span 2' }}>Ghi chú <textarea value={form.note || ''} onChange={e => setForm({...form, note: e.target.value})} /></label>
           </div>
           {dateWarning && <div className="warning-box" style={{ marginTop: '16px' }}>Hợp đồng thiếu ngày ký / ngày bắt đầu / ngày hết hạn hợp lệ. Vui lòng cập nhật để in hợp đồng, tính đúng thời hạn thuê và phụ lục gia hạn.</div>}
@@ -4806,6 +4872,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
     rent: room.rent,
     deposit: room.rent,
     paymentCycleDay: 10,
+    meterElectricOld: '',
+    meterWaterOld: '',
     // Terms
     electricPrice: room.electricPrice || 3800,
     waterPrice: room.waterPrice || 32000,
@@ -4888,7 +4956,11 @@ function RentalFlowModal({ room, onClose, onSave }) {
       terms: {
         electricPrice: form.electricPrice,
         waterPrice: form.waterPrice,
-        services: form.services
+        services: form.services,
+        meterStart: {
+          ...(hasMeterStartValue(form.meterElectricOld) ? { electricOld: Number(form.meterElectricOld) } : {}),
+          ...(hasMeterStartValue(form.meterWaterOld) ? { waterOld: Number(form.meterWaterOld) } : {})
+        }
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -5041,6 +5113,8 @@ function RentalFlowModal({ room, onClose, onSave }) {
                   <label>Giá thuê <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} /></label>
                   <label>Tiền đặt cọc <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} /></label>
                   <label>Ngày thu tiền <input type="number" value={form.paymentCycleDay} onChange={e => setForm({...form, paymentCycleDay: e.target.value})} /></label>
+                  <label>Chỉ số điện đầu HĐ <input type="number" value={form.meterElectricOld} onChange={e => setForm({...form, meterElectricOld: e.target.value})} placeholder="VD: 0 nếu thay công tơ" /></label>
+                  <label>Chỉ số nước đầu HĐ <input type="number" value={form.meterWaterOld} onChange={e => setForm({...form, meterWaterOld: e.target.value})} placeholder="Để trống nếu dùng chỉ số phòng" /></label>
                 </div>
               </section>
 
@@ -5196,16 +5270,18 @@ function TransferRoomModal({ contract, data, onClose, onSave }) {
 }
 
 function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
-  const latestMonthlyReceipt = getLatestMonthlyReceiptForRoom(data, room.id, contract.id);
+  const latestMonthlyReceipt = getLatestMonthlyReceiptForContract(data, room.id, contract.id);
   const meterElectricOld = latestMonthlyReceipt
     ? getElectricNew(latestMonthlyReceipt)
-    : Number(room.electricNew ?? room.electricEnd ?? room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0);
+    : getMonthlyStartMeter(room, contract, null, 'electricOld');
   const meterWaterOld = latestMonthlyReceipt
     ? getWaterNew(latestMonthlyReceipt)
-    : Number(room.waterNew ?? room.waterEnd ?? room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
+    : getMonthlyStartMeter(room, contract, null, 'waterOld');
   const meterSourceText = latestMonthlyReceipt
     ? `Lấy từ phiếu tháng ${latestMonthlyReceipt.month} của P${latestMonthlyReceipt.roomId}: điện ${formatLocaleNumber(meterElectricOld)}, nước ${formatLocaleNumber(meterWaterOld)}.`
-    : 'Chưa có phiếu tháng trước đó, hệ thống dùng chỉ số đang lưu trong phòng.';
+    : (getContractMeterStart(contract, 'electricOld') !== null || getContractMeterStart(contract, 'waterOld') !== null)
+      ? `Hợp đồng có chỉ số đầu riêng: điện ${formatLocaleNumber(meterElectricOld)}, nước ${formatLocaleNumber(meterWaterOld)}.`
+      : 'Chưa có phiếu tháng trước đó, hệ thống dùng chỉ số đang lưu trong phòng.';
   const [form, setForm] = useState({
     actualEndDate: new Date().toISOString().split('T')[0],
     settlementMode: 'offset_deposit',
