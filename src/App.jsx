@@ -1517,8 +1517,10 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
                 <div className="data-row"><span>Dịch vụ phát sinh ({report.roomChargeDays || 0} ngày)</span><b>{formatMoney(report.proratedFixedServices || 0)}</b></div>
                 {report.settlementMode === 'prepaid_month_refund_deposit' && (
                   <>
-                    <div className="data-row"><span>Tiền phòng đã thanh toán trước</span><b>{formatMoney(report.prepaidRentCovered || 0)}</b></div>
-                    <div className="data-row"><span>Dịch vụ đã thanh toán trước</span><b>{formatMoney(report.prepaidFixedServicesCovered || 0)}</b></div>
+                    <div className="data-row"><span>Tiền phòng đã thu tháng này</span><b>{formatMoney(report.prepaidRentPaid || 0)}</b></div>
+                    <div className="data-row"><span>Dịch vụ đã thu tháng này</span><b>{formatMoney(report.prepaidFixedServicesPaid || 0)}</b></div>
+                    <div className="data-row"><span>Hoàn tiền phòng chưa sử dụng</span><b>{formatMoney(report.prepaidUnusedRentRefund || 0)}</b></div>
+                    <div className="data-row"><span>Hoàn dịch vụ chưa sử dụng</span><b>{formatMoney(report.prepaidUnusedServicesRefund || 0)}</b></div>
                   </>
                 )}
                 <div className="data-row"><span>Tiền điện</span><b>{formatMoney(report.electricAmount || 0)}</b></div>
@@ -2070,8 +2072,12 @@ function AppMain() {
           'Số ngày tính tiền phòng': rep.roomChargeDays || '',
           'Tiền phòng phát sinh': rep.proratedRent || 0,
           'Dịch vụ phát sinh': rep.proratedFixedServices || 0,
-          'Tiền phòng đã thanh toán trước': rep.prepaidRentCovered || 0,
-          'Dịch vụ đã thanh toán trước': rep.prepaidFixedServicesCovered || 0,
+          'Tiền phòng đã thu tháng này': rep.prepaidRentPaid || 0,
+          'Dịch vụ đã thu tháng này': rep.prepaidFixedServicesPaid || 0,
+          'Tiền phòng đã sử dụng': rep.prepaidRentCovered || 0,
+          'Dịch vụ đã sử dụng': rep.prepaidFixedServicesCovered || 0,
+          'Hoàn tiền phòng chưa sử dụng': rep.prepaidUnusedRentRefund || 0,
+          'Hoàn dịch vụ chưa sử dụng': rep.prepaidUnusedServicesRefund || 0,
           'Tiền phòng/phí còn nợ khác': rep.unpaidRent,
           'Phí hư hỏng': rep.damageFee || 0,
           'Phí vệ sinh': rep.cleaningFee || 0,
@@ -2494,8 +2500,10 @@ function AppMain() {
                   categoryId: 'cat_other',
                   month: `${m}/${y}`,
                   paymentDate: report.actualEndDate,
-                  title: `Hoàn cọc trả phòng P${report.roomId}`,
-                  description: `Hoàn tiền cọc cho ${report.tenantName || 'khách thuê'} sau khi tất toán phòng ${report.roomId}.`,
+                  title: report.settlementMode === 'prepaid_month_refund_deposit' ? `Hoàn cọc & tiền trả trước P${report.roomId}` : `Hoàn cọc trả phòng P${report.roomId}`,
+                  description: report.settlementMode === 'prepaid_month_refund_deposit'
+                    ? `Hoàn cọc và tiền phòng/dịch vụ trả trước chưa sử dụng cho ${report.tenantName || 'khách thuê'} sau khi tất toán phòng ${report.roomId}.`
+                    : `Hoàn tiền cọc cho ${report.tenantName || 'khách thuê'} sau khi tất toán phòng ${report.roomId}.`,
                   totalAmount: report.mustRefund,
                   amount: report.mustRefund,
                   paidAmount: report.mustRefund,
@@ -2510,7 +2518,7 @@ function AppMain() {
             });
             const completionMessages = [];
             if (report.mustRefund > 0) {
-              completionMessages.push(`Đã tạo phiếu chi hoàn cọc ${formatMoney(report.mustRefund)} cho ${report.tenantName || 'khách thuê'}.`);
+              completionMessages.push(`Đã tạo phiếu chi ${formatMoney(report.mustRefund)} cho ${report.tenantName || 'khách thuê'}.`);
             }
             const fingerprintNames = affectedTenants.filter(t => t.fingerprintCode).map(t => `${t.name} (${t.fingerprintCode})`);
             if (fingerprintNames.length > 0) {
@@ -5237,6 +5245,11 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const proratedFixedServices = isPrepaidMonth ? 0 : grossProratedFixedServices;
   const prepaidRentCovered = isPrepaidMonth ? grossProratedRent : 0;
   const prepaidFixedServicesCovered = isPrepaidMonth ? grossProratedFixedServices : 0;
+  const prepaidRentPaid = isPrepaidMonth ? monthlyRent : 0;
+  const prepaidFixedServicesPaid = isPrepaidMonth ? monthlyFixedServices : 0;
+  const prepaidUnusedRentRefund = isPrepaidMonth ? Math.max(0, monthlyRent - grossProratedRent) : 0;
+  const prepaidUnusedServicesRefund = isPrepaidMonth ? Math.max(0, monthlyFixedServices - grossProratedFixedServices) : 0;
+  const prepaidUnusedRefund = prepaidUnusedRentRefund + prepaidUnusedServicesRefund;
 
   const totalIncurred = proratedRent + proratedFixedServices + electricAmount + waterAmount + Number(form.unpaidRent) +
                         Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
@@ -5244,7 +5257,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const depositUsed = isOffsetDeposit ? Math.min(deposit, totalIncurred) : 0;
   const depositForfeited = isForfeitDeposit ? deposit : 0;
   const mustCollect = (isPaySeparately || isPrepaidMonth || isForfeitDeposit) ? totalIncurred : Math.max(0, totalIncurred - deposit);
-  const mustRefund = (isPaySeparately || isPrepaidMonth) ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
+  const mustRefund = isPrepaidMonth ? deposit + prepaidUnusedRefund : isPaySeparately ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
   const isRefund = mustRefund > 0;
   const isDebt = mustCollect > 0;
   const settlementTransferContent = `P${room.id} TRA PHONG ${formatDisplayDate(form.actualEndDate, '').replace(/\//g, '')}`;
@@ -5286,7 +5299,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   </p>
                   {isPrepaidMonth && (
                     <p className="small" style={{ gridColumn: 'span 2', margin: 0, color: 'var(--success)', fontWeight: 700 }}>
-                      Đã ghi nhận khách đã thanh toán tiền nhà/dịch vụ cả tháng: không thu lại {formatMoney(prepaidRentCovered + prepaidFixedServicesCovered)}.
+                      Đã thu trước {formatMoney(prepaidRentPaid + prepaidFixedServicesPaid)}. Phần đã sử dụng đến ngày trả phòng là {formatMoney(prepaidRentCovered + prepaidFixedServicesCovered)}; hoàn lại phần chưa sử dụng {formatMoney(prepaidUnusedRefund)}.
                     </p>
                   )}
                   <label style={{ gridColumn: 'span 2' }}>Tiền cọc đang giữ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
@@ -5306,7 +5319,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   </label>
                   <label className="option-row">
                     <input type="radio" name="settlementMode" checked={form.settlementMode === 'prepaid_month_refund_deposit'} onChange={() => setForm({...form, settlementMode: 'prepaid_month_refund_deposit'})} />
-                    <span><b>Đã thanh toán tiền nhà cả tháng, trả sớm</b><small>Không thu lại tiền phòng/dịch vụ tháng đã thanh toán; chỉ chốt điện nước/phí phát sinh và hoàn trả cọc.</small></span>
+                    <span><b>Đã thanh toán tiền nhà cả tháng, trả sớm</b><small>Hoàn lại tiền phòng/dịch vụ của ngày chưa sử dụng; chỉ thu điện nước/phí phát sinh và hoàn trả cọc.</small></span>
                   </label>
                   <label className="option-row danger">
                     <input type="radio" name="settlementMode" checked={form.settlementMode === 'forfeit_deposit'} onChange={() => setForm({...form, settlementMode: 'forfeit_deposit'})} />
@@ -5375,8 +5388,11 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 <div className="summary-row"><span>{isPrepaidMonth ? 'Dịch vụ cần thu' : 'Dịch vụ phát sinh'} ({roomChargeDays} ngày)</span><b>{formatMoney(proratedFixedServices)}</b></div>
                 {isPrepaidMonth && (
                   <>
-                    <div className="summary-row"><span>Tiền phòng đã thanh toán trước</span><b style={{ color: 'var(--success)' }}>{formatMoney(prepaidRentCovered)}</b></div>
-                    <div className="summary-row"><span>Dịch vụ đã thanh toán trước</span><b style={{ color: 'var(--success)' }}>{formatMoney(prepaidFixedServicesCovered)}</b></div>
+                    <div className="summary-row"><span>Tiền phòng đã thu tháng này</span><b>{formatMoney(prepaidRentPaid)}</b></div>
+                    <div className="summary-row"><span>Dịch vụ đã thu tháng này</span><b>{formatMoney(prepaidFixedServicesPaid)}</b></div>
+                    <div className="summary-row"><span>Tiền phòng đã sử dụng</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(prepaidRentCovered)}</b></div>
+                    <div className="summary-row"><span>Dịch vụ đã sử dụng</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(prepaidFixedServicesCovered)}</b></div>
+                    <div className="summary-row"><span>Hoàn tiền trả trước chưa sử dụng</span><b style={{ color: 'var(--success)' }}>{formatMoney(prepaidUnusedRefund)}</b></div>
                   </>
                 )}
                 <div className="summary-row"><span>Tiền điện</span><b>{formatMoney(electricAmount)}</b></div>
@@ -5385,7 +5401,8 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                 <div className="summary-row"><span>Tổng phát sinh</span><b>{formatMoney(totalIncurred)}</b></div>
                 {isOffsetDeposit && <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>}
                 {isForfeitDeposit && <div className="summary-row"><span>Cọc giữ lại do trả sớm</span><b style={{ color: 'var(--danger)' }}>{formatMoney(depositForfeited)}</b></div>}
-                {(isPaySeparately || isPrepaidMonth) && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
+                {isPaySeparately && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
+                {isPrepaidMonth && <div className="summary-row"><span>Hoàn cọc + tiền trả trước còn lại</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
                 {mustCollect > 0 && <div className="summary-row"><span>Khách thanh toán phát sinh</span><b style={{ color: 'var(--danger)' }}>{formatMoney(mustCollect)}</b></div>}
                 
                 <div className="summary-total">
@@ -5399,7 +5416,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                       : isOffsetDeposit
                       ? isRefund ? '✨ Cần hoàn phần cọc còn lại cho khách' : isDebt ? '⚠️ Khách thuê cần đóng thêm tiền sau khi trừ cọc' : '✅ Công nợ đã được tất toán đủ'
                       : isPrepaidMonth
-                      ? '✨ Khách đã thanh toán tiền nhà tháng này, chỉ thu điện nước/phí phát sinh và hoàn cọc'
+                      ? '✨ Khách đã trả trước tháng này: hoàn cọc và hoàn tiền phòng/dịch vụ chưa sử dụng, chỉ thu điện nước/phí phát sinh'
                       : '✨ Hoàn toàn bộ cọc, đồng thời thu riêng điện nước/phí phát sinh'}
                   </p>
                 </div>
@@ -5418,7 +5435,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
 
                 {mustRefund > 0 && !isForfeitDeposit && (
                   <div className="settlement-qr-card">
-                    <h4>Phiếu chi hoàn cọc sẽ tạo</h4>
+                    <h4>{isPrepaidMonth ? 'Phiếu chi hoàn cọc & tiền trả trước sẽ tạo' : 'Phiếu chi hoàn cọc sẽ tạo'}</h4>
                     {form.refundQrImageUrl ? <img src={form.refundQrImageUrl} alt="QR người thuê nhận hoàn cọc" /> : <p className="small muted">Có thể dán link QR người thuê ở form bên trái để lưu kèm phiếu chi.</p>}
                     <div className="payment-details-v4">
                       <div className="row"><span className="label">Người nhận</span><span className="val">{form.refundBankOwner || tenant.name || 'Khách thuê'}</span></div>
@@ -5435,7 +5452,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                     <li>Phòng {room.id} sẽ trở về trạng thái trống</li>
                     <li>Lịch sử tất toán sẽ được lưu lại</li>
                     {fingerprintRemovalList.length > 0 && <li>Admin cần xóa vân tay: {fingerprintRemovalList.map(m => `${m.tenant.name} (${m.tenant.fingerprintCode})`).join(', ')}</li>}
-                    {isPrepaidMonth && <li>Tiền phòng/dịch vụ tháng hiện tại đã thanh toán trước nên không thu lại trong phiếu trả phòng</li>}
+                    {isPrepaidMonth && <li>Tiền phòng/dịch vụ tháng hiện tại đã thanh toán trước: hệ thống hoàn lại phần chưa sử dụng {formatMoney(prepaidUnusedRefund)}</li>}
                     {isForfeitDeposit && <li>Tiền cọc còn lại được ghi nhận giữ lại do khách trả sớm hợp đồng</li>}
                   </ul>
                 </div>
@@ -5457,8 +5474,13 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         proratedFixedServices,
                         grossProratedRent,
                         grossProratedFixedServices,
+                        prepaidRentPaid,
+                        prepaidFixedServicesPaid,
                         prepaidRentCovered,
                         prepaidFixedServicesCovered,
+                        prepaidUnusedRentRefund,
+                        prepaidUnusedServicesRefund,
+                        prepaidUnusedRefund,
                         cleaningFee: Number(form.cleaningFee || 0),
                         damageFee: Number(form.damageFee || 0),
                         otherFee: Number(form.otherFee || 0),
@@ -6324,6 +6346,12 @@ function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
   const rowData = report ? [
     ['Tiền phòng phát sinh', proratedRent, rentDetails],
     ['Dịch vụ phát sinh', proratedServices, serviceDetails],
+    ...(report.settlementMode === 'prepaid_month_refund_deposit' ? [
+      ['Tiền phòng đã thu tháng này', report.prepaidRentPaid, ''],
+      ['Dịch vụ đã thu tháng này', report.prepaidFixedServicesPaid, ''],
+      ['Hoàn tiền phòng chưa sử dụng', report.prepaidUnusedRentRefund, ''],
+      ['Hoàn dịch vụ chưa sử dụng', report.prepaidUnusedServicesRefund, ''],
+    ] : []),
     ['Tiền điện', report.electricAmount, `${report.electricOld ?? 0} → ${report.electricNew ?? 0} (${report.electricUsed ?? 0} kWh)`],
     ['Tiền nước', report.waterAmount, `${report.waterOld ?? 0} → ${report.waterNew ?? 0} (${report.waterUsed ?? 0} m³)`],
     ['Tiền phòng / công nợ khác', report.unpaidRent, ''],
