@@ -131,8 +131,13 @@ model MoveOutReport {
   depositUsed    Int
   depositForfeited Int?
   settlementMode String?
+  prepaidRentPaid Int?
+  prepaidFixedServicesPaid Int?
   prepaidRentCovered Int?
   prepaidFixedServicesCovered Int?
+  prepaidUnusedRentRefund Int?
+  prepaidUnusedServicesRefund Int?
+  prepaidUnusedRefund Int?
   unpaidRent     Int
   cleaningFee    Int
   damageFee      Int
