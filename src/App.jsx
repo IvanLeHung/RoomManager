@@ -1515,6 +1515,12 @@ function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'ma
               <div className="stack" style={{ gap: '5px' }}>
                 <div className="data-row"><span>Tiền phòng phát sinh ({report.roomChargeDays || 0} ngày)</span><b>{formatMoney(report.proratedRent || 0)}</b></div>
                 <div className="data-row"><span>Dịch vụ phát sinh ({report.roomChargeDays || 0} ngày)</span><b>{formatMoney(report.proratedFixedServices || 0)}</b></div>
+                {report.settlementMode === 'prepaid_month_refund_deposit' && (
+                  <>
+                    <div className="data-row"><span>Tiền phòng đã thanh toán trước</span><b>{formatMoney(report.prepaidRentCovered || 0)}</b></div>
+                    <div className="data-row"><span>Dịch vụ đã thanh toán trước</span><b>{formatMoney(report.prepaidFixedServicesCovered || 0)}</b></div>
+                  </>
+                )}
                 <div className="data-row"><span>Tiền điện</span><b>{formatMoney(report.electricAmount || 0)}</b></div>
                 <div className="data-row"><span>Tiền nước</span><b>{formatMoney(report.waterAmount || 0)}</b></div>
                 <div className="data-row"><span>Phí khác</span><b>{formatMoney(Number(report.unpaidRent || 0) + Number(report.cleaningFee || 0) + Number(report.damageFee || 0) + Number(report.otherFee || 0))}</b></div>
@@ -2064,6 +2070,8 @@ function AppMain() {
           'Số ngày tính tiền phòng': rep.roomChargeDays || '',
           'Tiền phòng phát sinh': rep.proratedRent || 0,
           'Dịch vụ phát sinh': rep.proratedFixedServices || 0,
+          'Tiền phòng đã thanh toán trước': rep.prepaidRentCovered || 0,
+          'Dịch vụ đã thanh toán trước': rep.prepaidFixedServicesCovered || 0,
           'Tiền phòng/phí còn nợ khác': rep.unpaidRent,
           'Phí hư hỏng': rep.damageFee || 0,
           'Phí vệ sinh': rep.cleaningFee || 0,
@@ -5065,22 +5073,28 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
   const monthlyRent = Number(contract.rent || room.rent || 0);
   const occupantCount = getContractOccupantCount(data, contract);
   const monthlyFixedServices = fixedServiceTotal(room, occupantCount);
-  const proratedRent = Math.round((monthlyRent / billingMonthDays) * roomChargeDays);
-  const proratedFixedServices = Math.round((monthlyFixedServices / billingMonthDays) * roomChargeDays);
   const dailyRent = monthlyRent / billingMonthDays;
   const dailyFixedServices = monthlyFixedServices / billingMonthDays;
+  const grossProratedRent = Math.round(dailyRent * roomChargeDays);
+  const grossProratedFixedServices = Math.round(dailyFixedServices * roomChargeDays);
+
+  const deposit = Number(contract.deposit || 0);
+  const isOffsetDeposit = form.settlementMode === 'offset_deposit';
+  const isPaySeparately = form.settlementMode === 'pay_separately';
+  const isPrepaidMonth = form.settlementMode === 'prepaid_month_refund_deposit';
+  const isForfeitDeposit = form.settlementMode === 'forfeit_deposit';
+  const proratedRent = isPrepaidMonth ? 0 : grossProratedRent;
+  const proratedFixedServices = isPrepaidMonth ? 0 : grossProratedFixedServices;
+  const prepaidRentCovered = isPrepaidMonth ? grossProratedRent : 0;
+  const prepaidFixedServicesCovered = isPrepaidMonth ? grossProratedFixedServices : 0;
 
   const totalIncurred = proratedRent + proratedFixedServices + electricAmount + waterAmount + Number(form.unpaidRent) +
                         Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
   
-  const deposit = Number(contract.deposit || 0);
-  const isOffsetDeposit = form.settlementMode === 'offset_deposit';
-  const isPaySeparately = form.settlementMode === 'pay_separately';
-  const isForfeitDeposit = form.settlementMode === 'forfeit_deposit';
   const depositUsed = isOffsetDeposit ? Math.min(deposit, totalIncurred) : 0;
   const depositForfeited = isForfeitDeposit ? deposit : 0;
-  const mustCollect = (isPaySeparately || isForfeitDeposit) ? totalIncurred : Math.max(0, totalIncurred - deposit);
-  const mustRefund = isPaySeparately ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
+  const mustCollect = (isPaySeparately || isPrepaidMonth || isForfeitDeposit) ? totalIncurred : Math.max(0, totalIncurred - deposit);
+  const mustRefund = (isPaySeparately || isPrepaidMonth) ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
   const isRefund = mustRefund > 0;
   const isDebt = mustCollect > 0;
   const settlementTransferContent = `P${room.id} TRA PHONG ${formatDisplayDate(form.actualEndDate, '').replace(/\//g, '')}`;
@@ -5112,14 +5126,19 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   <label>Ngày trả phòng <input type="date" value={form.actualEndDate} onChange={e => setForm({...form, actualEndDate: e.target.value})} /></label>
                   <label>Người đứng tên <input value={tenant.name} readOnly style={{ background: '#f1f5f9' }} /></label>
                   <label>Số ngày sử dụng <input value={`${roomChargeDays} ngày`} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
-                  <label>Tiền phòng phát sinh <input value={formatMoney(proratedRent)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
-                  <label>Dịch vụ phát sinh <input value={formatMoney(proratedFixedServices)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
+                  <label>{isPrepaidMonth ? 'Tiền phòng cần thu' : 'Tiền phòng phát sinh'} <input value={formatMoney(proratedRent)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
+                  <label>{isPrepaidMonth ? 'Dịch vụ cần thu' : 'Dịch vụ phát sinh'} <input value={formatMoney(proratedFixedServices)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                   <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(proratedRent)}
+                    Tính từ ngày 01 đến ngày {formatDisplayDate(form.actualEndDate)}, gồm cả ngày trả phòng: {formatMoney(monthlyRent)} / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(grossProratedRent)}
                   </p>
                   <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    Dịch vụ cố định: {formatMoney(monthlyFixedServices)}/tháng ({occupantCount} người) / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(proratedFixedServices)}
+                    Dịch vụ cố định: {formatMoney(monthlyFixedServices)}/tháng ({occupantCount} người) / {billingMonthDays} x {roomChargeDays} ngày = {formatMoney(grossProratedFixedServices)}
                   </p>
+                  {isPrepaidMonth && (
+                    <p className="small" style={{ gridColumn: 'span 2', margin: 0, color: 'var(--success)', fontWeight: 700 }}>
+                      Đã ghi nhận khách đã thanh toán tiền nhà/dịch vụ cả tháng: không thu lại {formatMoney(prepaidRentCovered + prepaidFixedServicesCovered)}.
+                    </p>
+                  )}
                   <label style={{ gridColumn: 'span 2' }}>Tiền cọc đang giữ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
                 </div>
               </section>
@@ -5134,6 +5153,10 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                   <label className="option-row">
                     <input type="radio" name="settlementMode" checked={form.settlementMode === 'pay_separately'} onChange={() => setForm({...form, settlementMode: 'pay_separately'})} />
                     <span><b>Khách thanh toán điện nước/phí riêng, hoàn nguyên cọc</b><small>Tạo khoản khách cần trả cho phát sinh và hoàn lại toàn bộ tiền cọc.</small></span>
+                  </label>
+                  <label className="option-row">
+                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'prepaid_month_refund_deposit'} onChange={() => setForm({...form, settlementMode: 'prepaid_month_refund_deposit'})} />
+                    <span><b>Đã thanh toán tiền nhà cả tháng, trả sớm</b><small>Không thu lại tiền phòng/dịch vụ tháng đã thanh toán; chỉ chốt điện nước/phí phát sinh và hoàn trả cọc.</small></span>
                   </label>
                   <label className="option-row danger">
                     <input type="radio" name="settlementMode" checked={form.settlementMode === 'forfeit_deposit'} onChange={() => setForm({...form, settlementMode: 'forfeit_deposit'})} />
@@ -5198,19 +5221,25 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
               <div className="summary-card">
                 <h3 className="summary-label-main">Kết quả tất toán</h3>
                 
-                <div className="summary-row"><span>Tiền phòng phát sinh ({roomChargeDays} ngày)</span><b>{formatMoney(proratedRent)}</b></div>
-                <div className="summary-row"><span>Dịch vụ phát sinh ({roomChargeDays} ngày)</span><b>{formatMoney(proratedFixedServices)}</b></div>
+                <div className="summary-row"><span>{isPrepaidMonth ? 'Tiền phòng cần thu' : 'Tiền phòng phát sinh'} ({roomChargeDays} ngày)</span><b>{formatMoney(proratedRent)}</b></div>
+                <div className="summary-row"><span>{isPrepaidMonth ? 'Dịch vụ cần thu' : 'Dịch vụ phát sinh'} ({roomChargeDays} ngày)</span><b>{formatMoney(proratedFixedServices)}</b></div>
+                {isPrepaidMonth && (
+                  <>
+                    <div className="summary-row"><span>Tiền phòng đã thanh toán trước</span><b style={{ color: 'var(--success)' }}>{formatMoney(prepaidRentCovered)}</b></div>
+                    <div className="summary-row"><span>Dịch vụ đã thanh toán trước</span><b style={{ color: 'var(--success)' }}>{formatMoney(prepaidFixedServicesCovered)}</b></div>
+                  </>
+                )}
                 <div className="summary-row"><span>Tiền điện</span><b>{formatMoney(electricAmount)}</b></div>
                 <div className="summary-row"><span>Tiền nước</span><b>{formatMoney(waterAmount)}</b></div>
                 <div className="summary-row"><span>Phí khác</span><b>{formatMoney(Number(form.unpaidRent || 0) + Number(form.cleaningFee || 0) + Number(form.damageFee || 0) + Number(form.otherFee || 0))}</b></div>
                 <div className="summary-row"><span>Tổng phát sinh</span><b>{formatMoney(totalIncurred)}</b></div>
                 {isOffsetDeposit && <div className="summary-row"><span>Tiền cọc đối trừ</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>}
                 {isForfeitDeposit && <div className="summary-row"><span>Cọc giữ lại do trả sớm</span><b style={{ color: 'var(--danger)' }}>{formatMoney(depositForfeited)}</b></div>}
-                {isPaySeparately && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
+                {(isPaySeparately || isPrepaidMonth) && <div className="summary-row"><span>Hoàn nguyên cọc</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
                 {mustCollect > 0 && <div className="summary-row"><span>Khách thanh toán phát sinh</span><b style={{ color: 'var(--danger)' }}>{formatMoney(mustCollect)}</b></div>}
                 
                 <div className="summary-total">
-                  <span className="summary-label-main">{isForfeitDeposit ? 'Khách cần thanh toán' : isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : 'Hoàn cọc & thu phát sinh'}</span>
+                  <span className="summary-label-main">{isForfeitDeposit ? 'Khách cần thanh toán' : isOffsetDeposit ? (isRefund ? 'Số tiền hoàn khách' : 'Khách cần trả thêm') : isPrepaidMonth ? 'Hoàn cọc & chốt phát sinh' : 'Hoàn cọc & thu phát sinh'}</span>
                   <p className="summary-amount" style={{ color: isRefund ? 'var(--success)' : isDebt ? 'var(--danger)' : 'var(--text-main)' }}>
                     {isForfeitDeposit ? formatMoney(mustCollect) : isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
                   </p>
@@ -5219,6 +5248,8 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                       ? '⚠️ Khách trả sớm hợp đồng: không hoàn cọc, phát sinh vẫn thu riêng'
                       : isOffsetDeposit
                       ? isRefund ? '✨ Cần hoàn phần cọc còn lại cho khách' : isDebt ? '⚠️ Khách thuê cần đóng thêm tiền sau khi trừ cọc' : '✅ Công nợ đã được tất toán đủ'
+                      : isPrepaidMonth
+                      ? '✨ Khách đã thanh toán tiền nhà tháng này, chỉ thu điện nước/phí phát sinh và hoàn cọc'
                       : '✨ Hoàn toàn bộ cọc, đồng thời thu riêng điện nước/phí phát sinh'}
                   </p>
                 </div>
@@ -5254,6 +5285,7 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                     <li>Phòng {room.id} sẽ trở về trạng thái trống</li>
                     <li>Lịch sử tất toán sẽ được lưu lại</li>
                     {fingerprintRemovalList.length > 0 && <li>Admin cần xóa vân tay: {fingerprintRemovalList.map(m => `${m.tenant.name} (${m.tenant.fingerprintCode})`).join(', ')}</li>}
+                    {isPrepaidMonth && <li>Tiền phòng/dịch vụ tháng hiện tại đã thanh toán trước nên không thu lại trong phiếu trả phòng</li>}
                     {isForfeitDeposit && <li>Tiền cọc còn lại được ghi nhận giữ lại do khách trả sớm hợp đồng</li>}
                   </ul>
                 </div>
@@ -5273,6 +5305,10 @@ function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
                         dailyFixedServices,
                         proratedRent,
                         proratedFixedServices,
+                        grossProratedRent,
+                        grossProratedFixedServices,
+                        prepaidRentCovered,
+                        prepaidFixedServicesCovered,
                         cleaningFee: Number(form.cleaningFee || 0),
                         damageFee: Number(form.damageFee || 0),
                         otherFee: Number(form.otherFee || 0),
