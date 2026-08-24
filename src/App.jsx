@@ -3160,6 +3160,63 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
     const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
     return { key, income, expense: out, net: income - out };
   });
+  const utilityRows = periodMonthKeys.map(key => {
+    const receipts = (data.receipts || []).filter(r => r.type === 'monthly' && r.month === key);
+    return {
+      key,
+      roomCount: new Set(receipts.map(r => r.roomId).filter(Boolean)).size,
+      electricUsed: receipts.reduce((sum, r) => sum + Number(r.electricUsed || 0), 0),
+      electricAmount: receipts.reduce((sum, r) => sum + Number(r.electricAmount || 0), 0),
+      waterUsed: receipts.reduce((sum, r) => sum + Number(r.waterUsed || 0), 0),
+      waterAmount: receipts.reduce((sum, r) => sum + Number(r.waterAmount || 0), 0),
+    };
+  });
+  const utilityTotals = utilityRows.reduce((totals, row) => ({
+    electricUsed: totals.electricUsed + row.electricUsed,
+    electricAmount: totals.electricAmount + row.electricAmount,
+    waterUsed: totals.waterUsed + row.waterUsed,
+    waterAmount: totals.waterAmount + row.waterAmount,
+  }), { electricUsed: 0, electricAmount: 0, waterUsed: 0, waterAmount: 0 });
+  const contractValueRows = (data.contracts || [])
+    .filter(contract => contract.status !== 'ended' && isValidContractRange(contract.startDate, contract.endDate))
+    .map(contract => {
+      const room = (data.rooms || []).find(item => item.id === contract.roomId);
+      const tenant = getPrimaryTenantByContract(data, contract.id);
+      const contractReceipts = (data.receipts || []).filter(receipt => receipt.contractId === contract.id && receipt.type === 'monthly');
+      const durationMonths = Math.max(1, diffMonths(contract.startDate, contract.endDate));
+      const occupantCount = getContractOccupantCount(data, contract);
+      const monthlyServices = room ? fixedServiceTotal(room, occupantCount || 1) : 0;
+      const plannedRent = Number(contract.rent || room?.rent || 0) * durationMonths;
+      const plannedServices = monthlyServices * durationMonths;
+      const actualServices = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.fixedServices || 0), 0);
+      const electricAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.electricAmount || 0), 0);
+      const waterAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.waterAmount || 0), 0);
+      const otherAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.other || 0), 0);
+      const billedAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.total || 0), 0);
+      const paidAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.paidAmount || 0), 0);
+      const start = parseDateFlexible(contract.startDate);
+      const end = parseDateFlexible(contract.endDate);
+      const totalDays = Math.max(1, Math.ceil((end - start) / 86400000));
+      const elapsedDays = Math.ceil((today - start) / 86400000);
+      const progress = Math.max(0, Math.min(100, elapsedDays / totalDays * 100));
+      return {
+        contract,
+        tenant,
+        durationMonths,
+        plannedRent,
+        plannedServices,
+        plannedValue: plannedRent + plannedServices,
+        actualServices,
+        electricAmount,
+        waterAmount,
+        otherAmount,
+        billedAmount,
+        paidAmount,
+        debt: Math.max(0, billedAmount - paidAmount),
+        progress,
+      };
+    })
+    .sort((a, b) => String(a.contract.roomId).localeCompare(String(b.contract.roomId), undefined, { numeric: true }));
   const chartMax = Math.max(1, ...chartRows.flatMap(r => [r.income, r.expense, Math.abs(r.net)]));
 
   return (
@@ -3217,6 +3274,99 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
               ))}
             </div>
             <div className="chart-legend"><span className="income"></span>Tiền vào <span className="expense"></span>Tiền ra <span className="net-positive"></span>Ròng</div>
+          </div>
+
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">⚡💧 Điện nước theo tháng thu tiền</h3>
+            <p className="small muted" style={{ marginBottom: '12px' }}>Tổng hợp từ phiếu thu tháng của toàn bộ các phòng trong kỳ đã chọn.</p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tháng thu</th>
+                    <th>Số phòng</th>
+                    <th>Số điện (kWh)</th>
+                    <th>Tiền điện</th>
+                    <th>Số nước (m³)</th>
+                    <th>Tiền nước</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {utilityRows.map(row => (
+                    <tr key={row.key}>
+                      <td><b>{row.key}</b></td>
+                      <td>{row.roomCount}</td>
+                      <td style={{ fontWeight: '700', color: 'var(--warning)' }}>{formatLocaleNumber(Math.round(row.electricUsed * 100) / 100)}</td>
+                      <td>{formatMoney(row.electricAmount)}</td>
+                      <td style={{ fontWeight: '700', color: 'var(--success)' }}>{formatLocaleNumber(Math.round(row.waterUsed * 100) / 100)}</td>
+                      <td>{formatMoney(row.waterAmount)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td><b>Tổng kỳ</b></td>
+                    <td>—</td>
+                    <td><b>{formatLocaleNumber(Math.round(utilityTotals.electricUsed * 100) / 100)}</b></td>
+                    <td><b>{formatMoney(utilityTotals.electricAmount)}</b></td>
+                    <td><b>{formatLocaleNumber(Math.round(utilityTotals.waterUsed * 100) / 100)}</b></td>
+                    <td><b>{formatMoney(utilityTotals.waterAmount)}</b></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">📑 Giá trị & tiến độ thực hiện hợp đồng</h3>
+            <p className="small muted" style={{ marginBottom: '12px' }}>Giá trị dự kiến gồm tiền phòng và dịch vụ cố định trong thời hạn hợp đồng. Điện, nước và chi phí khác là số thực tế đã phát sinh trên phiếu thu.</p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Phòng / Khách thuê</th>
+                    <th>Thời hạn</th>
+                    <th>Tiến độ</th>
+                    <th>Tiền phòng dự kiến</th>
+                    <th>Dịch vụ dự kiến</th>
+                    <th>Giá trị hợp đồng dự kiến</th>
+                    <th>Điện đã phát sinh</th>
+                    <th>Nước đã phát sinh</th>
+                    <th>Chi phí khác</th>
+                    <th>Tổng đã lập phiếu</th>
+                    <th>Đã thu</th>
+                    <th>Còn phải thu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contractValueRows.map(row => (
+                    <tr key={row.contract.id}>
+                      <td>
+                        <b>P{row.contract.roomId}</b><br />
+                        <span className="small muted">{row.tenant?.name || 'Chưa cập nhật'}</span><br />
+                        <span className="small muted">CCCD: {row.tenant?.cccd || 'Chưa cập nhật'}</span><br />
+                        <span className="small muted">Số HĐ: {row.contract.contractNo || row.contract.id}</span>
+                      </td>
+                      <td><span className="small">{formatBusinessDate(row.contract.startDate)} → {formatBusinessDate(row.contract.endDate)}</span><br /><b>{row.durationMonths} tháng</b></td>
+                      <td style={{ minWidth: '120px' }}>
+                        <div style={{ height: '8px', borderRadius: '999px', background: 'rgba(148,163,184,.25)', overflow: 'hidden' }}>
+                          <div style={{ width: `${row.progress}%`, height: '100%', background: 'var(--primary-gradient)' }}></div>
+                        </div>
+                        <b className="small">{row.progress.toFixed(0)}%</b>
+                      </td>
+                      <td>{formatMoney(row.plannedRent)}</td>
+                      <td>{formatMoney(row.plannedServices)}<br /><span className="small muted">Đã lập: {formatMoney(row.actualServices)}</span></td>
+                      <td><b>{formatMoney(row.plannedValue)}</b></td>
+                      <td>{formatMoney(row.electricAmount)}</td>
+                      <td>{formatMoney(row.waterAmount)}</td>
+                      <td>{formatMoney(row.otherAmount)}</td>
+                      <td><b>{formatMoney(row.billedAmount)}</b></td>
+                      <td><b className="success">{formatMoney(row.paidAmount)}</b></td>
+                      <td><b className={row.debt > 0 ? 'danger' : 'success'}>{formatMoney(row.debt)}</b></td>
+                    </tr>
+                  ))}
+                  {contractValueRows.length === 0 && <tr><td colSpan="12" className="center muted" style={{ padding: '24px' }}>Chưa có hợp đồng đang thực hiện.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Cảnh báo */}
