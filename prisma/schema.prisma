@@ -93,6 +93,8 @@ model Receipt {
   waterUsed      Float
   waterAmount    Float
   other          Int
+  otherType      String?
+  otherNote      String?
   total          Int
   paidAmount     Int
   adjustmentDueAmount Int?

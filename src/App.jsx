@@ -1064,6 +1064,8 @@ function createMonthlyReceipt(room, contract, previousReceipt, month, billingCon
     waterUsed: 0,
     waterAmount: 0,
     other,
+    otherType: other > 0 ? 'other' : '',
+    otherNote: '',
     total: rent + fixedServices + other,
     paidAmount: 0,
     debt: rent + fixedServices + other,
@@ -1223,6 +1225,24 @@ function getReceiptPaymentState(receipt) {
   if (total > 0 && paidAmount >= total) return { status: 'Đã thanh toán', debt: 0, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: true, isPartial: false, isAdjustment: false };
   if (paidAmount > 0) return { status: 'Nợ một phần', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: true, isAdjustment: false };
   return { status: 'Chưa thanh toán', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: false, isAdjustment: false };
+}
+
+const OTHER_RECEIPT_TYPES = [
+  { value: 'other', label: 'Phụ phí khác', icon: '➕' },
+  { value: 'deposit', label: 'Tiền cọc', icon: '🔐' },
+  { value: 'discount', label: 'Giảm trừ', icon: '➖' },
+  { value: 'repair', label: 'Phí sửa chữa', icon: '🛠️' },
+  { value: 'cleaning', label: 'Phí vệ sinh', icon: '🧹' },
+  { value: 'compensation', label: 'Bồi thường', icon: '⚠️' }
+];
+
+function getOtherReceiptType(receipt) {
+  return OTHER_RECEIPT_TYPES.find(item => item.value === receipt?.otherType) || OTHER_RECEIPT_TYPES[0];
+}
+
+function getOtherReceiptLabel(receipt) {
+  const type = getOtherReceiptType(receipt);
+  return `${type.icon} ${receipt?.otherNote?.trim() || type.label}`;
 }
 
 function App() {
@@ -2077,7 +2097,9 @@ function AppMain() {
             'Nước dùng': r.waterUsed,
             'Đơn giá nước': r.waterPrice || (data.rooms.find(rm => rm.id === r.roomId)?.waterPrice),
             'Tiền nước': r.waterAmount,
-            'Phụ phí': r.other || 0,
+            'Loại khoản khác': getOtherReceiptType(r).label,
+            'Nội dung khoản khác': r.otherNote || '',
+            'Khoản khác': r.other || 0,
             'Tổng tiền': r.total,
             'Đã thanh toán': r.paidAmount || 0,
             'Còn nợ': r.total - (r.paidAmount || 0),
@@ -4138,12 +4160,27 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
                       <td className="small">{formatMoney(r.waterAmount || 0)}</td>
 
                       <td>
+                        <div style={{ display: 'grid', gap: '6px', minWidth: '150px' }}>
+                          <select
+                            value={r.otherType || 'other'}
+                            onChange={e => handleUpdateWithWarning({ ...r, otherType: e.target.value })}
+                            style={{ height: '30px', padding: '0 8px', fontSize: '12px' }}
+                          >
+                            {OTHER_RECEIPT_TYPES.map(type => <option key={type.value} value={type.value}>{type.icon} {type.label}</option>)}
+                          </select>
+                          <input
+                            value={r.otherNote || ''}
+                            onChange={e => handleUpdateWithWarning({ ...r, otherNote: e.target.value })}
+                            placeholder="Nội dung khoản khác"
+                            style={{ height: '30px', padding: '0 8px', fontSize: '12px' }}
+                          />
                         <input 
                           type="number" 
                           value={r.other} 
                           onChange={e => handleUpdateWithWarning(recalculateReceipt({ ...r, other: e.target.value }, room))} 
-                          style={{ width: '80px', height: '32px', padding: '0 8px' }} 
+                            style={{ height: '32px', padding: '0 8px' }}
                         />
+                        </div>
                       </td>
                       <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{formatMoney(r.total)}</td>
                       <td>
@@ -6489,7 +6526,7 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport })
   const wOld = getWaterOld(receipt);
   const wNew = getWaterNew(receipt);
   const transferOldUtility = receipt.transferOldRoomUtility;
-  const extraOther = Math.max(0, Number(receipt.other || 0) - Number(transferOldUtility?.total || 0));
+  const extraOther = Number(receipt.other || 0) - Number(transferOldUtility?.total || 0);
   const hasTransferBreakdown = isMonthly && transferOldUtility;
   const showCurrentElectric = !hasTransferBreakdown || Number(receipt.electricAmount || 0) > 0 || Number(receipt.electricUsed || 0) > 0;
   const showCurrentWater = !hasTransferBreakdown || Number(receipt.waterAmount || 0) > 0 || Number(receipt.waterUsed || 0) > 0;
@@ -6638,11 +6675,11 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport })
                 )}
               </div>
 
-              {extraOther > 0 && (
+              {extraOther !== 0 && (
                 <div className="receipt-charge-group">
                   <div className="group-title">{hasTransferBreakdown ? 'III. Khoản phát sinh khác' : 'Khoản phát sinh khác'}</div>
                   <div className="charge-row-v4">
-                    <div className="row-main"><span className="name">➕ Phụ phí khác</span><span className="amount">{formatMoney(extraOther)}</span></div>
+                    <div className="row-main"><span className="name">{getOtherReceiptLabel(receipt)}</span><span className="amount">{formatMoney(extraOther)}</span></div>
                   </div>
                 </div>
               )}
@@ -6723,7 +6760,7 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
   const isMonthly = displayReceipt.type === 'monthly';
   const isRenewalAdjustment = displayReceipt.type === 'renewal_adjustment';
   const transferOldUtility = displayReceipt.transferOldRoomUtility;
-  const extraOther = Math.max(0, Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0));
+  const extraOther = Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0);
   const showCurrentElectric = !transferOldUtility || Number(displayReceipt.electricAmount || 0) > 0 || Number(displayReceipt.electricUsed || 0) > 0;
   const showCurrentWater = !transferOldUtility || Number(displayReceipt.waterAmount || 0) > 0 || Number(displayReceipt.waterUsed || 0) > 0;
   const settlementReport = !isMonthly
@@ -6787,7 +6824,7 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
                   </tr>
                 </>
               )}
-              {extraOther > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>Phụ phí khác</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
+              {extraOther !== 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>{getOtherReceiptLabel(displayReceipt)}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{displayReceipt.otherNote || '-'}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
             </>
           ) : isRenewalAdjustment ? (
             <>
