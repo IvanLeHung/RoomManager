@@ -1883,6 +1883,41 @@ function AppMain() {
         contractId: targetMembership?.contractId || roomOrTenant.contractId || '',
         roomId: targetMembership?.roomId || roomOrTenant.roomId || ''
       });
+    } else if (type === 'leave_roommate') {
+      const membershipId = roomOrTenant.membershipId;
+      const tenantName = roomOrTenant.name || 'người ở cùng';
+      const tenantId = roomOrTenant.id;
+      const membership = (data.memberships || []).find(m => m.id === membershipId);
+      if (!membership || membership.role === 'primary') {
+        alert('Chỉ có thể chuyển đi riêng với người ở cùng. Người đứng tên cần dùng luồng trả phòng hoặc đổi người đại diện.');
+        return;
+      }
+      const defaultDate = new Date().toISOString().slice(0, 10);
+      const leftDate = window.prompt(`Nhập ngày ${tenantName} chuyển đi (YYYY-MM-DD):`, defaultDate);
+      if (!leftDate) return;
+      if (!parseDateFlexible(leftDate)) {
+        alert('Ngày chuyển đi không hợp lệ.');
+        return;
+      }
+      if (!window.confirm(`Xác nhận ${tenantName} chuyển đi khỏi phòng ${membership.roomId} ngày ${formatDisplayDate(leftDate)}?`)) return;
+      setData(old => {
+        const updatedMemberships = (old.memberships || []).map(m =>
+          m.id === membershipId ? { ...m, status: 'ended', leftDate } : m
+        );
+        const stillActiveElsewhere = updatedMemberships.some(m => m.tenantId === tenantId && m.status === 'active');
+        const updatedTenants = (old.tenants || []).map(t => {
+          if (t.id !== tenantId) return t;
+          return {
+            ...t,
+            status: stillActiveElsewhere ? (t.status || 'active') : 'moved_out',
+            lastRoomId: membership.roomId,
+            fingerprintStatus: t.fingerprintCode ? 'Cần xóa' : (t.fingerprintStatus || 'Chưa đăng ký')
+          };
+        });
+        return { ...old, memberships: updatedMemberships, tenants: updatedTenants };
+      });
+      const tenant = (data.tenants || []).find(t => t.id === tenantId);
+      alert(`Đã ghi nhận ${tenantName} chuyển đi.${tenant?.fingerprintCode ? `\nNhắc admin: cần xóa vân tay ${tenant.fingerprintCode}.` : ''}`);
     } else if (type === 'renew_contract') {
       const roomId = roomOrTenant.id || roomOrTenant.roomId;
       const activeContract = roomOrTenant.contractId
@@ -2421,7 +2456,7 @@ function AppMain() {
           onClose={() => setSelectedRoom(null)} 
           onAction={(type, arg) => { 
             handleAction(type, arg || selectedRoom); 
-            if (!['add_roommate', 'edit_tenant'].includes(type)) setSelectedRoom(null);
+            if (!['add_roommate', 'edit_tenant', 'leave_roommate'].includes(type)) setSelectedRoom(null);
           }}
           onAddRoommate={(result) => {
             const { tenant, membership } = result;
@@ -4618,7 +4653,10 @@ function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
                   <div className="row-actions">
                     {m.tenant?.fingerprintStatus === 'Cần xóa' && <span className="status-badge-liquid debt">Cần xóa vân tay</span>}
                     <span className={`status-badge-liquid ${m.status === 'active' ? 'active' : 'vacant'}`}>{m.status === 'active' ? 'Đang ở' : 'Đã rời đi'}</span>
-                    {m.tenant && <button className="secondary-btn sm" onClick={() => onAction('edit_tenant', m.tenant)}>Sửa</button>}
+                    {m.tenant && <button className="secondary-btn sm" onClick={() => onAction('edit_tenant', { ...m.tenant, membershipId: m.id, contractId: m.contractId, roomId: m.roomId, role: m.role })}>Sửa</button>}
+                    {m.tenant && m.role !== 'primary' && m.status === 'active' && (
+                      <button className="secondary-btn sm danger" onClick={() => onAction('leave_roommate', { ...m.tenant, membershipId: m.id, contractId: m.contractId, roomId: m.roomId, role: m.role })}>Chuyển đi</button>
+                    )}
                   </div>
                 </div>
               ))}
