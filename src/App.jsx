@@ -1173,7 +1173,7 @@ function recalculateReceipt(receipt, room) {
     Number(receipt.fixedServices || 0) +
     electricAmount +
     waterAmount +
-    Number(receipt.other || 0);
+    getBillableOtherAmount(receipt);
 
   const paidAmount = Number(receipt.paidAmount || 0);
   const debt = Math.max(0, total - paidAmount);
@@ -1243,6 +1243,18 @@ function getOtherReceiptType(receipt) {
 function getOtherReceiptLabel(receipt) {
   const type = getOtherReceiptType(receipt);
   return `${type.icon} ${receipt?.otherNote?.trim() || type.label}`;
+}
+
+function isInformationalDepositReceiptLine(receipt) {
+  return receipt?.otherType === 'deposit';
+}
+
+function getBillableOtherAmount(receipt) {
+  return isInformationalDepositReceiptLine(receipt) ? 0 : Number(receipt?.other || 0);
+}
+
+function getReceiptContractDeposit(receipt, contract) {
+  return Number(contract?.deposit ?? receipt?.contractDeposit ?? 0);
 }
 
 function App() {
@@ -4198,7 +4210,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
                         <div style={{ display: 'grid', gap: '6px', minWidth: '150px' }}>
                           <select
                             value={r.otherType || 'other'}
-                            onChange={e => handleUpdateWithWarning({ ...r, otherType: e.target.value })}
+                            onChange={e => handleUpdateWithWarning(recalculateReceipt({ ...r, otherType: e.target.value }, room))}
                             style={{ height: '30px', padding: '0 8px', fontSize: '12px' }}
                           >
                             {OTHER_RECEIPT_TYPES.map(type => <option key={type.value} value={type.value}>{type.icon} {type.label}</option>)}
@@ -6363,6 +6375,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
     status: paymentState.status
   };
   const isMonthly = receipt.type === 'monthly';
+  const contract = (data.contracts || []).find(c => c.id === displayReceipt.contractId);
   const tenant = getTenantForReceipt(data, displayReceipt) || { name: '—', phone: '—' };
   const settlementReport = !isMonthly
     ? (data.moveOutReports || []).find(report => report.contractId === displayReceipt.contractId && report.roomId === displayReceipt.roomId)
@@ -6478,6 +6491,7 @@ function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }
             receipt={displayReceipt}
             room={room} 
             tenant={tenant} 
+            contract={contract}
             bankInfo={bankInfo} 
             settlementReport={settlementReport}
           />
@@ -6554,7 +6568,7 @@ function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
   </div>;
 }
 
-function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport }) {
+function PrintableReceipt({ receipt, room, tenant, contract, bankInfo, settlementReport }) {
   const isMonthly = receipt.type === 'monthly';
   const isRenewalAdjustment = receipt.type === 'renewal_adjustment';
   const paymentState = getReceiptPaymentState(receipt);
@@ -6564,7 +6578,10 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport })
   const wOld = getWaterOld(receipt);
   const wNew = getWaterNew(receipt);
   const transferOldUtility = receipt.transferOldRoomUtility;
-  const extraOther = Number(receipt.other || 0) - Number(transferOldUtility?.total || 0);
+  const informationalDepositAmount = isInformationalDepositReceiptLine(receipt)
+    ? Number(receipt.other || 0)
+    : getReceiptContractDeposit(receipt, contract);
+  const extraOther = getBillableOtherAmount(receipt) - Number(transferOldUtility?.total || 0);
   const hasTransferBreakdown = isMonthly && transferOldUtility;
   const showCurrentElectric = !hasTransferBreakdown || Number(receipt.electricAmount || 0) > 0 || Number(receipt.electricUsed || 0) > 0;
   const showCurrentWater = !hasTransferBreakdown || Number(receipt.waterAmount || 0) > 0 || Number(receipt.waterUsed || 0) > 0;
@@ -6608,6 +6625,13 @@ function PrintableReceipt({ receipt, room, tenant, bankInfo, settlementReport })
         <p><b>Khách thuê:</b> {tenant.name} • <b>SĐT:</b> {tenant.phone}</p>
         <p><b>Ghi chú:</b> {receipt.note || 'Vui lòng thanh toán trong vòng 5 ngày kể từ ngày nhận phiếu. Xin cảm ơn!'}</p>
       </div>
+
+      {isMonthly && informationalDepositAmount > 0 && (
+        <div className="receipt-tenant-note-v4" style={{ border: '1px solid #dbeafe', background: '#eff6ff' }}>
+          <p><b>Thông tin cọc hợp đồng:</b> {formatMoney(informationalDepositAmount)}</p>
+          <p><b>Lưu ý:</b> Khoản cọc chỉ ghi nhận để theo dõi hợp đồng, không cộng vào tổng tiền phiếu tháng.</p>
+        </div>
+      )}
 
       <div className="receipt-body-v4">
         <div className="receipt-items-section">
@@ -6798,7 +6822,10 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
   const isMonthly = displayReceipt.type === 'monthly';
   const isRenewalAdjustment = displayReceipt.type === 'renewal_adjustment';
   const transferOldUtility = displayReceipt.transferOldRoomUtility;
-  const extraOther = Number(displayReceipt.other || 0) - Number(transferOldUtility?.total || 0);
+  const informationalDepositAmount = isInformationalDepositReceiptLine(displayReceipt)
+    ? Number(displayReceipt.other || 0)
+    : getReceiptContractDeposit(displayReceipt, contract);
+  const extraOther = getBillableOtherAmount(displayReceipt) - Number(transferOldUtility?.total || 0);
   const showCurrentElectric = !transferOldUtility || Number(displayReceipt.electricAmount || 0) > 0 || Number(displayReceipt.electricUsed || 0) > 0;
   const showCurrentWater = !transferOldUtility || Number(displayReceipt.waterAmount || 0) > 0 || Number(displayReceipt.waterUsed || 0) > 0;
   const settlementReport = !isMonthly
@@ -6808,6 +6835,7 @@ function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
     <div className="receipt-page" style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'serif', position: 'relative', borderBottom: '1px dashed #eee' }}>
       <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIẾU THU TIỀN PHÒNG' : isRenewalAdjustment ? 'PHIẾU THU ĐIỀU CHỈNH GIA HẠN' : 'PHIẾU CHỐT TẤT TOÁN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `Tháng ${displayReceipt.month}` : isRenewalAdjustment ? `Áp dụng tháng ${displayReceipt.month}` : 'Quyết toán trả phòng'}</p></div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><p>Phòng: <b>{getTransferRoomLabel(displayReceipt)}</b></p><p>Khách thuê: <b>{tenant.name}</b></p><p>Ngày lập: {new Date(displayReceipt.createdAt).toLocaleDateString('vi-VN')}</p></div><div style={{ textAlign: 'right' }}><p>Trạng thái: <b>{displayReceipt.status}</b></p></div></div>
+      {isMonthly && informationalDepositAmount > 0 && <div style={{ border: '1px solid #bfdbfe', background: '#eff6ff', padding: '8px 10px', marginBottom: '14px', fontSize: '13px' }}><b>Thông tin cọc hợp đồng:</b> {formatMoney(informationalDepositAmount)}. Khoản này chỉ để theo dõi hợp đồng, không cộng vào tổng tiền phiếu tháng.</div>}
       <table className="contract-table" style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
         <thead><tr style={{ background: '#f8fafc' }}><th style={{ border: '1px solid black', padding: '8px' }}>Nội dung</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Chỉ số</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Thành tiền</th></tr></thead>
         <tbody>
