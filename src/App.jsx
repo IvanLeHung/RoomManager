@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 114729)
-Total output lines: 7636
-
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import './styles.css';
@@ -3532,7 +3529,960 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced, cloudEn
                       <td><b className="success">{formatMoney(row.paidAmount)}</b></td>
                       <td><b className={row.debt > 0 ? 'danger' : 'success'}>{formatMoney(row.debt)}</b></td>
                     </tr>
-          …14729 tokens truncated…b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
+                  ))}
+                  {contractValueRows.length === 0 && <tr><td colSpan="12" className="center muted" style={{ padding: '24px' }}>Chưa có hợp đồng đang thực hiện.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Cảnh báo */}
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">⚠️ Cảnh báo & Nhắc nhở</h3>
+            <div className="alert-list stack" style={{ gap: '12px' }}>
+              {stats.expiringContracts.length > 0 && (
+                <div className="alert-item warning" style={{ alignItems: 'flex-start' }}>
+                  <span>📄 <b>{expiringAlerts.length} hợp đồng sắp hết hạn cần xử lý</b></span>
+                  <div className="stack" style={{ gap: '8px', marginTop: '8px', width: '100%' }}>
+                    {expiringAlerts.map(item => (
+                      <div key={item.contract.id} className="actionable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', paddingTop: '8px', borderTop: '1px solid rgba(146, 64, 14, 0.15)' }}>
+                        <div className="alert-content">
+                          <b>P{item.roomId} • {item.tenant?.name || 'Chưa rõ khách'} • {formatBusinessDate(item.contract.endDate)}</b>
+                          <small>
+                            {item.daysLeft < 0
+                              ? `Đã hết hạn ${Math.abs(item.daysLeft)} ngày`
+                              : item.daysLeft === 0
+                                ? 'Hết hạn hôm nay'
+                                : `Còn ${item.daysLeft} ngày`}
+                          </small>
+                        </div>
+                        <div className="alert-actions">
+                          <button className="secondary-btn sm" onClick={() => onAction('view_room', { id: item.roomId })}>Xem phòng</button>
+                          <button className="primary-btn sm" onClick={() => onAction('renew_contract', { roomId: item.roomId, contractId: item.contract.id })}>Gia hạn</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {stats.unpaidReceipts.length > 0 && (
+                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
+                  <span>💸 <b>{stats.unpaidReceipts.length} phòng chưa đóng tiền tháng {currentMonth}</b></span>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
+                    {stats.unpaidReceipts
+                      .map(r => ({ ...r, debt: getReceiptPaymentState(r).debt }))
+                      .sort((a, b) => Number(b.debt || 0) - Number(a.debt || 0))
+                      .map(r => (
+                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                          <span>• Phòng P{r.roomId}</span>
+                          <b>{formatMoney(r.debt)}</b>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+              {stats.notifyingMoveOut.length > 0 && (
+                <div className="alert-item notice">
+                  <span>🚪 {stats.notifyingMoveOut.length} phòng đang báo chuyển: </span>
+                  <b>{stats.notifyingMoveOut.map(c => c.roomId).join(', ')}</b>
+                </div>
+              )}
+              {stats.vacantRooms > 0 && (
+                <div className="alert-item secondary">
+                  <span>✨ Đang có {stats.vacantRooms} phòng trống sẵn sàng cho thuê.</span>
+                </div>
+              )}
+              {topDebtRooms.length > 0 && (
+                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
+                  <span>📌 <b>Top nợ</b></span>
+                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
+                    {topDebtRooms.map((r, index) => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                        <span>{index + 1}. Phòng P{r.roomId}</span>
+                        <b>{formatMoney(r.debt)}</b>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {stats.expiringContracts.length === 0 && stats.unpaidReceipts.length === 0 && stats.notifyingMoveOut.length === 0 && (
+                <p className="muted center">Hiện tại không có cảnh báo nào.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Vận hành nhanh */}
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">⚡ Vận hành nhanh</h3>
+            <div className="quick-actions-grid">
+              <button className="action-btn" onClick={() => onAction('create_receipt_all')}>
+                <span className="icon">🧾</span>
+                <span>Tạo phiếu tháng</span>
+              </button>
+              <button className="action-btn" onClick={() => onAction('add_new_rental')}>
+                <span className="icon">🔑</span>
+                <span>Thuê mới</span>
+              </button>
+              <button className="action-btn" onClick={() => onAction('view_payments_all')}>
+                <span className="icon">💰</span>
+                <span>Lịch sử thanh toán</span>
+              </button>
+              <button className="action-btn" style={{ background: 'var(--primary-gradient)', color: 'white' }} onClick={() => onAction('export_excel')}>
+                <span className="icon">📊</span>
+                <span>Xuất Excel</span>
+              </button>
+              <button className="action-btn" onClick={() => onAction('export_license_plates')}>
+                <span className="icon">🏍️</span>
+                <span>Biển kiểm soát xe</span>
+              </button>
+              <button className="action-btn" onClick={() => onAction('export_json')}>
+                <span className="icon">🧩</span>
+                <span>Xuất JSON backup</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="stack" style={{ gap: '24px' }}>
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">💵 Dòng tiền</h3>
+            <div className="cashflow-list">
+              <div><span>Tiền vào</span><b className="success">{formatMoney(paidRevenue)}</b></div>
+              <div><span>Tiền ra</span><b className="danger">{formatMoney(expenses)}</b></div>
+              <div><span>Dòng tiền ròng</span><b className={netCash >= 0 ? 'success' : 'danger'}>{formatMoney(netCash)}</b></div>
+              <div><span>Công nợ còn lại</span><b>{formatMoney(unpaidRevenue)}</b></div>
+            </div>
+          </div>
+
+          {/* Danh sách nhanh */}
+          <div className="widget liquid-glass">
+            <h3 className="form-section-title">📅 Gần đây</h3>
+            <div className="quick-tabs">
+              <div className="quick-list-section">
+                <p className="op-label uppercase" style={{ marginBottom: '10px' }}>5 phiếu thu mới nhất</p>
+                <div className="mini-list stack" style={{ gap: '8px' }}>
+                  {recentReceipts.map(r => (
+                    <div key={r.id} className="mini-list-item">
+                      <span>P{r.roomId} - {r.month}</span>
+                      <b>{formatMoney(r.total)}</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="quick-list-section" style={{ marginTop: '20px' }}>
+                <p className="op-label uppercase" style={{ marginBottom: '10px' }}>5 hợp đồng sắp hết hạn</p>
+                <div className="mini-list stack" style={{ gap: '8px' }}>
+                  {stats.expiringContracts.slice(0, 5).map(c => (
+                    <div key={c.id} className="mini-list-item">
+                      <span>P{c.roomId}</span>
+                      <b className="danger">{formatBusinessDate(c.endDate)}</b>
+                    </div>
+                  ))}
+                  {stats.expiringContracts.length === 0 && <p className="small muted">Không có hợp đồng nào sắp hết hạn.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoomsTab({ data, onAction, onSelect, query }) {
+  const [caseFilter, setCaseFilter] = useState('all');
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
+  const currentMonth = getCurrentMonthLabel();
+  const roomCards = useMemo(() => {
+    const q = query.toLowerCase();
+    return (data.rooms || []).map(room => {
+      const statusInfo = getRoomStatusInfo(data, room.id);
+      const { label, color, contract, ownerOccupied } = statusInfo;
+      const roomActiveMember = (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active' && m.role === 'primary')
+        || (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active');
+      const primaryTenant = contract
+        ? (getPrimaryTenantByContract(data, contract.id) || (roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null))
+        : roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null;
+      const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
+      const debt = currentReceipt ? getReceiptPaymentState(currentReceipt).debt : 0;
+      const caseType = ownerOccupied ? 'owner' : label === 'Trống' ? 'vacant' : debt > 0 ? 'debt' : 'occupied';
+      return { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType };
+    }).filter(item => item.room.id.toLowerCase().includes(q));
+  }, [data, query, currentMonth]);
+
+  const caseOptions = [
+    ['all', 'Tất cả', roomCards.length],
+    ['occupied', 'Đang ở', roomCards.filter(r => r.caseType === 'occupied').length],
+    ['debt', 'Đang nợ', roomCards.filter(r => r.caseType === 'debt').length],
+    ['vacant', 'Trống', roomCards.filter(r => r.caseType === 'vacant').length],
+    ['owner', 'Chủ nhà', roomCards.filter(r => r.caseType === 'owner').length],
+  ];
+  const visibleRooms = caseFilter === 'all' ? roomCards : roomCards.filter(r => r.caseType === caseFilter);
+  const selectedCard = visibleRooms.find(r => r.room.id === selectedRoomId) || null;
+
+  const renderActionButtons = ({ room, label, contract, ownerOccupied, currentReceipt }) => (
+    label === 'Trống' ? (
+      <>
+        <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('add_tenant', room); }}>+ Thêm khách</button>
+        <button className="secondary-btn" title="Xem lịch sử" onClick={(e) => { e.stopPropagation(); onAction('view_history', room); }}>📜</button>
+      </>
+    ) : (
+      <>
+        <button className="secondary-btn" title={ownerOccupied && !contract ? 'Không cần hợp đồng' : 'Xem hợp đồng'} onClick={(e) => { e.stopPropagation(); ownerOccupied && !contract ? setSelectedRoomId(room.id) : onAction('view_contract', room); }}>📄</button>
+        {!ownerOccupied && <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('create_receipt', room); }}>{currentReceipt ? 'Sửa phiếu' : 'Lập phiếu'}</button>}
+      </>
+    )
+  );
+
+  return (
+    <div className={`rooms-panel character-select ${selectedCard ? 'has-selection' : ''}`}>
+      <div className="room-case-tabs">
+        {caseOptions.map(([id, text, count]) => (
+          <button key={id} className={caseFilter === id ? 'active' : ''} onClick={() => { setCaseFilter(id); setSelectedRoomId(null); }}>
+            <span>{text}</span><b>{count}</b>
+          </button>
+        ))}
+      </div>
+      <div className="character-select-layout">
+        <div className="room-roster">
+          {visibleRooms.map(({ room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType }) => {
+            const statusText = ownerOccupied ? 'Chủ nhà' : label;
+            const receiptLabel = ownerOccupied ? 'Không lập phiếu' : debt > 0 ? `Nợ ${formatMoney(debt)}` : currentReceipt ? 'Đã thanh toán' : 'Chưa có phiếu';
+            const isSelected = selectedRoomId === room.id;
+            return (
+              <div key={room.id} className={`room-card-liquid compact character-card ${caseType} ${isSelected ? 'selected' : ''}`} onClick={() => setSelectedRoomId(isSelected ? null : room.id)}>
+                <div className="room-header">
+                  <span className="room-id">P{room.id}</span>
+                  <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
+                </div>
+                <div className="room-body">
+                  {primaryTenant ? (
+                    <div className="tenant-block-primary">
+                      <p className="tenant-name-main">{primaryTenant.name}</p>
+                      <div className="room-card-meta">
+                        <span>{ownerOccupied && !contract ? 'Chủ nhà ở' : formatMoney(contract?.rent || room.rent || 0)}</span>
+                        <b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b>
+                      </div>
+                    </div>
+                  ) : <p className="muted">Phòng đang trống</p>}
+                </div>
+                {!selectedCard && <div className="btn-group">{renderActionButtons({ room, label, contract, ownerOccupied, currentReceipt })}</div>}
+              </div>
+            );
+          })}
+          {!visibleRooms.length && <div className="empty-state-inline">Không có phòng phù hợp với bộ lọc này.</div>}
+        </div>
+
+        {selectedCard && (() => {
+          const { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType } = selectedCard;
+          const activeMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
+          const occupantCount = contract ? getContractOccupantCount(data, contract) : activeMembers.length;
+          const fixedServices = fixedServiceTotal(room, occupantCount || (primaryTenant ? 1 : 0));
+          const latestReceipt = currentReceipt || (data.receipts || []).filter(r => r.roomId === room.id).sort((a, b) => new Date(b.createdAt || b.savedAt || 0) - new Date(a.createdAt || a.savedAt || 0))[0];
+          const statusText = ownerOccupied ? 'Chủ nhà' : label;
+          const receiptLabel = ownerOccupied ? 'Không lập phiếu' : debt > 0 ? `Nợ ${formatMoney(debt)}` : currentReceipt ? 'Đã thanh toán' : 'Chưa có phiếu';
+          return (
+            <aside className={`character-detail ${caseType}`}>
+              <div className="character-detail-hero">
+                <div>
+                  <span className="detail-eyebrow">Phòng được chọn</span>
+                  <h2>P{room.id}</h2>
+                  <p>{primaryTenant?.name || 'Phòng đang trống'}</p>
+                </div>
+                <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
+              </div>
+
+              <div className="detail-stat-grid">
+                <div><span>Giá thuê</span><b>{formatMoney(contract?.rent || room.rent || 0)}</b></div>
+                <div><span>Tiền cọc</span><b>{formatMoney(contract?.deposit || room.deposit || 0)}</b></div>
+                <div><span>Công nợ</span><b className={debt > 0 ? 'danger' : 'success'}>{formatMoney(debt)}</b></div>
+                <div><span>Thanh toán</span><b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b></div>
+              </div>
+
+              <div className="detail-info-list">
+                <div><span>Người thuê</span><b>{primaryTenant?.name || 'Chưa có khách'}</b></div>
+                <div><span>Số điện thoại</span><b>{primaryTenant?.phone || '—'}</b></div>
+                <div><span>Ngày vào</span><b>{formatDisplayDate(activeMembers[0]?.joinedDate || contract?.startDate || '')}</b></div>
+                <div><span>Hết hạn HĐ</span><b>{contract ? formatBusinessDate(contract.endDate) : ownerOccupied ? 'Không cần HĐ' : '—'}</b></div>
+                <div><span>Điện gần nhất</span><b>{latestReceipt ? `${formatLocaleNumber(getElectricOld(latestReceipt))} → ${formatLocaleNumber(getElectricNew(latestReceipt))}` : 'Chưa có'}</b></div>
+                <div><span>Nước gần nhất</span><b>{latestReceipt ? `${formatLocaleNumber(getWaterOld(latestReceipt))} → ${formatLocaleNumber(getWaterNew(latestReceipt))}` : 'Chưa có'}</b></div>
+                <div><span>Dịch vụ cố định</span><b>{formatMoney(fixedServices)}</b></div>
+                <div><span>Ghi chú</span><b>{room.note || '—'}</b></div>
+              </div>
+
+              <div className="character-detail-actions">
+                <button className="primary-btn" onClick={() => onSelect(room)}>Mở chi tiết</button>
+                {!ownerOccupied && <button className="secondary-btn" onClick={() => onAction('create_receipt', room)}>{currentReceipt ? 'Sửa phiếu' : 'Lập phiếu'}</button>}
+                {!ownerOccupied && debt > 0 && currentReceipt && <button className="secondary-btn" onClick={() => onAction('pay_receipt', currentReceipt)}>Thanh toán</button>}
+                <button className="secondary-btn" onClick={() => onAction('view_history', room)}>Lịch sử thuê</button>
+                {label === 'Trống' && <button className="primary-btn" onClick={() => onAction('add_tenant', room)}>Thêm khách</button>}
+                {!ownerOccupied && contract && <button className="secondary-btn danger" onClick={() => onAction('moving_out', room)}>Trả phòng</button>}
+              </div>
+            </aside>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [paymentFilter, setPaymentFilter] = useState('all');
+  const [contractFilter, setContractFilter] = useState('all');
+  const currentMonth = getCurrentMonthLabel();
+
+  const tenantRows = useMemo(() => {
+    return (data.memberships || []).map(m => {
+      const tenant = (data.tenants || []).find(t => t.id === m.tenantId);
+      if (!tenant) return null;
+      const contract = (data.contracts || []).find(c => c.id === m.contractId);
+      const room = (data.rooms || []).find(r => r.id === m.roomId);
+      const receipt = contract ? (data.receipts || []).find(r => r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
+      const debt = receipt ? getReceiptPaymentState(receipt).debt : 0;
+      const contractDaysLeft = contract ? getDaysUntil(contract.endDate) : null;
+      const contractState = !contract || isOwnerOccupiedRoom(room) ? 'none' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'expired' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'expiring' : 'valid';
+      const paymentState = debt > 0 ? 'debt' : receipt ? 'paid' : 'missing';
+      return { tenant, membership: m, contract, room, receipt, debt, contractDaysLeft, contractState, paymentState };
+    }).filter(Boolean).sort((a, b) => String(a.room?.id || a.membership.roomId).localeCompare(String(b.room?.id || b.membership.roomId), 'vi', { numeric: true }));
+  }, [data, currentMonth]);
+
+  const activeRows = tenantRows.filter(r => r.membership.status === 'active');
+  const moveOutThisMonth = (data.moveOutReports || []).filter(r => String(r.actualEndDate || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length;
+  const debtRows = activeRows.filter(r => r.debt > 0);
+  const expiringRows = activeRows.filter(r => r.contractState === 'expiring' || r.contractState === 'expired');
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+
+  const filteredRows = tenantRows.filter(row => {
+    const roomId = String(row.room?.id || row.membership.roomId || '');
+    const searchBlob = `${row.tenant.name || ''} ${row.tenant.phone || ''} ${row.tenant.cccd || ''} ${roomId}`.toLowerCase();
+    if (normalizedQuery && !searchBlob.includes(normalizedQuery)) return false;
+    if (statusFilter === 'active' && row.membership.status !== 'active') return false;
+    if (statusFilter === 'notice' && row.membership.status !== 'notice' && row.contract?.status !== 'notice') return false;
+    if (statusFilter === 'left' && row.membership.status !== 'ended') return false;
+    if (paymentFilter === 'paid' && row.paymentState !== 'paid') return false;
+    if (paymentFilter === 'debt' && row.paymentState !== 'debt') return false;
+    if (paymentFilter === 'missing' && row.paymentState !== 'missing') return false;
+    if (contractFilter === 'expiring' && row.contractState !== 'expiring') return false;
+    if (contractFilter === 'expired' && row.contractState !== 'expired') return false;
+    return true;
+  });
+
+  return (
+    <div className="tenant-crm stack">
+      <div className="tenant-crm-header no-print">
+        <div>
+          <h2>👥 Người thuê</h2>
+          <p className="muted small">Quản lý vòng đời khách thuê: vào ở, hợp đồng, thanh toán và rời đi.</p>
+        </div>
+        <div className="btn-group" style={{ marginTop: 0 }}>
+          <button className="primary-btn" onClick={() => onAction('add_tenant')}>+ Thêm khách</button>
+          <button className="secondary-btn" onClick={() => setQuery('')}>🔎 Xóa tìm kiếm</button>
+          <button className="secondary-btn" onClick={() => onAction('export_excel')}>📊 Xuất Excel</button>
+        </div>
+      </div>
+
+      <div className="tenant-stats-grid">
+        <div className="tenant-stat-card active"><b>{activeRows.length}</b><span>Đang thuê</span><small>+{tenantRows.filter(r => String(r.membership.createdAt || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length} tháng này</small></div>
+        <div className="tenant-stat-card notice"><b>{moveOutThisMonth}</b><span>Rời đi</span><small>{currentMonth}</small></div>
+        <div className="tenant-stat-card debt"><b>{debtRows.length}</b><span>Đang nợ</span><small>{formatMoney(debtRows.reduce((s, r) => s + r.debt, 0))}</small></div>
+        <div className="tenant-stat-card warning"><b>{expiringRows.length}</b><span>HĐ cảnh báo</span><small>Hết hạn / 30 ngày</small></div>
+      </div>
+
+      <div className="tenant-filter-bar no-print">
+        <label>Trạng thái
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+            <option value="active">Đang ở</option>
+            <option value="notice">Sắp rời</option>
+            <option value="left">Đã rời</option>
+            <option value="all">Tất cả</option>
+          </select>
+        </label>
+        <label>Thanh toán
+          <select value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
+            <option value="all">Tất cả</option>
+            <option value="paid">Đã đóng</option>
+            <option value="debt">Đang nợ</option>
+            <option value="missing">Chưa có phiếu</option>
+          </select>
+        </label>
+        <label>Hợp đồng
+          <select value={contractFilter} onChange={e => setContractFilter(e.target.value)}>
+            <option value="all">Tất cả</option>
+            <option value="expiring">Sắp hết hạn</option>
+            <option value="expired">Hết hạn</option>
+          </select>
+        </label>
+        <button className="secondary-btn sm" onClick={() => { setStatusFilter('active'); setPaymentFilter('all'); setContractFilter('all'); }}>Reset lọc</button>
+      </div>
+
+      <div className="widget liquid-glass" style={{ padding: 0 }}>
+        <div className="table-wrap">
+        <table>
+          <thead><tr><th>Người thuê</th><th>Phòng</th><th>Hợp đồng</th><th>Thanh toán</th><th>Ngày vào</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+          <tbody>
+            {filteredRows.map(({ tenant: t, membership: m, contract, room, receipt, debt, contractDaysLeft, contractState, paymentState }) => {
+              const contractText = contractState === 'none' ? 'Không áp dụng' : contractDaysLeft === null ? 'Chưa cập nhật' : contractDaysLeft < 0 ? 'Hết hạn' : `Còn ${contractDaysLeft} ngày`;
+              const contractBadge = contractState === 'valid' ? 'active' : contractState === 'expiring' ? 'notice' : contractState === 'expired' ? 'debt' : 'vacant';
+              const paymentBadge = paymentState === 'paid' ? 'active' : paymentState === 'debt' ? 'debt' : 'notice';
+              const membershipBadge = m.status === 'active' ? 'active' : m.status === 'notice' ? 'notice' : 'vacant';
+              const membershipLabel = m.status === 'active' ? (m.role === 'primary' ? 'Đại diện' : 'Ở cùng') : m.status === 'notice' ? 'Sắp rời' : 'Đã rời';
+              return (
+                <tr key={`${t.id}-${m.id || m.roomId}`}>
+                  <td>
+                    <button className="tenant-identity" onClick={() => onAction('detail', t)}>
+                      <b>👤 {t.name}</b>
+                      <span>📱 {t.phone || 'Chưa có SĐT'}</span>
+                      <span>🪪 {t.cccd || 'Chưa có CCCD'}</span>
+                    </button>
+                  </td>
+                  <td><button className="secondary-btn sm" onClick={() => onAction('view_room', room || { id: m.roomId })}>P{m.roomId}</button></td>
+                  <td>
+                    <div className="tenant-contract-cell">
+                      <span className={`status-badge-liquid ${contractBadge}`}>{contractText}</span>
+                      {contract && <small>{formatBusinessDate(contract.startDate)} → {formatBusinessDate(contract.endDate)}</small>}
+                    </div>
+                  </td>
+                  <td>
+                    <button className={`tenant-payment-pill ${paymentBadge}`} onClick={() => receipt ? onAction('view_qr', receipt) : onAction('create_receipt', room || { id: m.roomId })}>
+                      {paymentState === 'paid' ? `Đã đóng ${receipt?.month || ''}` : paymentState === 'debt' ? `Nợ ${formatMoney(debt)}` : 'Chưa có phiếu'}
+                    </button>
+                  </td>
+                  <td>{formatDisplayDate(m.joinedDate || contract?.startDate || String(m.createdAt || '').slice(0, 10))}</td>
+                  <td><span className={`status-badge-liquid ${membershipBadge}`}>{membershipLabel}</span></td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {contract && <button className="secondary-btn sm" onClick={() => onAction('view_contract', { roomId: m.roomId, contractId: contract.id })}>HĐ</button>}
+                      <button className="secondary-btn sm" onClick={() => onAction('edit_tenant', t)}>Sửa</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {filteredRows.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>Không tìm thấy khách phù hợp.</td></tr>}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onDeleteReceipt, onGoToPayment }) {
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthLabel());
+  const [activeTab, setActiveTab] = useState('entry');
+  const [saveModal, setSaveModal] = useState(null);
+
+  const monthlyReceipts = useMemo(() => (data.receipts || []).filter(r => r.month === selectedMonth && r.type === 'monthly'), [data.receipts, selectedMonth]);
+  const isFinalized = monthlyReceipts.length > 0 && monthlyReceipts.every(r => r.isFinalized);
+
+  function handleBatchCreate() {
+    const billableContracts = getBillableContractsForMonth(data, selectedMonth);
+    if (billableContracts.length === 0) return alert('Không có hợp đồng nào cần lập phiếu trong tháng này.');
+    
+    let createdCount = 0;
+    let skippedCount = 0;
+    const newReceipts = [];
+
+    billableContracts.forEach(contract => {
+      const room = data.rooms.find(r => r.id === contract.roomId);
+      if (!room) return;
+      const exists = (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === selectedMonth && r.type === 'monthly');
+      
+      if (!exists) {
+        const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth, {
+          includeSameMonth: true,
+          excludeSameMonthContractId: contract.id
+        });
+        const billingContext = getMonthlyBillingContext(data, contract, selectedMonth);
+        newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth, billingContext));
+        createdCount++;
+      } else {
+        skippedCount++;
+      }
+    });
+
+    if (newReceipts.length > 0) {
+      if (window.confirm(`Xác nhận tạo ${newReceipts.length} phiếu thu cho tháng ${selectedMonth}?`)) {
+        onBatchCreate(newReceipts);
+        alert(`Đã tạo ${createdCount} phiếu, bỏ qua ${skippedCount} phiếu đã tồn tại.`);
+      }
+    } else {
+      alert(`Tất cả phòng đều đã có phiếu tháng ${selectedMonth}. Bỏ qua ${skippedCount} phiếu.`);
+    }
+  }
+
+  function handleRefreshMonthReadings() {
+    const refreshedReceipts = monthlyReceipts
+      .filter(r => !r.isFinalized)
+      .map(receipt => {
+        const room = data.rooms.find(r => r.id === receipt.roomId);
+        const contract = data.contracts.find(c => c.id === receipt.contractId);
+        if (!room || !contract) return null;
+        const previousReceipt = getPreviousReceiptByRoom(
+          (data.receipts || []).filter(r => r.id !== receipt.id),
+          receipt.roomId,
+          selectedMonth,
+          {
+            includeSameMonth: true,
+            excludeSameMonthContractId: receipt.contractId
+          }
+        );
+        const billingContext = getMonthlyBillingContext(data, contract, selectedMonth);
+        return {
+          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth, billingContext),
+          id: receipt.id,
+          paidAmount: receipt.paidAmount || 0,
+          status: receipt.status || 'Chưa thanh toán',
+          note: receipt.note || ''
+        };
+      })
+      .filter(Boolean);
+
+    if (refreshedReceipts.length === 0) {
+      alert('Không có phiếu chưa lưu nào để làm mới chỉ số.');
+      return;
+    }
+
+    onBatchCreate(refreshedReceipts);
+    alert(`Đã làm mới chỉ số cho ${refreshedReceipts.length} phiếu tháng ${selectedMonth}.`);
+  }
+
+  function handleFinalizeMonth() {
+    if (monthlyReceipts.length === 0) return alert('Không có phiếu nào để lưu.');
+    
+    const finalizedReceipts = monthlyReceipts.map(r => {
+      const paid = r.paidAmount || 0;
+      let status = 'Chưa thanh toán';
+      if (paid >= r.total) status = 'Đã thanh toán';
+      else if (paid > 0) status = 'Nợ một phần';
+
+      return {
+        ...r,
+        isFinalized: true,
+        savedAt: new Date().toISOString(),
+        type: 'monthly',
+        paidAmount: paid,
+        status: status
+      };
+    });
+
+    // Cập nhật lên store
+    finalizedReceipts.forEach(r => onUpdateReceipt(r));
+
+    // Tính toán thống kê cho modal
+    const totalAmount = finalizedReceipts.reduce((sum, r) => sum + r.total, 0);
+    const totalPaid = finalizedReceipts.reduce((sum, r) => sum + r.paidAmount, 0);
+    const unpaidCount = finalizedReceipts.filter(r => r.status !== 'Đã thanh toán').length;
+
+    setSaveModal({
+      month: selectedMonth,
+      count: finalizedReceipts.length,
+      totalAmount,
+      unpaidCount,
+      totalDebt: totalAmount - totalPaid
+    });
+  }
+
+  function handleUpdateWithWarning(updated) {
+    const original = monthlyReceipts.find(r => r.id === updated.id);
+    if (original?.isFinalized) {
+      const isPaid = original.status === 'Đã thanh toán';
+      const msg = isPaid 
+        ? "Phiếu này ĐÃ THANH TOÁN. Thay đổi chỉ số có thể làm lệch lịch sử thu tiền. Bạn vẫn muốn cập nhật?"
+        : "Phiếu tháng này đã được lưu chính thức. Nếu cập nhật chỉ số, tổng tiền và mã QR sẽ thay đổi. Bạn vẫn muốn cập nhật?";
+      
+      if (!window.confirm(msg)) return;
+      const originalState = getReceiptPaymentState(original);
+      if (originalState.isPaid) {
+        updated = {
+          ...updated,
+          adjustmentDueAmount: Number(updated.total || 0),
+          adjustmentPaidAmount: Number(updated.adjustmentPaidAmount || 0),
+          adjustmentCreatedAt: updated.adjustmentCreatedAt || new Date().toISOString(),
+          adjustmentReason: updated.adjustmentReason || 'Phát sinh/chỉnh lại điện nước sau khi phiếu đã thanh toán'
+        };
+      }
+    }
+    onUpdateReceipt(updated);
+  }
+  return (
+    <div className="receipts-tab stack">
+      <div className="widget liquid-glass no-print" style={{ padding: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px', margin: 0 }}>Tháng: <input type="month" value={`${selectedMonth.split('/')[1]}-${selectedMonth.split('/')[0]}`} onChange={e => { const [y, m] = e.target.value.split('-'); setSelectedMonth(`${m}/${y}`); }} style={{ height: '40px' }} /></label>
+            <button className="primary-btn" onClick={handleBatchCreate}>⚡ Tạo hàng loạt</button>
+            <button className="secondary-btn" onClick={handleRefreshMonthReadings}>🔄 Làm mới chỉ số</button>
+            <button className="secondary-btn" onClick={() => onPrintBatch(monthlyReceipts)}>🖨️ In tất cả ({monthlyReceipts.length})</button>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button className="primary-btn" style={{ backgroundColor: '#10b981', boxShadow: '0 4px 12px rgba(16,185,129,0.2)' }} onClick={handleFinalizeMonth}>💾 Lưu dữ liệu</button>
+            <div className="btn-group" style={{ margin: 0 }}>
+              <button className={`secondary-btn ${activeTab === 'entry' ? 'active-tab' : ''}`} onClick={() => setActiveTab('entry')}>Nhập chỉ số</button>
+              <button className={`secondary-btn ${activeTab === 'history' ? 'active-tab' : ''}`} onClick={() => setActiveTab('history')}>Lịch sử & QR</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {isFinalized && (
+        <div className="widget liquid-glass no-print" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid #10b981', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '20px' }}>✅</span>
+            <div>
+              <p style={{ fontWeight: 'bold', margin: 0, color: '#065f46' }}>Phiếu tháng {selectedMonth} đã được lưu.</p>
+              <p className="small muted" style={{ margin: 0 }}>Bạn có thể sang Thanh toán để theo dõi thu tiền, in QR hoặc đánh dấu đã thu.</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+             <button className="secondary-btn sm" onClick={() => onGoToPayment({ month: selectedMonth, type: 'monthly', status: 'all' })}>💰 Đi đến Thanh toán</button>
+             <button className="secondary-btn sm" onClick={() => onPrintBatch(monthlyReceipts)}>🖨️ In tất cả</button>
+          </div>
+        </div>
+      )}
+
+      {saveModal && (
+        <div className="modal" onClick={() => setSaveModal(null)}>
+          <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '450px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
+            <h2 style={{ fontSize: '24px', marginBottom: '8px' }}>Đã lưu phiếu tháng</h2>
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '20px', borderRadius: '16px', margin: '20px 0', textAlign: 'left' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">Tháng</span><b>{saveModal.month}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">Số phiếu</span><b>{saveModal.count}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">Tổng phải thu</span><b>{formatMoney(saveModal.totalAmount)}</b></div>
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '10px 0' }}></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">Phiếu chưa trả</span><b className="danger">{saveModal.unpaidCount}</b></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="muted">Tổng còn nợ</span><b className="danger">{formatMoney(saveModal.totalDebt)}</b></div>
+            </div>
+            
+            <div className="stack" style={{ gap: '10px' }}>
+              <button className="primary-btn wide" onClick={() => { setSaveModal(null); onGoToPayment({ month: selectedMonth, type: 'monthly', status: 'all' }); }}>💰 Đi đến Thanh toán</button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="secondary-btn" style={{ flex: 1 }} onClick={() => onPrintBatch(monthlyReceipts)}>🖨️ In tất cả phiếu</button>
+                <button className="secondary-btn" style={{ flex: 1 }} onClick={() => setSaveModal(null)}>📝 Ở lại nhập chỉ số</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {activeTab === 'entry' ? (
+        <div className="widget liquid-glass" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="table-wrap">
+            <table className="entry-table">
+              <thead>
+                <tr>
+                  <th>Phòng</th>
+                  <th>Chủ phòng</th>
+                  <th style={{ backgroundColor: '#fff7ed' }}>Điện: Chỉ số cũ</th>
+                  <th style={{ backgroundColor: '#fff7ed' }}>Chỉ số mới</th>
+                  <th style={{ backgroundColor: '#fff7ed' }}>Số sử dụng</th>
+                  <th>Tiền điện</th>
+                  <th style={{ backgroundColor: '#f0fdf4' }}>Nước: Chỉ số cũ</th>
+                  <th style={{ backgroundColor: '#f0fdf4' }}>Chỉ số mới</th>
+                  <th style={{ backgroundColor: '#f0fdf4' }}>Số sử dụng</th>
+                  <th>Tiền nước</th>
+                  <th>Phụ phí</th>
+                  <th>Tổng tiền</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyReceipts.sort((a,b) => a.roomId.localeCompare(b.roomId)).map(r => {
+                  const room = data.rooms.find(rm => rm.id === r.roomId);
+                  const tenant = getTenantForReceipt(data, r) || { name: 'N/A' };
+                  
+                  const eOld = r.electricOld ?? r.electricStart ?? 0;
+                  const eNew = r.electricNew ?? r.electricEnd ?? eOld;
+                  const wOld = r.waterOld ?? r.waterStart ?? 0;
+                  const wNew = r.waterNew ?? r.waterEnd ?? wOld;
+
+                  return (
+                    <tr key={r.id}>
+                      <td style={{ fontWeight: '800' }}>P{r.roomId}</td>
+                      <td>{tenant.name}</td>
+                      <td>
+                        <DecimalInput 
+                          value={eOld} 
+                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, electricOld: val }, room))} 
+                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid #e2e8f0', color: 'var(--text-muted)' }} 
+                        />
+                      </td>
+                      <td>
+                        <DecimalInput 
+                          value={eNew} 
+                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, electricNew: val }, room))} 
+                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid var(--warning)' }} 
+                        />
+                      </td>
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--warning)' }}>{r.electricUsed || 0}</td>
+                      <td className="small">{formatMoney(r.electricAmount || 0)}</td>
+                      
+                      <td>
+                        <DecimalInput 
+                          value={wOld} 
+                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, waterOld: val }, room))} 
+                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid #e2e8f0', color: 'var(--text-muted)' }} 
+                        />
+                      </td>
+                      <td>
+                        <DecimalInput 
+                          value={wNew} 
+                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, waterNew: val }, room))} 
+                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid var(--success)' }} 
+                        />
+                      </td>
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--success)' }}>{r.waterUsed || 0}</td>
+                      <td className="small">{formatMoney(r.waterAmount || 0)}</td>
+
+                      <td>
+                        <div style={{ display: 'grid', gap: '6px', minWidth: '150px' }}>
+                          <select
+                            value={r.otherType || 'other'}
+                            onChange={e => handleUpdateWithWarning(recalculateReceipt({ ...r, otherType: e.target.value }, room))}
+                            style={{ height: '30px', padding: '0 8px', fontSize: '12px' }}
+                          >
+                            {OTHER_RECEIPT_TYPES.map(type => <option key={type.value} value={type.value}>{type.icon} {type.label}</option>)}
+                          </select>
+                          <input
+                            value={r.otherNote || ''}
+                            onChange={e => handleUpdateWithWarning({ ...r, otherNote: e.target.value })}
+                            placeholder="Nội dung khoản khác"
+                            style={{ height: '30px', padding: '0 8px', fontSize: '12px' }}
+                          />
+                        <input 
+                          type="number" 
+                          value={r.other} 
+                          onChange={e => handleUpdateWithWarning(recalculateReceipt({ ...r, other: e.target.value }, room))} 
+                            style={{ height: '32px', padding: '0 8px' }}
+                        />
+                        </div>
+                      </td>
+                      <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{formatMoney(r.total)}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button className="secondary-btn sm" title="In phiếu" onClick={() => onPrintBatch([r])}>🖨️</button>
+                          <button className="secondary-btn sm" title="Xem QR" onClick={() => onView(r)}>📱</button>
+                          <button className="secondary-btn sm" title="Hủy phiếu" style={{ color: '#ef4444' }} onClick={() => onDeleteReceipt(r)}>✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {monthlyReceipts.length === 0 && <tr><td colSpan="13" style={{ textAlign: 'center', padding: '40px' }}>Chưa có phiếu thu cho tháng {selectedMonth}. Hãy bấm "Tạo hàng loạt" để bắt đầu.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="widget liquid-glass" style={{ padding: 0 }}>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Phòng</th><th>Tháng</th><th>Tổng tiền</th><th>Đã trả</th><th>Còn nợ</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
+              <tbody>
+                {monthlyReceipts.map(r => {
+                  const paymentState = getReceiptPaymentState(r);
+                  return (
+                    <tr key={r.id}>
+                      <td><b>P{r.roomId}</b></td><td>{r.month}</td><td>{formatMoney(r.total)}</td><td>{formatMoney(paymentState.paidAmount)}</td><td style={{ color: paymentState.debt > 0 ? 'var(--danger)' : 'inherit' }}>{formatMoney(paymentState.debt)}</td><td><span className={`status-badge-liquid ${paymentState.status === 'Đã thanh toán' ? 'active' : paymentState.status === 'Nợ một phần' ? 'notice' : 'debt'}`}>{paymentState.status}</span></td>
+                      <td><div style={{ display: 'flex', gap: '8px' }}>{paymentState.isPaid ? <button className="secondary-btn sm paid-action" disabled>✓ Đã thu</button> : <button className="primary-btn sm" onClick={() => onPay(r)}>💸 Thu tiền</button>}<button className="secondary-btn sm" onClick={() => onView(r)}>📄 Chi tiết</button></div></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
+  const buildTempIndices = (rooms) => rooms.map(r => ({
+    id: r.id,
+    electric: r.initialElectric ?? r.electricStart ?? r.electricNew ?? 0,
+    water: r.initialWater ?? r.waterStart ?? r.waterNew ?? 0
+  }));
+  const [tempIndices, setTempIndices] = useState(() => buildTempIndices(data.rooms));
+  const [savedMessage, setSavedMessage] = useState('');
+
+  useEffect(() => {
+    setTempIndices(buildTempIndices(data.rooms));
+  }, [data.rooms]);
+
+  const handleUpdateIndices = () => {
+    setData(old => ({
+      ...old,
+      rooms: old.rooms.map(r => {
+        const found = tempIndices.find(ti => ti.id === r.id);
+        if (found) {
+          const electric = parseLocaleNumber(found.electric);
+          const water = parseLocaleNumber(found.water);
+          return {
+            ...r,
+            initialElectric: electric,
+            initialWater: water,
+            electricStart: electric,
+            waterStart: water,
+            electricOld: electric,
+            waterOld: water,
+            electricNew: r.electricNew ?? electric,
+            waterNew: r.waterNew ?? water
+          };
+        }
+        return r;
+      })
+    }));
+    setSavedMessage(`Đã lưu chỉ số đầu kỳ lúc ${new Date().toLocaleTimeString('vi-VN')}`);
+  };
+
+  return (
+    <div className="stack" style={{ gap: '24px' }}>
+      <div className="widget liquid-glass" style={{ maxWidth: '800px' }}>
+        <section>
+          <h2 style={{ marginBottom: '16px' }}>🏦 Thông tin chuyển khoản</h2>
+          <div className="form-grid-v2">
+            <label>Ngân hàng <input value={bankInfo.bankName} onChange={e => setBankInfo({...bankInfo, bankName: e.target.value})} /></label>
+            <label>Mã VietQR <input value={bankInfo.bankCode} onChange={e => setBankInfo({...bankInfo, bankCode: e.target.value})} /></label>
+            <label>Số tài khoản <input value={bankInfo.accountNo} onChange={e => setBankInfo({...bankInfo, accountNo: e.target.value})} /></label>
+            <label>Chủ tài khoản <input value={bankInfo.accountName} onChange={e => setBankInfo({...bankInfo, accountName: e.target.value})} /></label>
+          </div>
+        </section>
+      </div>
+
+      <div className="widget liquid-glass" style={{ maxWidth: '800px' }}>
+        <section>
+          <h2 style={{ marginBottom: '16px' }}>⚡ Cập nhật chỉ số đầu kỳ (Chỉ số cũ)</h2>
+          <p className="muted small" style={{ marginBottom: '16px' }}>Dùng để khởi tạo chỉ số cho phiếu tháng đầu tiên nếu chưa có lịch sử.</p>
+          <div className="table-wrap" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Phòng</th>
+                  <th>Điện cũ (đầu kỳ)</th>
+                  <th>Nước cũ (đầu kỳ)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tempIndices.map((ti, idx) => (
+                  <tr key={ti.id}>
+                    <td><b>P{ti.id}</b></td>
+                    <td>
+                      <DecimalInput 
+                        value={ti.electric} 
+                        onChange={val => {
+                          const newIndices = [...tempIndices];
+                          newIndices[idx].electric = val;
+                          setTempIndices(newIndices);
+                        }} 
+                        style={{ height: '36px', width: '100%' }}
+                      />
+                    </td>
+                    <td>
+                      <DecimalInput 
+                        value={ti.water} 
+                        onChange={val => {
+                          const newIndices = [...tempIndices];
+                          newIndices[idx].water = val;
+                          setTempIndices(newIndices);
+                        }} 
+                        style={{ height: '36px', width: '100%' }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button className="primary-btn wide" style={{ marginTop: '20px' }} onClick={handleUpdateIndices}>Lưu chỉ số đầu kỳ</button>
+          {savedMessage && <p className="small" style={{ marginTop: '10px', color: 'var(--success)', fontWeight: 700 }}>{savedMessage}</p>}
+        </section>
+      </div>
+
+      <div className="widget liquid-glass" style={{ maxWidth: '800px' }}>
+        <section>
+          <h2 style={{ marginBottom: '16px' }}>⚙️ Hệ thống</h2>
+          <button className="secondary-btn danger" onClick={onReset}>⚠️ Khôi phục dữ liệu gốc</button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [historyFilter, setHistoryFilter] = useState('all');
+  const [showMoreActions, setShowMoreActions] = useState(false);
+  const [showRoommateForm, setShowRoommateForm] = useState(false);
+  const currentMonth = getCurrentMonthLabel();
+  const { label, color, contract, ownerOccupied } = getRoomStatusInfo(data, room.id);
+  const roomActiveMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
+  const roomPrimaryMember = roomActiveMembers.find(m => m.role === 'primary') || roomActiveMembers[0];
+  const primaryTenant = contract
+    ? (getPrimaryTenantByContract(data, contract.id) || (roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null))
+    : roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null;
+  const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
+  const allMembers = contract
+    ? (data.memberships || []).filter(m => m.contractId === contract.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }))
+    : (data.memberships || []).filter(m => m.roomId === room.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }));
+  const activeMembers = allMembers.filter(m => m.status === 'active');
+  const roomReceipts = (data.receipts || []).filter(r => r.roomId === room.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const roomTransfers = (data.roomTransfers || []).filter(t => t.oldRoomId === room.id || t.newRoomId === room.id);
+  const roomMoveOuts = (data.moveOutReports || []).filter(r => r.roomId === room.id);
+  const contractRenewals = contract ? (data.contractRenewals || []).filter(r => r.contractId === contract.id) : [];
+  const roomAssets = room.assets || [];
+  const maintenanceItems = room.maintenanceTickets || [];
+  const attachments = room.attachments || contract?.attachments || [];
+  const paymentDay = Number(contract?.paymentCycleDay || 5);
+  const dueDate = new Date();
+  dueDate.setDate(paymentDay);
+  dueDate.setHours(0, 0, 0, 0);
+  const receiptPaid = Number(currentReceipt?.paidAmount || 0);
+  const receiptTotal = Number(currentReceipt?.total || 0);
+  const receiptDebt = Math.max(0, receiptTotal - receiptPaid);
+  const isReceiptOverdue = currentReceipt && receiptDebt > 0 && new Date() > dueDate;
+  const latestReceipt = contract ? getLatestMonthlyReceiptForContract(data, room.id, contract.id) : roomReceipts.find(r => r.type === 'monthly') || null;
+  const electricOld = latestReceipt ? getElectricOld(latestReceipt) : getMonthlyStartMeter(room, contract, null, 'electricOld');
+  const electricNew = latestReceipt ? getElectricNew(latestReceipt) : electricOld;
+  const waterOld = latestReceipt ? getWaterOld(latestReceipt) : getMonthlyStartMeter(room, contract, null, 'waterOld');
+  const waterNew = latestReceipt ? getWaterNew(latestReceipt) : waterOld;
+  const tenantInitial = primaryTenant?.name ? primaryTenant.name.trim().charAt(0).toUpperCase() : 'P';
+  const formatDate = formatContractDate;
+  const dateDiffDays = (value) => {
+    if (isInvalidContractDate(value)) return null;
+    const date = parseDateFlexible(value);
+    if (!date) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.ceil((date.getTime() - today.getTime()) / 86400000);
+  };
+  const contractStartValid = !contract || ownerOccupied || !isInvalidContractDate(contract.startDate);
+  const contractEndValid = !contract || ownerOccupied || !isInvalidContractDate(contract.endDate);
+  const contractSignedValid = !contract || ownerOccupied || !isInvalidContractDate(contract.signedDate);
+  const contractDateValid = !contract || ownerOccupied || isValidContractRange(contract.startDate, contract.endDate);
+  const contractRequiredDatesValid = ownerOccupied || !contract || (contractSignedValid && contractDateValid);
+  const contractDuration = contract ? calculateRentalDuration(contract.startDate, contract.endDate) : '—';
+  const contractDaysLeft = dateDiffDays(contract?.endDate);
+  const contractStatus = ownerOccupied ? 'Chủ nhà ở - không cần hợp đồng' : !contract ? 'Chưa có hợp đồng' : !contractRequiredDatesValid ? 'Thiếu ngày hợp lệ' : contractDaysLeft < 0 ? 'Đã hết hạn' : contractDaysLeft <= 30 ? `Sắp hết hạn (${contractDaysLeft} ngày)` : 'Còn hạn';
+  const contractStatusClass = ownerOccupied ? 'active' : !contract ? 'vacant' : !contractRequiredDatesValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
+  const receiptStatus = !currentReceipt ? 'Chưa có phiếu' : isReceiptOverdue ? 'Quá hạn' : currentReceipt.status;
+  const receiptStatusClass = receiptStatus === 'Đã thanh toán' ? 'active' : receiptStatus === 'Nợ một phần' ? 'notice' : receiptStatus === 'Quá hạn' ? 'debt' : 'debt';
+  const occupantLimit = room.maxPeople || room.capacity || '—';
+  const formatRenewalRange = (renewal) => {
+    if (isInvalidContractDate(renewal.oldEndDate)) return `Gia hạn đến ${formatDate(renewal.newEndDate)}`;
+    return `${formatDate(renewal.oldEndDate)} -> ${formatDate(renewal.newEndDate)}`;
+  };
+  const activityItems = [
+    ...roomReceipts.slice(0, 5).map(r => ({ id: r.id, type: 'receipt', date: r.savedAt || r.createdAt, actor: 'Hệ thống', title: `Phiếu ${r.month}`, detail: `${formatMoney(r.total)} - ${r.status}` })),
+    ...roomReceipts.filter(r => Number(r.paidAmount || 0) > 0).slice(0, 5).map(r => ({ id: `pay-${r.id}`, type: 'payment', date: r.paidAt || r.savedAt || r.createdAt, actor: r.collector || 'Admin', title: 'Ghi nhận thanh toán', detail: `Đã thu ${formatMoney(r.paidAmount || 0)} cho phiếu ${r.month}` })),
+    ...contractRenewals.map(r => ({ id: r.id, type: 'contract', date: r.createdAt, actor: 'Admin', title: 'Gia hạn hợp đồng', detail: formatRenewalRange(r) })),
+    ...roomTransfers.map(t => ({ id: t.id, type: 'room', date: t.createdAt, actor: 'Admin', title: 'Đổi phòng', detail: `P${t.oldRoomId} -> P${t.newRoomId}` })),
+    ...roomMoveOuts.map(r => ({ id: r.id, type: 'room', date: r.createdAt, actor: 'Admin', title: 'Tất toán', detail: formatDisplayDate(r.actualEndDate) })),
+    ...roomAssets.map(a => ({ id: a.id || a.name, type: 'asset', date: a.createdAt || a.handoverDate, actor: 'Admin', title: 'Tài sản phòng', detail: `${a.name} - ${a.currentStatus || a.status || 'Đang dùng'}` })),
+    ...maintenanceItems.map(m => ({ id: m.id || m.title, type: 'maintenance', date: m.createdAt || m.createdDate, actor: m.assignee || 'Admin', title: 'Bảo trì', detail: `${m.title} - ${m.status || 'Mới tạo'}` })),
+    ...attachments.map(f => ({ id: f.id || f.name, type: 'file', date: f.createdAt || f.uploadedAt, actor: f.uploader || 'Admin', title: 'Tệp đính kèm', detail: `${f.group || f.type || 'Khác'} - ${f.name}` }))
+  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
   const filteredActivityItems = historyFilter === 'all' ? activityItems : activityItems.filter(item => item.type === historyFilter);
   const electricUsage = Math.max(0, electricNew - electricOld);
   const waterUsage = Math.max(0, waterNew - waterOld);
