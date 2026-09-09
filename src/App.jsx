@@ -1,7606 +1,1802 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
-import './styles.css';
-
-const STORAGE_KEY = 'room_manager_qr_app_v1';
-const BANK_KEY = 'room_manager_bank_v1';
-const PIN_KEY = 'room_manager_pin_v1';
-
-const DEFAULT_BANK = {
-  bankName: 'NgÃ¢n hÃ ng TMCP Äáº§u tÆ° vÃ  PhÃ¡t triá»ƒn Viá»‡t Nam',
-  bankCode: 'BIDV',
-  accountNo: '8847214661',
-  accountName: 'Há»˜ KINH DOANH DIá»†M THá»Š BÃŒNH',
-};
-
-function getCurrentMonthLabel(date = new Date()) {
-  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-}
-
-const DEFAULT_DATA = {
-  rooms: [
-    { id: '201', rent: 3700000, deposit: 3700000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '202', rent: 6000000, deposit: 0, cleaning: 84375, elevator: 84375, laundry: 84375, internet: 84375, electricPrice: 3460, waterPrice: 29000, note: 'chá»§ nhÃ  á»Ÿ' },
-    { id: '301', rent: 4000000, deposit: 4000000, cleaning: 50000, elevator: 50000, laundry: 50000, internet: 50000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '302', rent: 4200000, deposit: 4200000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '303', rent: 4700000, deposit: 4700000, cleaning: 50000, elevator: 50000, laundry: 50000, internet: 50000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '401', rent: 4300000, deposit: 4300000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '402', rent: 3600000, deposit: 3600000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '403', rent: 4700000, deposit: 4800000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '501', rent: 4000000, deposit: 4000000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '502', rent: 3800000, deposit: 3800000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '503', rent: 4500000, deposit: 4500000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '601', rent: 4500000, deposit: 4500000, cleaning: 50000, elevator: 50000, laundry: 50000, internet: 50000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '602', rent: 3800000, deposit: 3800000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '603', rent: 4400000, deposit: 4400000, cleaning: 50000, elevator: 50000, laundry: 50000, internet: 50000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '701', rent: 4400000, deposit: 4400000, cleaning: 50000, elevator: 50000, laundry: 50000, internet: 50000, electricPrice: 3800, waterPrice: 32000, note: 'Giáº£m 50% phÃ­ dá»‹ch vá»¥' },
-    { id: '702', rent: 3500000, deposit: 3500000, cleaning: 100000, elevator: 100000, laundry: 100000, internet: 100000, electricPrice: 3800, waterPrice: 32000, note: '' },
-    { id: '703', rent: 4000000, deposit: 4000000, cleaning: 50000, elevator: 50000, laundry: 50000, internet: 50000, electricPrice: 3800, waterPrice: 32000, note: '' },
-  ],
-  tenants: [],
-  memberships: [],
-  contracts: [],
-  receipts: [],
-  moveOutReports: [],
-  contractRenewals: [],
-  roomTransfers: [],
-  suppliers: [
-    { id: 'sup_evn', name: 'Äiá»‡n lá»±c', group: 'Äiá»‡n', defaultCategory: 'cat_elec' },
-    { id: 'sup_water', name: 'Cáº¥p nÆ°á»›c', group: 'NÆ°á»›c', defaultCategory: 'cat_water' },
-    { id: 'sup_vnpt', name: 'VNPT', group: 'Internet', defaultCategory: 'cat_internet' },
-    { id: 'sup_fpt', name: 'FPT Telecom', group: 'Internet', defaultCategory: 'cat_internet' },
-    { id: 'sup_viettel', name: 'Viettel Telecom', group: 'Internet', defaultCategory: 'cat_internet' },
-    { id: 'sup_sctv', name: 'SCTV', group: 'Truyá»n hÃ¬nh / máº¡ng', defaultCategory: 'cat_internet' },
-    { id: 'sup_trash_private', name: 'Thu gom rÃ¡c dÃ¢n láº­p', group: 'RÃ¡c / mÃ´i trÆ°á»ng', defaultCategory: 'cat_trash' },
-    { id: 'sup_trash_city', name: 'CÃ´ng ty mÃ´i trÆ°á»ng Ä‘Ã´ thá»‹', group: 'RÃ¡c / mÃ´i trÆ°á»ng', defaultCategory: 'cat_trash' },
-    { id: 'sup_clean_staff', name: 'NhÃ¢n viÃªn vá»‡ sinh', group: 'Vá»‡ sinh', defaultCategory: 'cat_cleaning' },
-    { id: 'sup_clean_service', name: 'Dá»‹ch vá»¥ vá»‡ sinh', group: 'Vá»‡ sinh', defaultCategory: 'cat_cleaning' },
-    { id: 'sup_security', name: 'Báº£o vá»‡ tÃ²a nhÃ ', group: 'Báº£o vá»‡', defaultCategory: 'cat_guard' },
-    { id: 'sup_elevator', name: 'Dá»‹ch vá»¥ báº£o trÃ¬ thang mÃ¡y', group: 'Thang mÃ¡y', defaultCategory: 'cat_maintenance' },
-    { id: 'sup_camera', name: 'Dá»‹ch vá»¥ camera an ninh', group: 'Camera', defaultCategory: 'cat_camera' },
-    { id: 'sup_pccc', name: 'Dá»‹ch vá»¥ PCCC', group: 'PCCC', defaultCategory: 'cat_pccc' },
-    { id: 'sup_elec_repair', name: 'Thá»£ Ä‘iá»‡n', group: 'Sá»­a chá»¯a', defaultCategory: 'cat_repair' },
-    { id: 'sup_water_repair', name: 'Thá»£ nÆ°á»›c', group: 'Sá»­a chá»¯a', defaultCategory: 'cat_repair' },
-    { id: 'sup_build_repair', name: 'Thá»£ há»“ / xÃ¢y dá»±ng', group: 'Sá»­a chá»¯a', defaultCategory: 'cat_repair' },
-    { id: 'sup_paint_repair', name: 'Thá»£ sÆ¡n', group: 'Sá»­a chá»¯a', defaultCategory: 'cat_repair' },
-    { id: 'sup_lock_repair', name: 'Thá»£ khÃ³a', group: 'Sá»­a chá»¯a', defaultCategory: 'cat_repair' },
-    { id: 'sup_glass_repair', name: 'Thá»£ nhÃ´m kÃ­nh', group: 'Sá»­a chá»¯a', defaultCategory: 'cat_repair' },
-    { id: 'sup_door_repair', name: 'Thá»£ cá»­a cuá»‘n', group: 'Sá»­a chá»¯a', defaultCategory: 'cat_repair' },
-    { id: 'sup_ac_repair', name: 'Thá»£ sá»­a mÃ¡y láº¡nh', group: 'Äiá»‡n láº¡nh', defaultCategory: 'cat_repair' },
-    { id: 'sup_ac_clean', name: 'Dá»‹ch vá»¥ vá»‡ sinh mÃ¡y láº¡nh', group: 'Äiá»‡n láº¡nh', defaultCategory: 'cat_cleaning' },
-    { id: 'sup_furniture', name: 'Cá»­a hÃ ng ná»™i tháº¥t', group: 'Ná»™i tháº¥t', defaultCategory: 'cat_material' },
-    { id: 'sup_hardware', name: 'Cá»­a hÃ ng Ä‘iá»‡n nÆ°á»›c', group: 'Váº­t tÆ°', defaultCategory: 'cat_material' },
-    { id: 'sup_materials', name: 'Cá»­a hÃ ng váº­t liá»‡u xÃ¢y dá»±ng', group: 'Váº­t tÆ°', defaultCategory: 'cat_material' },
-    { id: 'sup_metal', name: 'Cá»­a hÃ ng kim khÃ­', group: 'Váº­t tÆ°', defaultCategory: 'cat_material' },
-    { id: 'sup_electric_store', name: 'Cá»­a hÃ ng thiáº¿t bá»‹ Ä‘iá»‡n', group: 'Thiáº¿t bá»‹', defaultCategory: 'cat_material' },
-    { id: 'sup_water_store', name: 'Cá»­a hÃ ng thiáº¿t bá»‹ nÆ°á»›c', group: 'Thiáº¿t bá»‹', defaultCategory: 'cat_material' },
-    { id: 'sup_appliance', name: 'Cá»­a hÃ ng Ä‘iá»‡n mÃ¡y', group: 'Gia dá»¥ng', defaultCategory: 'cat_material' },
-    { id: 'sup_laundry', name: 'Dá»‹ch vá»¥ giáº·t sáº¥y', group: 'Giáº·t sáº¥y', defaultCategory: 'cat_other' },
-    { id: 'sup_pest', name: 'Dá»‹ch vá»¥ diá»‡t cÃ´n trÃ¹ng', group: 'Diá»‡t cÃ´n trÃ¹ng', defaultCategory: 'cat_other' },
-    { id: 'sup_garden', name: 'Dá»‹ch vá»¥ chÄƒm sÃ³c cÃ¢y xanh', group: 'CÃ¢y xanh', defaultCategory: 'cat_other' },
-    { id: 'sup_legal', name: 'Dá»‹ch vá»¥ phÃ¡p lÃ½', group: 'PhÃ¡p lÃ½', defaultCategory: 'cat_service' },
-    { id: 'sup_acc', name: 'Dá»‹ch vá»¥ káº¿ toÃ¡n', group: 'Káº¿ toÃ¡n', defaultCategory: 'cat_service' },
-    { id: 'sup_bank_fee', name: 'NgÃ¢n hÃ ng / phÃ­ chuyá»ƒn khoáº£n', group: 'NgÃ¢n hÃ ng', defaultCategory: 'cat_bank' },
-    { id: 'sup_tax', name: 'CÆ¡ quan thuáº¿', group: 'Thuáº¿', defaultCategory: 'cat_tax' },
-    { id: 'sup_landlord', name: 'Chá»§ nhÃ  / bÃªn cho thuÃª máº·t báº±ng', group: 'Chá»§ nhÃ ', defaultCategory: 'cat_rent' },
-    { id: 'sup_mgmt', name: 'Ban quáº£n lÃ½ tÃ²a nhÃ ', group: 'Quáº£n lÃ½', defaultCategory: 'cat_management' },
-    { id: 'sup_other', name: 'NhÃ  cung cáº¥p khÃ¡c', group: 'KhÃ¡c', defaultCategory: 'cat_other' },
-  ],
-  expenseCategories: [
-    { id: 'cat_elec', name: 'Tiá»n Ä‘iá»‡n' },
-    { id: 'cat_water', name: 'Tiá»n nÆ°á»›c' },
-    { id: 'cat_internet', name: 'Internet / Truyá»n hÃ¬nh' },
-    { id: 'cat_cleaning', name: 'Vá»‡ sinh' },
-    { id: 'cat_repair', name: 'Sá»­a chá»¯a' },
-    { id: 'cat_material', name: 'Váº­t tÆ° / Ná»™i tháº¥t' },
-    { id: 'cat_rent', name: 'Tiá»n thuÃª máº·t báº±ng' },
-    { id: 'cat_trash', name: 'PhÃ­ rÃ¡c' },
-    { id: 'cat_guard', name: 'Báº£o vá»‡' },
-    { id: 'cat_maintenance', name: 'Báº£o trÃ¬' },
-    { id: 'cat_camera', name: 'Camera' },
-    { id: 'cat_pccc', name: 'PCCC' },
-    { id: 'cat_bank', name: 'PhÃ­ ngÃ¢n hÃ ng' },
-    { id: 'cat_tax', name: 'Thuáº¿ / phÃ­' },
-    { id: 'cat_management', name: 'PhÃ­ quáº£n lÃ½' },
-    { id: 'cat_service', name: 'PhÃ­ dá»‹ch vá»¥' },
-    { id: 'cat_other', name: 'Chi phÃ­ khÃ¡c' },
-  ],
-  expensePayments: [],
-};
-
-function safeRead(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw || raw === 'undefined' || raw === 'null') return fallback;
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error('Lá»—i Ä‘á»c dá»¯ liá»‡u:', e);
-    return fallback;
-  }
-}
-
-function getDataVersion(data) {
-  if (!data) return 0;
-  const dateFields = ['createdAt', 'updatedAt', 'savedAt', 'paidDate', 'signedDate', 'startDate', 'joinedDate', 'endedAt', 'renewedAt'];
-  const collections = ['rooms', 'tenants', 'memberships', 'contracts', 'receipts', 'moveOutReports', 'contractRenewals', 'roomTransfers', 'suppliers', 'expenseCategories', 'expensePayments'];
-  return collections.reduce((max, key) => {
-    return Math.max(max, ...((data[key] || []).map(item => {
-      return Math.max(0, ...dateFields.map(field => {
-        const time = Date.parse(item?.[field] || '');
-        return Number.isNaN(time) ? 0 : time;
-      }));
-    })));
-  }, 0);
-}
-
-function uid(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function diffMonths(d1, d2) {
-  const start = parseDateFlexible(d1);
-  const end = parseDateFlexible(d2);
-  if (!start || !end) return 0;
-  let months = (end.getFullYear() - start.getFullYear()) * 12;
-  months -= start.getMonth();
-  months += end.getMonth();
-  return months <= 0 ? 0 : months;
-}
-
-function formatMoney(value) {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(value);
-}
-
-function numberToWords(number) {
-  if (number === 0) return 'KhÃ´ng Ä‘á»“ng';
-  const units = ['', ' nghÃ¬n', ' triá»‡u', ' tá»·', ' nghÃ¬n tá»·', ' triá»‡u tá»·'];
-  const readThreeDigits = (num) => {
-    const digits = ['khÃ´ng', 'má»™t', 'hai', 'ba', 'bá»‘n', 'nÄƒm', 'sÃ¡u', 'báº£y', 'tÃ¡m', 'chÃ­n'];
-    let a = Math.floor(num / 100);
-    let b = Math.floor((num % 100) / 10);
-    let c = num % 10;
-    let res = '';
-    if (a > 0) res += digits[a] + ' trÄƒm ';
-    if (b > 1) res += digits[b] + ' mÆ°Æ¡i ';
-    if (b === 1) res += 'mÆ°á»i ';
-    if (a > 0 && b === 0 && c > 0) res += 'láº» ';
-    if (c === 5 && b > 0) res += 'lÄƒm ';
-    else if (c === 1 && b > 1) res += 'má»‘t ';
-    else if (c > 0 || (a === 0 && b === 0)) res += digits[c];
-    return res;
-  };
-  let res = '';
-  let unitIdx = 0;
-  let temp = Math.abs(number);
-  while (temp > 0) {
-    let three = temp % 1000;
-    if (three > 0) res = readThreeDigits(three) + units[unitIdx] + ' ' + res;
-    temp = Math.floor(temp / 1000);
-    unitIdx++;
-  }
-  return res.trim().charAt(0).toUpperCase() + res.trim().slice(1) + ' Ä‘á»“ng';
-}
-
-function parseDateFlexible(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  const text = String(value);
-  if (text.includes('-')) return new Date(`${text}T00:00:00`);
-  if (text.includes('/')) {
-    const parts = text.split('/');
-    if (parts.length === 3) return new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}T00:00:00`);
-  }
-  return null;
-}
-
-const INVALID_CONTRACT_YEARS = [1900, 1970];
-
-function isInvalidContractDate(value) {
-  const date = parseDateFlexible(value);
-  if (!date || Number.isNaN(date.getTime())) return true;
-  return INVALID_CONTRACT_YEARS.includes(date.getFullYear());
-}
-
-function formatContractDate(value, fallback = 'ChÆ°a cáº­p nháº­t') {
-  if (isInvalidContractDate(value)) return fallback;
-  const date = parseDateFlexible(value);
-  if (!date) return fallback;
-  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function isValidBusinessDate(value) {
-  return !isInvalidContractDate(value);
-}
-
-function formatBusinessDate(value, fallback = 'ChÆ°a cáº­p nháº­t') {
-  return formatContractDate(value, fallback);
-}
-
-function calculateRentalDuration(startDate, endDate) {
-  if (isInvalidContractDate(startDate) || isInvalidContractDate(endDate)) return 'â€”';
-  const start = parseDateFlexible(startDate);
-  const end = parseDateFlexible(endDate);
-  if (!start || !end || end <= start) return 'â€”';
-  const months = diffMonths(startDate, endDate);
-  return months > 0 ? `${months} thÃ¡ng` : 'â€”';
-}
-
-function isValidContractRange(startDate, endDate) {
-  if (isInvalidContractDate(startDate) || isInvalidContractDate(endDate)) return false;
-  return parseDateFlexible(endDate) > parseDateFlexible(startDate);
-}
-
-function parseVietnameseDateValue(value) {
-  const match = String(value || '').match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
-  if (!match) return '';
-  const [, day, month, year] = match;
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-}
-
-function normalizeSearchText(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/Ä‘/g, 'd')
-    .replace(/Ä/g, 'D')
-    .replace(/[*/_`]/g, '')
-    .replace(/\s*\/\s*/g, '/')
-    .toLowerCase();
-}
-
-function cleanOcrValue(value) {
-  return String(value || '')
-    .replace(/^[\s:ï¼š\-â€“â€”â€¢]+/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function stripBilingualIdLabelTail(value) {
-  return cleanOcrValue(value)
-    .replace(/^[*/_`\s]*/, '')
-    .replace(/^\/?\s*(full name|date of birth|date,\s*month,\s*year|date month year|sex|nationality|place of origin|place of residence|date of expiry|date of issue|personal identification|issued by|no\.?)\s*:?\s*/i, '')
-    .replace(/^[*/_`\s:]*/, '')
-    .trim();
-}
-
-function readIdCardField(lines, labels, stopLabels = []) {
-  const normalizedLabels = labels.map(normalizeSearchText);
-  const normalizedStops = [...labels, ...stopLabels].map(normalizeSearchText);
-  for (let i = 0; i < lines.length; i += 1) {
-    const rawLine = lines[i];
-    const normalizedLine = normalizeSearchText(rawLine);
-    const matchedLabel = normalizedLabels.find(label => normalizedLine.includes(label));
-    if (!matchedLabel) continue;
-
-    const labelIndex = normalizedLine.indexOf(matchedLabel);
-    const markerlessLine = rawLine.replace(/[*/_`]/g, '');
-    const valueAfterColon = markerlessLine.match(/[:ï¼š]\s*(.+)$/)?.[1] || '';
-    const afterLabel = stripBilingualIdLabelTail(valueAfterColon || markerlessLine.slice(labelIndex + matchedLabel.length));
-    if (afterLabel && !/^\/|^no\.?$/i.test(afterLabel)) return afterLabel;
-
-    const collected = [];
-    for (let j = i + 1; j < lines.length; j += 1) {
-      const next = lines[j];
-      const normalizedNext = normalizeSearchText(next);
-      if (normalizedStops.some(stop => normalizedNext.includes(stop))) break;
-      if (/^(mat truoc|mat sau|front|back|mrz|idvnm)/i.test(normalizedNext)) break;
-      if (next.trim()) collected.push(next.trim());
-      if (collected.length >= 3) break;
-    }
-    return cleanOcrValue(collected.join(', '));
-  }
-  return '';
-}
-
-function parseMrzName(text) {
-  const mrzLines = String(text || '').split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(line => /^[A-Z0-9<]{15,}$/.test(line));
-  const nameLine = [...mrzLines].reverse().find(line => line.includes('<<') && /[A-Z]/.test(line));
-  if (!nameLine) return '';
-  return nameLine
-    .replace(/<+/g, ' ')
-    .trim()
-    .toLowerCase()
-    .replace(/\b\w/g, char => char.toUpperCase());
-}
-
-function parseMrzBirthday(text) {
-  const mrzLine = String(text || '').split(/\r?\n/).map(line => line.trim()).find(line => /^\d{6}\d?[MF]/i.test(line));
-  if (!mrzLine) return '';
-  const match = mrzLine.match(/^(\d{2})(\d{2})(\d{2})/);
-  if (!match) return '';
-  const [, yy, mm, dd] = match;
-  const yearPrefix = Number(yy) > 30 ? '19' : '20';
-  return `${yearPrefix}${yy}-${mm}-${dd}`;
-}
-
-function parseVietnameseIdCard(text) {
-  const rawText = String(text || '');
-  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-  const stopLabels = [
-    'Há» vÃ  tÃªn', 'Full name', 'NgÃ y sinh', 'Date of birth', 'Giá»›i tÃ­nh', 'Sex',
-    'Quá»‘c tá»‹ch', 'Nationality', 'QuÃª quÃ¡n', 'Place of origin', 'NÆ¡i thÆ°á»ng trÃº',
-    'Place of residence', 'CÃ³ giÃ¡ trá»‹ Ä‘áº¿n', 'Date of expiry', 'Äáº·c Ä‘iá»ƒm nháº­n dáº¡ng',
-    'Personal identification', 'NgÃ y cáº¥p', 'NgÃ y, thÃ¡ng, nÄƒm', 'Date, month, year', 'Date of issue', 'NgÆ°á»i kÃ½', 'DÃ²ng mÃ£', 'MRZ'
-  ];
-  const labeledId = readIdCardField(lines, ['Sá»‘ CCCD', 'Sá»‘/No.', 'Sá»‘/No', 'Sá»‘', 'No.', 'No'], stopLabels);
-  const standaloneId = rawText.match(/\b\d{12}\b/)?.[0] || '';
-  const cccd = (labeledId.match(/\d{12}/)?.[0] || standaloneId).trim();
-  const name = readIdCardField(lines, ['Há» vÃ  tÃªn/Full name', 'Há» vÃ  tÃªn', 'Full name'], stopLabels) || parseMrzName(rawText);
-  const birthdayText = readIdCardField(lines, ['NgÃ y sinh/Date of birth', 'NgÃ y sinh', 'Date of birth'], stopLabels);
-  const birthday = parseVietnameseDateValue(birthdayText) || parseMrzBirthday(rawText);
-  const address = readIdCardField(lines, ['NÆ¡i thÆ°á»ng trÃº/Place of residence', 'NÆ¡i thÆ°á»ng trÃº', 'Place of residence'], stopLabels);
-  const issueDate = parseVietnameseDateValue(readIdCardField(lines, ['NgÃ y, thÃ¡ng, nÄƒm/Date, month, year', 'NgÃ y, thÃ¡ng, nÄƒm', 'Date, month, year', 'NgÃ y cáº¥p', 'Date of issue'], stopLabels));
-  const issuePlace = readIdCardField(lines, ['NÆ¡i cáº¥p', 'CÆ¡ quan cáº¥p', 'Issued by'], stopLabels);
-  const extraFields = [
-    ['Giá»›i tÃ­nh', readIdCardField(lines, ['Giá»›i tÃ­nh/Sex', 'Giá»›i tÃ­nh', 'Sex'], stopLabels)],
-    ['Quá»‘c tá»‹ch', readIdCardField(lines, ['Quá»‘c tá»‹ch/Nationality', 'Quá»‘c tá»‹ch', 'Nationality'], stopLabels)],
-    ['QuÃª quÃ¡n', readIdCardField(lines, ['QuÃª quÃ¡n/Place of origin', 'QuÃª quÃ¡n', 'Place of origin'], stopLabels)],
-    ['CÃ³ giÃ¡ trá»‹ Ä‘áº¿n', readIdCardField(lines, ['CÃ³ giÃ¡ trá»‹ Ä‘áº¿n/Date of expiry', 'CÃ³ giÃ¡ trá»‹ Ä‘áº¿n', 'Date of expiry'], stopLabels)],
-    ['Äáº·c Ä‘iá»ƒm nháº­n dáº¡ng', readIdCardField(lines, ['Äáº·c Ä‘iá»ƒm nháº­n dáº¡ng/Personal identification', 'Äáº·c Ä‘iá»ƒm nháº­n dáº¡ng', 'Personal identification'], stopLabels)],
-    ['NgÆ°á»i kÃ½', readIdCardField(lines, ['NgÆ°á»i kÃ½', 'Cá»¥c trÆ°á»Ÿng Cá»¥c Cáº£nh sÃ¡t quáº£n lÃ½ hÃ nh chÃ­nh vá» tráº­t tá»± xÃ£ há»™i'], stopLabels)]
-  ].filter(([, value]) => value);
-  const normalizedRawText = normalizeSearchText(rawText);
-  const mrzIndex = normalizedRawText.indexOf('mrz') >= 0 ? normalizedRawText.indexOf('mrz') : normalizedRawText.indexOf('dong ma');
-  const mrzText = mrzIndex >= 0
-    ? rawText.slice(mrzIndex).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean).join('\n')
-    : lines.filter(line => /^[A-Z0-9<]{15,}$/.test(line)).join('\n');
-  const note = [
-    ...extraFields.map(([label, value]) => `${label}: ${value}`),
-    mrzText ? `MRZ:\n${mrzText}` : ''
-  ].filter(Boolean).join('\n');
-
-  return { cccd, name: cleanOcrValue(name), birthday, address, issueDate, issuePlace, note };
-}
-
-function formatDateForInput(value) {
-  return isInvalidContractDate(value) ? '' : String(value).slice(0, 10);
-}
-
-function formatDisplayDate(value, fallback = 'â€”') {
-  if (!value) return fallback;
-  const date = parseDateFlexible(value);
-  if (!date || Number.isNaN(date.getTime())) return fallback;
-  return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function isValidDateString(value) {
-  if (!value) return false;
-  const date = new Date(value + 'T00:00:00');
-  return !Number.isNaN(date.getTime());
-}
-
-function addMonthsToDate(value, months) {
-  if (!isValidDateString(value)) return '';
-  const date = new Date(value + 'T00:00:00');
-  date.setMonth(date.getMonth() + months);
-  return date.toISOString().slice(0, 10);
-}
-
-function addDaysToDate(value, days) {
-  if (!isValidDateString(value)) return '';
-  const date = new Date(value + 'T00:00:00');
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function getDaysUntil(dateStr) {
-  const date = parseDateFlexible(dateStr);
-  if (!date) return null;
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.ceil((date.getTime() - now.getTime()) / 86400000);
-}
-
-function getLatestActiveMembershipForRoom(data, roomId) {
-  return (data.memberships || [])
-    .filter(m => m.roomId === roomId && m.status === 'active')
-    .sort((a, b) => {
-      const roleScore = (b.role === 'primary' ? 1 : 0) - (a.role === 'primary' ? 1 : 0);
-      if (roleScore !== 0) return roleScore;
-      const joinedDiff = (parseDateFlexible(b.joinedDate)?.getTime() || 0) - (parseDateFlexible(a.joinedDate)?.getTime() || 0);
-      if (joinedDiff !== 0) return joinedDiff;
-      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
-    })[0] || null;
-}
-
-function getCurrentContractForRoom(data, roomId) {
-  const activeMembership = getLatestActiveMembershipForRoom(data, roomId);
-  if (activeMembership?.contractId) {
-    const membershipContract = (data.contracts || []).find(c => c.id === activeMembership.contractId);
-    if (membershipContract) return membershipContract;
-  }
-  return (data.contracts || [])
-    .filter(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'))
-    .sort((a, b) => {
-      const startDiff = (parseDateFlexible(b.startDate)?.getTime() || 0) - (parseDateFlexible(a.startDate)?.getTime() || 0);
-      if (startDiff !== 0) return startDiff;
-      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
-    })[0] || null;
-}
-
-function getRoomStatusInfo(data, roomId) {
-  const room = (data.rooms || []).find(r => r.id === roomId);
-  const ownerOccupied = isOwnerOccupiedRoom(room);
-  const contract = getCurrentContractForRoom(data, roomId);
-  const hasActiveMembers = (data.memberships || []).some(m => m.roomId === roomId && m.status === 'active');
-  if (!contract && hasActiveMembers) return { label: 'Äang á»Ÿ', color: 'green', contract: null, ownerOccupied };
-  if (!contract) return { label: 'Trá»‘ng', color: 'gray', contract: null, ownerOccupied };
-  if (contract.status === 'notice') return { label: 'BÃ¡o chuyá»ƒn', color: 'orange', contract };
-  if (contract.status === 'moving_out') return { label: 'Äang táº¥t toÃ¡n', color: 'blue', contract };
-  return { label: 'Äang á»Ÿ', color: 'green', contract, ownerOccupied };
-}
-
-function isOwnerOccupiedRoom(room) {
-  if (!room) return false;
-  return room.id === '202' || String(room.note || '').toLowerCase().includes('chá»§ nhÃ ');
-}
-
-function getDashboardStats(data, currentMonth) {
-  const totalRooms = data.rooms.length;
-  const activeContracts = (data.contracts || []).filter(c => c.status === 'active' || c.status === 'notice');
-  const occupiedRooms = (data.rooms || []).filter(r => getRoomStatusInfo(data, r.id).label !== 'Trá»‘ng').length;
-  const vacantRooms = totalRooms - occupiedRooms;
-  
-  const expiringContracts = activeContracts.filter(c => {
-    const days = getDaysUntil(c.endDate);
-    return days !== null && days <= 30;
-  });
-
-  const currentTenants = (data.memberships || []).filter(m => m.status === 'active').length;
-  
-  const monthReceipts = (data.receipts || []).filter(r => r.month === currentMonth && r.type === 'monthly');
-  const unpaidReceipts = monthReceipts.filter(r => getReceiptPaymentState(r).debt > 0);
-  
-  const totalDebt = (data.receipts || []).reduce((sum, r) => {
-    return sum + getReceiptPaymentState(r).debt;
-  }, 0);
-
-  const notifyingMoveOut = activeContracts.filter(c => c.status === 'notice');
-
-  return {
-    totalRooms,
-    occupiedRooms,
-    vacantRooms,
-    expiringContracts,
-    currentTenants,
-    totalReceipts: monthReceipts.length,
-    unpaidReceipts,
-    totalDebt,
-    notifyingMoveOut
-  };
-}
-
-function getPrimaryTenantByContract(data, contractId) {
-  if (!contractId) return null;
-  const primaryMember = (data.memberships || []).find(m => m.contractId === contractId && m.role === 'primary');
-  if (!primaryMember) return null;
-  return (data.tenants || []).find(t => t.id === primaryMember.tenantId) || null;
-}
-
-function getTenantForReceipt(data, receipt) {
-  if (!receipt) return null;
-  const byContract = getPrimaryTenantByContract(data, receipt.contractId);
-  if (byContract) return byContract;
-
-  const activeRoomMember = (data.memberships || []).find(m =>
-    m.roomId === receipt.roomId &&
-    m.status === 'active' &&
-    m.role === 'primary'
-  ) || (data.memberships || []).find(m =>
-    m.roomId === receipt.roomId &&
-    m.status === 'active'
-  );
-  if (activeRoomMember) {
-    const tenant = (data.tenants || []).find(t => t.id === activeRoomMember.tenantId);
-    if (tenant) return tenant;
-  }
-
-  const contractMember = (data.memberships || []).find(m => m.contractId === receipt.contractId);
-  return contractMember ? (data.tenants || []).find(t => t.id === contractMember.tenantId) || null : null;
-}
-
-function onlyDigits(value) {
-  return String(value || '').split('').filter(c => c >= '0' && c <= '9').join('');
-}
-
-function parseLocaleNumber(value) {
-  if (value === null || value === undefined || value === '') return 0;
-  if (typeof value === 'number') return value;
-  
-  let str = String(value).trim();
-  if (!str) return 0;
-
-  // If there's only one separator and it's followed by 1 or 2 digits, treat it as decimal
-  // Otherwise, if there are dots and a comma at the end, comma is decimal
-  // Simple approach for this app: if it contains a comma, replace all dots then replace comma with dot.
-  // If it contains only dots, check if it looks like a thousands separator or decimal.
-  // Given room indices are usually > 1000 and have 1 decimal, we can assume:
-  // if count of dots is 1 and it's near the end, it's decimal.
-  
-  // Revised simple & robust approach:
-  // 1. Remove all spaces
-  str = str.replace(/\s/g, '');
-  
-  // 2. If it has both , and . -> comma is almost always the decimal in VN or dot is decimal in Intl.
-  // We'll treat the LAST one as the decimal separator.
-  const lastDot = str.lastIndexOf('.');
-  const lastComma = str.lastIndexOf(',');
-  
-  if (lastDot > lastComma) {
-    // Dot is later, treat as decimal. Remove all other separators.
-    return parseFloat(str.replace(/,/g, '')) || 0;
-  } else if (lastComma > lastDot) {
-    // Comma is later, treat as decimal. Remove all dots, then replace comma with dot.
-    return parseFloat(str.replace(/\./g, '').replace(/,/g, '.')) || 0;
-  }
-  
-  // Only one type or none. 
-  return parseFloat(str) || 0;
-}
-
-function formatLocaleNumber(value) {
-  if (value === null || value === undefined || value === '' || value === '?') return 'â€”';
-  const num = typeof value === 'number' ? value : parseFloat(String(value).replace(/,/g, '.'));
-  if (isNaN(num)) return 'â€”';
-  return new Intl.NumberFormat('vi-VN').format(num);
-}
-
-function DecimalInput({ value, onChange, style, className }) {
-  const toDisplayValue = (val) => (val === null || val === undefined ? '' : String(val));
-  const [displayValue, setDisplayValue] = useState(toDisplayValue(value));
-
-  useEffect(() => {
-    // Update display value when prop value changes from outside (e.g. from recalculateReceipt)
-    // but only if it's not the same number to avoid cursor jumping
-    const currentNum = parseLocaleNumber(displayValue);
-    if (value !== currentNum) {
-      setDisplayValue(toDisplayValue(value));
-    }
-  }, [value]);
-
-  const handleChange = (e) => {
-    const val = e.target.value;
-    // Allow digits, dots, commas, and spaces
-    if (/^[0-9.,\s]*$/.test(val)) {
-      setDisplayValue(val);
-      const num = parseLocaleNumber(val);
-      onChange(num);
-    }
-  };
-
-  return (
-    <input 
-      type="text" 
-      value={displayValue} 
-      onChange={handleChange} 
-      style={style} 
-      className={className} 
-    />
-  );
-}
-
-function transferContent(receipt) {
-  return `P${receipt.roomId} T${onlyDigits(receipt.month)}`;
-}
-
-function buildVietQrUrl(bankInfo, receipt) {
-  if (!bankInfo.bankCode || !bankInfo.accountNo || !receipt) return '';
-  const paymentState = getReceiptPaymentState(receipt);
-  const amount = paymentState.debt > 0 ? paymentState.debt : Number(receipt.total || 0);
-  const params = new URLSearchParams({
-    amount: String(Math.round(amount)),
-    addInfo: transferContent(receipt),
-    accountName: bankInfo.accountName || '',
-  });
-  return `https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNo}-compact2.png?${params.toString()}`;
-}
-
-function buildPaymentQrUrl(bankInfo, amount, addInfo) {
-  if (!bankInfo?.bankCode || !bankInfo?.accountNo || !amount) return '';
-  const params = new URLSearchParams({
-    amount: String(Math.round(Number(amount || 0))),
-    addInfo,
-    accountName: bankInfo.accountName || '',
-  });
-  return `https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNo}-compact2.png?${params.toString()}`;
-}
-
-function getContractOccupantCount(data, contract) {
-  if (!contract) return 0;
-  const byContract = (data.memberships || []).filter(m => m.contractId === contract.id && m.status === 'active').length;
-  const byRoom = (data.memberships || []).filter(m => m.roomId === contract.roomId && m.status === 'active').length;
-  return Math.max(byContract, byRoom);
-}
-
-function fixedServiceTotal(room, occupantCount = null) {
-  if (!room) return 0;
-  if (occupantCount !== null && occupantCount !== undefined) {
-    if (Number(occupantCount) <= 0) return 0;
-    return Number(occupantCount) <= 1 ? 200000 : 400000;
-  }
-  return Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0) + Number(room.internet || 0);
-}
-
-function getExpensePaidAmount(expense) {
-  return Number(expense?.paidAmount ?? expense?.amount ?? 0);
-}
-
-function getElectricOld(receipt) {
-  return Number(receipt.electricOld ?? receipt.electricStart ?? 0);
-}
-
-function getElectricNew(receipt) {
-  const old = getElectricOld(receipt);
-  return Number(receipt.electricNew ?? receipt.electricEnd ?? old);
-}
-
-function getWaterOld(receipt) {
-  return Number(receipt.waterOld ?? receipt.waterStart ?? 0);
-}
-
-function getWaterNew(receipt) {
-  const old = getWaterOld(receipt);
-  return Number(receipt.waterNew ?? receipt.waterEnd ?? old);
-}
-
-function receiptCode(receipt) {
-  return "PT-" + receipt.roomId + "-" + onlyDigits(receipt.month);
-}
-
-function receiptTypeLabel(type, withIcon = false) {
-  if (type === 'monthly') return withIcon ? 'ğŸ“… Phiáº¿u thÃ¡ng' : 'Phiáº¿u thÃ¡ng';
-  if (type === 'renewal_adjustment') return withIcon ? 'ğŸ” Äiá»u chá»‰nh gia háº¡n' : 'Äiá»u chá»‰nh gia háº¡n';
-  return withIcon ? 'ğŸšª Chá»‘t tráº£ phÃ²ng' : 'Chá»‘t tráº£ phÃ²ng';
-}
-
-function parseMonthValue(month) {
-  if (!month) return 0;
-  const [m, y] = month.split('/').map(Number);
-  return y * 12 + m;
-}
-
-function monthFromDate(value) {
-  const date = parseDateFlexible(value);
-  if (!date) return '';
-  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-}
-
-function billingMonthParts(month) {
-  const [m, y] = String(month || '').split('/').map(Number);
-  return { month: m || 0, year: y || 0 };
-}
-
-function daysInBillingMonth(month) {
-  const parts = billingMonthParts(month);
-  if (!parts.month || !parts.year) return 30;
-  return new Date(parts.year, parts.month, 0).getDate();
-}
-
-function billingMonthStart(month) {
-  const parts = billingMonthParts(month);
-  if (!parts.month || !parts.year) return null;
-  return new Date(parts.year, parts.month - 1, 1);
-}
-
-function billingMonthEnd(month) {
-  const parts = billingMonthParts(month);
-  if (!parts.month || !parts.year) return null;
-  return new Date(parts.year, parts.month, 0);
-}
-
-function formatDateInputValue(date) {
-  if (!date || Number.isNaN(date.getTime())) return '';
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function addDays(value, days) {
-  const date = parseDateFlexible(value);
-  if (!date) return null;
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function clampDateToBillingMonth(value, month) {
-  const date = parseDateFlexible(value);
-  const start = billingMonthStart(month);
-  const end = billingMonthEnd(month);
-  if (!date || !start || !end) return null;
-  if (date < start) return start;
-  if (date > end) return end;
-  return date;
-}
-
-function inclusiveDaysBetween(startValue, endValue) {
-  const start = parseDateFlexible(startValue);
-  const end = parseDateFlexible(endValue);
-  if (!start || !end || end < start) return 0;
-  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-  return Math.floor((endUtc - startUtc) / 86400000) + 1;
-}
-
-function addMonthsToBillingMonth(month, delta) {
-  if (!month) return '';
-  const [m, y] = month.split('/').map(Number);
-  if (!m || !y) return '';
-  const date = new Date(y, m - 1 + delta, 1);
-  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-}
-
-function isSameBillingMonth(dateValue, month) {
-  return monthFromDate(dateValue) === month;
-}
-
-function isTransferOldRoomBillingMonth(dateValue, month) {
-  const transferMonth = monthFromDate(dateValue);
-  return transferMonth === month;
-}
-
-function getTransferRoomLabel(receipt) {
-  const transfer = receipt?.transferOldRoomUtility;
-  if (!transfer) return `P${receipt?.roomId || ''}`;
-  return `P${transfer.oldRoomId} â†’ P${receipt.roomId}`;
-}
-
-function getPreviousReceiptByRoom(receipts, roomId, currentMonth, options = {}) {
-  const currentValue = parseMonthValue(currentMonth);
-  return (receipts || [])
-    .filter(r =>
-      r.roomId === roomId &&
-      r.type === 'monthly' &&
-      r.id !== options.excludeReceiptId &&
-      (
-        parseMonthValue(r.month) < currentValue ||
-        (
-          options.includeSameMonth &&
-          parseMonthValue(r.month) === currentValue &&
-          r.contractId !== options.excludeSameMonthContractId
-        )
-      )
-    )
-    .sort((a, b) => {
-      const monthDiff = parseMonthValue(b.month) - parseMonthValue(a.month);
-      if (monthDiff !== 0) return monthDiff;
-      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
-    })[0] || null;
-}
-
-function getLatestMonthlyReceiptForRoom(data, roomId, contractId = '') {
-  const receipts = (data.receipts || []).filter(r => r.roomId === roomId && r.type === 'monthly');
-  const sortLatest = (rows) => [...rows].sort((a, b) => {
-    const monthDiff = parseMonthValue(b.month) - parseMonthValue(a.month);
-    if (monthDiff !== 0) return monthDiff;
-    return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
-  })[0] || null;
-  if (contractId) {
-    const byContract = sortLatest(receipts.filter(r => r.contractId === contractId));
-    if (byContract) return byContract;
-  }
-  return sortLatest(receipts);
-}
-
-function getLatestMonthlyReceiptForContract(data, roomId, contractId = '') {
-  if (!contractId) return null;
-  return [...(data.receipts || [])]
-    .filter(r => r.roomId === roomId && r.contractId === contractId && r.type === 'monthly')
-    .sort((a, b) => {
-      const monthDiff = parseMonthValue(b.month) - parseMonthValue(a.month);
-      if (monthDiff !== 0) return monthDiff;
-      return (parseDateFlexible(b.createdAt)?.getTime() || 0) - (parseDateFlexible(a.createdAt)?.getTime() || 0);
-    })[0] || null;
-}
-
-const KNOWN_CONTRACT_METER_STARTS = {
-  'HÄ-301-202608': { electricOld: 0 }
-};
-
-function hasMeterStartValue(value) {
-  return value !== undefined && value !== null && value !== '';
-}
-
-function getContractMeterStarts(contract) {
-  const terms = contract?.terms && typeof contract.terms === 'object' ? contract.terms : {};
-  const configured = terms.meterStart || terms.meterReset || {};
-  const known = KNOWN_CONTRACT_METER_STARTS[contract?.contractNo] || {};
-  return { ...known, ...configured };
-}
-
-function getContractMeterStart(contract, key) {
-  const starts = getContractMeterStarts(contract);
-  return hasMeterStartValue(starts[key]) ? Number(starts[key]) : null;
-}
-
-function getRoomMeterStart(room, key) {
-  if (key === 'electricOld') {
-    return Number(room.electricNew ?? room.electricEnd ?? room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0);
-  }
-  return Number(room.waterNew ?? room.waterEnd ?? room.waterOld ?? room.waterStart ?? room.initialWater ?? 0);
-}
-
-function getMonthlyStartMeter(room, contract, previousReceipt, key) {
-  const latestSameContract = previousReceipt?.contractId === contract?.id ? previousReceipt : null;
-  if (latestSameContract) {
-    return key === 'electricOld'
-      ? Number(latestSameContract.electricNew ?? latestSameContract.electricEnd ?? 0)
-      : Number(latestSameContract.waterNew ?? latestSameContract.waterEnd ?? 0);
-  }
-  const contractMeterStart = getContractMeterStart(contract, key);
-  if (contractMeterStart !== null) return contractMeterStart;
-  if (previousReceipt) {
-    return key === 'electricOld'
-      ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
-      : Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0);
-  }
-  return getRoomMeterStart(room, key);
-}
-
-function getTransferBillingContext(data, contract, month) {
-  const occupantCount = getContractOccupantCount(data, contract);
-  const transfer = (data.roomTransfers || []).find(t =>
-    isTransferOldRoomBillingMonth(t.transferDate, month) &&
-    (t.oldContractId === contract?.id || t.newContractId === contract?.id)
-  );
-  if (!transfer) return { mode: 'normal', transfer: null, occupantCount };
-  if (transfer.oldContractId === contract?.id) return { mode: 'transfer_old_room_skip', transfer, occupantCount };
-  if (transfer.newContractId === contract?.id) return { mode: 'transfer_new_room', transfer, occupantCount, oldRoomUtility: buildTransferOldRoomUtility(data, transfer, month) };
-  return { mode: 'normal', transfer: null, occupantCount };
-}
-
-function getNewContractPartialContext(contract, month) {
-  if (!contract?.startDate || monthFromDate(contract.startDate) !== month) return null;
-  const start = clampDateToBillingMonth(contract.startDate, month);
-  const end = billingMonthEnd(month);
-  const chargeDays = inclusiveDaysBetween(start, end);
-  const monthDays = daysInBillingMonth(month);
-  if (!chargeDays || chargeDays >= monthDays) return null;
-  return {
-    mode: 'new_contract_partial_month',
-    startDate: formatDateInputValue(start),
-    endDate: formatDateInputValue(end),
-    chargeDays,
-    monthDays
-  };
-}
-
-function getMonthlyBillingContext(data, contract, month) {
-  const transferContext = getTransferBillingContext(data, contract, month);
-  if (transferContext.mode !== 'normal') return transferContext;
-  const partialContext = getNewContractPartialContext(contract, month);
-  if (partialContext) {
-    return {
-      ...partialContext,
-      transfer: null,
-      occupantCount: transferContext.occupantCount
-    };
-  }
-  return transferContext;
-}
-
-function findTransferTargetForOldRoom(data, oldRoomId, month) {
-  const transfer = (data.roomTransfers || []).find(t =>
-    t.oldRoomId === oldRoomId &&
-    isTransferOldRoomBillingMonth(t.transferDate, month)
-  );
-  if (!transfer) return null;
-  const contract = (data.contracts || []).find(c => c.id === transfer.newContractId);
-  const room = (data.rooms || []).find(r => r.id === transfer.newRoomId);
-  return contract && room ? { transfer, contract, room } : null;
-}
-
-function getBillableContractsForMonth(data, month) {
-  const activeMembershipContractIds = new Set((data.memberships || []).filter(m => m.status === 'active').map(m => m.contractId));
-  const roomsWithActiveMembership = new Set((data.memberships || []).filter(m => m.status === 'active').map(m => m.roomId));
-  const contracts = (data.contracts || []).filter(c => {
-    if (!(c.status === 'active' || c.status === 'notice')) return false;
-    if (roomsWithActiveMembership.has(c.roomId)) return activeMembershipContractIds.has(c.id);
-    return true;
-  });
-  const byId = new Map(contracts.map(c => [c.id, c]));
-  return [...byId.values()];
-}
-
-function buildTransferOldRoomUtility(data, transfer, month) {
-  const oldRoom = (data.rooms || []).find(r => r.id === transfer.oldRoomId);
-  if (!oldRoom) return null;
-  const oldContract = (data.contracts || []).find(c => c.id === transfer.oldContractId);
-  const oldBillingMonth = transfer.oldBillingMonth || monthFromDate(transfer.transferDate) || month;
-  const oldRoomReceipt = (data.receipts || []).find(r =>
-    r.roomId === transfer.oldRoomId &&
-    r.contractId === transfer.oldContractId &&
-    r.month === oldBillingMonth &&
-    r.type === 'monthly'
-  );
-  if (oldRoomReceipt && Number(oldRoomReceipt.paidAmount || 0) >= Number(oldRoomReceipt.total || 0) && Number(oldRoomReceipt.total || 0) > 0) {
-    return null;
-  }
-
-  const transferDate = parseDateFlexible(transfer.transferDate);
-  const defaultOldStayTo = transferDate ? addDays(transferDate, -1) : null;
-  const oldStayFromRaw = transfer.oldRoomStayFrom || oldContract?.startDate || billingMonthStart(oldBillingMonth);
-  const oldStayToRaw = transfer.oldRoomStayTo || defaultOldStayTo || transfer.transferDate || billingMonthEnd(oldBillingMonth);
-  const oldStayFrom = clampDateToBillingMonth(oldStayFromRaw, oldBillingMonth) || billingMonthStart(oldBillingMonth);
-  const oldStayTo = clampDateToBillingMonth(oldStayToRaw, oldBillingMonth) || billingMonthEnd(oldBillingMonth);
-  const oldRoomDays = inclusiveDaysBetween(oldStayFrom, oldStayTo);
-  const oldMonthDays = daysInBillingMonth(oldBillingMonth);
-  const oldMonthlyRent = Number(transfer.oldRoomMonthlyRent ?? transfer.oldRent ?? oldContract?.rent ?? oldRoom.rent ?? 0);
-  const oldRentAmount = Number(transfer.oldRoomRentAmount ?? Math.round((oldMonthlyRent / oldMonthDays) * oldRoomDays));
-  const oldOccupantCount = Number(transfer.occupantCount || getContractOccupantCount(data, oldContract) || 1);
-  const oldMonthlyServiceFee = Number(transfer.oldRoomServiceFee ?? fixedServiceTotal(oldRoom, oldOccupantCount));
-  const serviceMode = transfer.oldRoomServiceMode || 'included_in_transfer_receipt';
-  const oldServiceAmount = Number(transfer.oldRoomServiceAmount ?? (
-    serviceMode === 'monthly'
-      ? oldMonthlyServiceFee
-      : serviceMode === 'daily'
-        ? Math.round((oldMonthlyServiceFee / oldMonthDays) * oldRoomDays)
-        : 0
-  ));
-  const currentOldRoomReceipt = (data.receipts || []).find(r =>
-    r.roomId === transfer.oldRoomId &&
-    r.month === oldBillingMonth &&
-    r.type === 'monthly'
-  );
-  if (currentOldRoomReceipt) {
-    const electricOld = getElectricOld(currentOldRoomReceipt);
-    const electricNew = getElectricNew(currentOldRoomReceipt);
-    const waterOld = getWaterOld(currentOldRoomReceipt);
-    const waterNew = getWaterNew(currentOldRoomReceipt);
-    const electricUsed = Math.round(Math.max(0, electricNew - electricOld) * 100) / 100;
-    const waterUsed = Math.round(Math.max(0, waterNew - waterOld) * 100) / 100;
-    const electricAmount = electricUsed * Number(oldRoom.electricPrice || 0);
-    const waterAmount = waterUsed * Number(oldRoom.waterPrice || 0);
-    return {
-      oldRoomId: transfer.oldRoomId,
-      transferDate: transfer.transferDate,
-      electricOld,
-      electricNew,
-      electricUsed,
-      electricAmount,
-      waterOld,
-      waterNew,
-      waterUsed,
-      waterAmount,
-      oldBillingMonth,
-      oldStayFrom: formatDateInputValue(oldStayFrom),
-      oldStayTo: formatDateInputValue(oldStayTo),
-      oldRoomDays,
-      oldMonthDays,
-      oldMonthlyRent,
-      oldRentAmount,
-      oldMonthlyServiceFee,
-      oldServiceAmount,
-      oldServiceMode: serviceMode,
-      total: oldRentAmount + oldServiceAmount + electricAmount + waterAmount
-    };
-  }
-  const previousReceipt = getPreviousReceiptByRoom(data.receipts, transfer.oldRoomId, oldBillingMonth);
-  const electricOld = previousReceipt
-    ? Number(previousReceipt.electricNew ?? previousReceipt.electricEnd ?? 0)
-    : Number(oldRoom.electricOld ?? oldRoom.electricStart ?? oldRoom.initialElectric ?? 0);
-  const electricNew = Number(oldRoom.electricNew ?? oldRoom.electricEnd ?? electricOld);
-  const waterOld = previousReceipt
-    ? Number(previousReceipt.waterNew ?? previousReceipt.waterEnd ?? 0)
-    : Number(oldRoom.waterOld ?? oldRoom.waterStart ?? oldRoom.initialWater ?? 0);
-  const waterNew = Number(oldRoom.waterNew ?? oldRoom.waterEnd ?? waterOld);
-  const electricUsed = Math.round(Math.max(0, electricNew - electricOld) * 100) / 100;
-  const waterUsed = Math.round(Math.max(0, waterNew - waterOld) * 100) / 100;
-  const electricAmount = electricUsed * Number(oldRoom.electricPrice || 0);
-  const waterAmount = waterUsed * Number(oldRoom.waterPrice || 0);
-  const total = oldRentAmount + oldServiceAmount + electricAmount + waterAmount;
-  if (total <= 0) return null;
-  return {
-    oldRoomId: transfer.oldRoomId,
-    transferDate: transfer.transferDate,
-    oldBillingMonth,
-    oldStayFrom: formatDateInputValue(oldStayFrom),
-    oldStayTo: formatDateInputValue(oldStayTo),
-    oldRoomDays,
-    oldMonthDays,
-    oldMonthlyRent,
-    oldRentAmount,
-    oldMonthlyServiceFee,
-    oldServiceAmount,
-    oldServiceMode: serviceMode,
-    electricOld,
-    electricNew,
-    electricUsed,
-    electricAmount,
-    waterOld,
-    waterNew,
-    waterUsed,
-    waterAmount,
-    total
-  };
-}
-
-function createMonthlyReceipt(room, contract, previousReceipt, month, billingContext = { mode: 'normal' }) {
-  const electricOld = getMonthlyStartMeter(room, contract, previousReceipt, 'electricOld');
-  const waterOld = getMonthlyStartMeter(room, contract, previousReceipt, 'waterOld');
-
-  const isOldTransferRoom = billingContext.mode === 'transfer_old_room' || billingContext.mode === 'transfer_old_room_skip';
-  const isNewTransferSameMonth = billingContext.mode === 'transfer_new_room' && monthFromDate(billingContext.transfer?.transferDate) === month;
-  const partialNewContract = billingContext.mode === 'new_contract_partial_month' ? billingContext : null;
-  const newTransferStart = clampDateToBillingMonth(billingContext.transfer?.transferDate, month);
-  const newTransferEnd = billingMonthEnd(month);
-  const monthDays = daysInBillingMonth(month);
-  const newRoomDays = isNewTransferSameMonth
-    ? inclusiveDaysBetween(newTransferStart, newTransferEnd)
-    : partialNewContract
-      ? partialNewContract.chargeDays
-      : monthDays;
-  const monthlyRent = Number(contract?.rent || room.rent || 0);
-  const monthlyFixedServices = fixedServiceTotal(room, billingContext.occupantCount);
-  const rent = isOldTransferRoom ? 0 : (isNewTransferSameMonth || partialNewContract) ? Math.round((monthlyRent / monthDays) * newRoomDays) : monthlyRent;
-  const fixedServices = isOldTransferRoom ? 0 : (isNewTransferSameMonth || partialNewContract) ? Math.round((monthlyFixedServices / monthDays) * newRoomDays) : monthlyFixedServices;
-  const transferOldUtility = billingContext.mode === 'transfer_new_room' ? billingContext.oldRoomUtility : null;
-  const other = Number(transferOldUtility?.total || 0);
-  const transferNote = isOldTransferRoom
-    ? `PhÃ²ng cÅ© Ä‘Ã£ chuyá»ƒn sang P${billingContext.transfer?.newRoomId || ''} trong thÃ¡ng ${month}: chá»‰ chá»‘t Ä‘iá»‡n nÆ°á»›c, khÃ´ng tÃ­nh tiá»n phÃ²ng vÃ  dá»‹ch vá»¥ phÃ²ng cÅ©.`
-    : billingContext.mode === 'transfer_new_room'
-      ? `PhÃ²ng má»›i nháº­n khÃ¡ch tá»« P${billingContext.transfer?.oldRoomId || ''}: chi phÃ­ phÃ²ng cÅ© chÆ°a thanh toÃ¡n Ä‘Æ°á»£c tÃ¡ch riÃªng, chi phÃ­ phÃ²ng hiá»‡n táº¡i tÃ­nh theo thÃ¡ng/pháº§n thÃ¡ng tÆ°Æ¡ng á»©ng.`
-      : billingContext.mode === 'new_contract_partial_month'
-        ? `KhÃ¡ch báº¯t Ä‘áº§u thuÃª tá»« ${formatDisplayDate(billingContext.startDate)}. Tiá»n phÃ²ng vÃ  dá»‹ch vá»¥ thÃ¡ng ${month} Ä‘Æ°á»£c tÃ­nh theo ngÃ y Ä‘áº¿n háº¿t thÃ¡ng.`
-      : "Vui lÃ²ng thanh toÃ¡n trong vÃ²ng 5 ngÃ y ká»ƒ tá»« ngÃ y nháº­n phiáº¿u. Xin cáº£m Æ¡n!";
-
-  return recalculateReceipt({
-    id: uid("receipt"),
-    type: "monthly",
-    roomId: room.id,
-    contractId: contract?.id || "",
-    month,
-    rent,
-    fixedServices,
-    electricOld,
-    electricNew: electricOld,
-    electricUsed: 0,
-    electricAmount: 0,
-    waterOld,
-    waterNew: waterOld,
-    waterUsed: 0,
-    waterAmount: 0,
-    other,
-    otherType: other > 0 ? 'other' : '',
-    otherNote: '',
-    total: rent + fixedServices + other,
-    paidAmount: 0,
-    debt: rent + fixedServices + other,
-    status: "ChÆ°a thanh toÃ¡n",
-    note: transferNote,
-    billingMode: billingContext.mode,
-    transferId: billingContext.transfer?.id || '',
-    currentRoomChargeDays: newRoomDays,
-    currentRoomMonthDays: monthDays,
-    currentRoomMonthlyRent: monthlyRent,
-    currentRoomMonthlyServiceFee: monthlyFixedServices,
-    currentRoomChargeFrom: partialNewContract?.startDate || (isNewTransferSameMonth ? formatDateInputValue(newTransferStart) : ''),
-    currentRoomChargeTo: partialNewContract?.endDate || (isNewTransferSameMonth ? formatDateInputValue(newTransferEnd) : ''),
-    transferOldRoomUtility: transferOldUtility,
-    createdAt: new Date().toISOString()
-  }, room);
-}
-
-function enrichReceiptWithTransferUtility(receipt, data) {
-  if (!receipt || receipt.type !== 'monthly') return receipt;
-  const currentPaymentState = getReceiptPaymentState(receipt);
-  if (currentPaymentState.isPaid || Number(receipt.paidAmount || 0) > 0 || receipt.isFinalized) return receipt;
-  const contract = (data.contracts || []).find(c => c.id === receipt.contractId);
-  if (!contract) return receipt;
-  const billingContext = getMonthlyBillingContext(data, contract, receipt.month);
-  const room = (data.rooms || []).find(r => r.id === receipt.roomId);
-  const isNewTransferSameMonth = billingContext.mode === 'transfer_new_room' && monthFromDate(billingContext.transfer?.transferDate) === receipt.month;
-  const isPartialNewContract = billingContext.mode === 'new_contract_partial_month';
-  const monthDays = daysInBillingMonth(receipt.month);
-  const currentRoomChargeDays = isNewTransferSameMonth
-    ? inclusiveDaysBetween(clampDateToBillingMonth(billingContext.transfer?.transferDate, receipt.month), billingMonthEnd(receipt.month))
-    : isPartialNewContract
-      ? billingContext.chargeDays
-      : Number(receipt.currentRoomChargeDays || monthDays);
-  const expectedMonthlyFixedServices = fixedServiceTotal(room, billingContext.occupantCount);
-  const expectedFixedServices = (billingContext.mode === 'transfer_old_room' || billingContext.mode === 'transfer_old_room_skip')
-    ? 0
-    : (isNewTransferSameMonth || isPartialNewContract)
-      ? Math.round((expectedMonthlyFixedServices / monthDays) * currentRoomChargeDays)
-    : expectedMonthlyFixedServices;
-  const expectedMonthlyRent = Number(contract?.rent || room?.rent || 0);
-  const expectedRent = (billingContext.mode === 'transfer_old_room' || billingContext.mode === 'transfer_old_room_skip')
-    ? 0
-    : (isNewTransferSameMonth || isPartialNewContract)
-      ? Math.round((expectedMonthlyRent / monthDays) * currentRoomChargeDays)
-      : Number(receipt.rent || 0);
-  const fixedDelta = expectedFixedServices - Number(receipt.fixedServices || 0);
-  const rentDelta = expectedRent - Number(receipt.rent || 0);
-  const transferOldUtility = billingContext.mode === 'transfer_new_room' ? billingContext.oldRoomUtility : null;
-  const existingTransferTotal = receipt.transferId === billingContext.transfer?.id && receipt.transferOldRoomUtility
-    ? Number(receipt.transferOldRoomUtility.total || 0)
-    : 0;
-  const transferExtra = transferOldUtility ? Number(transferOldUtility.total || 0) - existingTransferTotal : 0;
-  const needsTransferMetadata = transferOldUtility && (
-    receipt.transferOldRoomUtility !== transferOldUtility ||
-    !receipt.transferOldRoomUtility?.oldRoomDays ||
-    receipt.transferOldRoomUtility?.oldRentAmount !== transferOldUtility.oldRentAmount ||
-    receipt.transferOldRoomUtility?.oldServiceAmount !== transferOldUtility.oldServiceAmount
-  );
-  if (rentDelta === 0 && fixedDelta === 0 && transferExtra === 0 && !needsTransferMetadata) return receipt;
-  const total = Number(receipt.total || 0) + rentDelta + fixedDelta + transferExtra;
-  const paidAmount = Number(receipt.paidAmount || 0);
-  return {
-    ...receipt,
-    rent: expectedRent,
-    fixedServices: expectedFixedServices,
-    other: Number(receipt.other || 0) + transferExtra,
-    total,
-    debt: Math.max(0, total - paidAmount),
-    status: paidAmount >= total && total > 0 ? 'ÄÃ£ thanh toÃ¡n' : paidAmount > 0 ? 'Ná»£ má»™t pháº§n' : receipt.status,
-    billingMode: billingContext.mode,
-    transferId: billingContext.transfer?.id || receipt.transferId || '',
-    currentRoomChargeDays,
-    currentRoomMonthDays: monthDays,
-    currentRoomMonthlyRent: expectedMonthlyRent,
-    currentRoomMonthlyServiceFee: expectedMonthlyFixedServices,
-    currentRoomChargeFrom: billingContext.startDate || (isNewTransferSameMonth ? formatDateInputValue(clampDateToBillingMonth(billingContext.transfer?.transferDate, receipt.month)) : receipt.currentRoomChargeFrom || ''),
-    currentRoomChargeTo: billingContext.endDate || (isNewTransferSameMonth ? formatDateInputValue(billingMonthEnd(receipt.month)) : receipt.currentRoomChargeTo || ''),
-    transferOldRoomUtility: transferOldUtility || receipt.transferOldRoomUtility,
-    note: receipt.note || (isPartialNewContract
-      ? `KhÃ¡ch báº¯t Ä‘áº§u thuÃª tá»« ${formatDisplayDate(billingContext.startDate)}. Tiá»n phÃ²ng vÃ  dá»‹ch vá»¥ thÃ¡ng ${receipt.month} Ä‘Æ°á»£c tÃ­nh theo ngÃ y Ä‘áº¿n háº¿t thÃ¡ng.`
-      : `PhÃ²ng má»›i nháº­n khÃ¡ch tá»« P${billingContext.transfer?.oldRoomId || ''}: chi phÃ­ phÃ²ng cÅ© chÆ°a thanh toÃ¡n Ä‘Æ°á»£c tÃ¡ch riÃªng trong phiáº¿u nÃ y.`)
-  };
-}
-
-function recalculateReceipt(receipt, room) {
-  const electricOld = Number(receipt.electricOld ?? receipt.electricStart ?? 0);
-  const electricNew = Number(receipt.electricNew ?? receipt.electricEnd ?? electricOld);
-
-  const waterOld = Number(receipt.waterOld ?? receipt.waterStart ?? 0);
-  const waterNew = Number(receipt.waterNew ?? receipt.waterEnd ?? waterOld);
-
-  const electricUsed = Math.max(0, electricNew - electricOld);
-  const waterUsed = Math.max(0, waterNew - waterOld);
-
-  // Round used values to 2 decimal places to avoid floating point issues
-  const electricUsedFixed = Math.round(electricUsed * 100) / 100;
-  const waterUsedFixed = Math.round(waterUsed * 100) / 100;
-
-  const electricAmount = electricUsedFixed * Number(room.electricPrice || 0);
-  const waterAmount = waterUsedFixed * Number(room.waterPrice || 0);
-
-  const total =
-    Number(receipt.rent || 0) +
-    Number(receipt.fixedServices || 0) +
-    electricAmount +
-    waterAmount +
-    getBillableOtherAmount(receipt);
-
-  const paidAmount = Number(receipt.paidAmount || 0);
-  const debt = Math.max(0, total - paidAmount);
-
-  let status = "ChÆ°a thanh toÃ¡n";
-  if (paidAmount >= total && total > 0) status = "ÄÃ£ thanh toÃ¡n";
-  else if (paidAmount > 0 && paidAmount < total) status = "Ná»£ má»™t pháº§n";
-
-  return {
-    ...receipt,
-    electricOld,
-    electricNew,
-    electricUsed: electricUsedFixed,
-    electricAmount,
-    waterOld,
-    waterNew,
-    waterUsed: waterUsedFixed,
-    waterAmount,
-    total,
-    debt,
-    status
-  };
-}
-
-function getReceiptPaymentState(receipt) {
-  const total = Number(receipt?.total || 0);
-  const paidAmount = Number(receipt?.paidAmount || 0);
-  const explicitAdjustmentDue = Number(receipt?.adjustmentDueAmount || 0);
-  const looksLikeUtilityCheckoutAdjustment =
-    receipt?.type === 'monthly' &&
-    receipt?.isFinalized &&
-    paidAmount >= total &&
-    total > 0 &&
-    Number(receipt?.rent || 0) === 0 &&
-    Number(receipt?.fixedServices || 0) === 0 &&
-    (Number(receipt?.electricAmount || 0) + Number(receipt?.waterAmount || 0) + Number(receipt?.other || 0)) > 0 &&
-    !receipt?.adjustmentPaidAmount;
-  const adjustmentDue = explicitAdjustmentDue > 0 ? explicitAdjustmentDue : looksLikeUtilityCheckoutAdjustment ? total : 0;
-  if (adjustmentDue > 0) {
-    const adjustmentPaidAmount = Number(receipt?.adjustmentPaidAmount || 0);
-    const adjustmentDebt = Math.max(0, adjustmentDue - adjustmentPaidAmount);
-    if (receipt?.status === 'ÄÃ£ há»§y') return { status: 'ÄÃ£ há»§y', debt: adjustmentDebt, paidAmount: adjustmentPaidAmount, basePaidAmount: paidAmount, adjustmentDue, isPaid: false, isPartial: false, isAdjustment: true };
-    if (adjustmentPaidAmount >= adjustmentDue) return { status: 'ÄÃ£ thanh toÃ¡n', debt: 0, paidAmount: adjustmentPaidAmount, basePaidAmount: paidAmount, adjustmentDue, isPaid: true, isPartial: false, isAdjustment: true };
-    if (adjustmentPaidAmount > 0) return { status: 'Ná»£ má»™t pháº§n', debt: adjustmentDebt, paidAmount: adjustmentPaidAmount, basePaidAmount: paidAmount, adjustmentDue, isPaid: false, isPartial: true, isAdjustment: true };
-    return { status: 'ChÆ°a thanh toÃ¡n', debt: adjustmentDebt, paidAmount: 0, basePaidAmount: paidAmount, adjustmentDue, isPaid: false, isPartial: false, isAdjustment: true };
-  }
-  const debt = Math.max(0, total - paidAmount);
-  if (receipt?.status === 'ÄÃ£ há»§y') return { status: 'ÄÃ£ há»§y', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: false, isAdjustment: false };
-  if (total > 0 && paidAmount >= total) return { status: 'ÄÃ£ thanh toÃ¡n', debt: 0, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: true, isPartial: false, isAdjustment: false };
-  if (paidAmount > 0) return { status: 'Ná»£ má»™t pháº§n', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: true, isAdjustment: false };
-  return { status: 'ChÆ°a thanh toÃ¡n', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: false, isAdjustment: false };
-}
-
-const OTHER_RECEIPT_TYPES = [
-  { value: 'other', label: 'Phá»¥ phÃ­ khÃ¡c', icon: 'â•' },
-  { value: 'deposit', label: 'Tiá»n cá»c', icon: 'ğŸ”' },
-  { value: 'discount', label: 'Giáº£m trá»«', icon: 'â–' },
-  { value: 'repair', label: 'PhÃ­ sá»­a chá»¯a', icon: 'ğŸ› ï¸' },
-  { value: 'cleaning', label: 'PhÃ­ vá»‡ sinh', icon: 'ğŸ§¹' },
-  { value: 'compensation', label: 'Bá»“i thÆ°á»ng', icon: 'âš ï¸' }
-];
-
-function getOtherReceiptType(receipt) {
-  return OTHER_RECEIPT_TYPES.find(item => item.value === receipt?.otherType) || OTHER_RECEIPT_TYPES[0];
-}
-
-function getOtherReceiptLabel(receipt) {
-  const type = getOtherReceiptType(receipt);
-  return `${type.icon} ${receipt?.otherNote?.trim() || type.label}`;
-}
-
-function isInformationalDepositReceiptLine(receipt) {
-  return receipt?.otherType === 'deposit';
-}
-
-function getBillableOtherAmount(receipt) {
-  return isInformationalDepositReceiptLine(receipt) ? 0 : Number(receipt?.other || 0);
-}
-
-function getReceiptContractDeposit(receipt, contract) {
-  return Number(contract?.deposit ?? receipt?.contractDeposit ?? 0);
-}
-
-function App() {
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem('room_app_unlocked') === 'true');
-  if (!unlocked) return <LoginScreen onUnlock={() => setUnlocked(true)} />;
-  return <AppMain />;
-}
-
-function LoginScreen({ onUnlock }) {
-  const [pin, setPin] = useState('');
-  const savedPin = safeRead(PIN_KEY, '1234');
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (pin === savedPin) {
-      sessionStorage.setItem('room_app_unlocked', 'true');
-      onUnlock();
-    } else {
-      alert('MÃ£ PIN khÃ´ng chÃ­nh xÃ¡c!');
-      setPin('');
-    }
-  };
-  return (
-    <div className="login-screen">
-      <div className="login-card liquid-glass">
-        <h1 style={{ fontSize: '28px', marginBottom: '8px' }}>ğŸ” Quáº£n lÃ½ PhÃ²ng</h1>
-        <p className="muted" style={{ marginBottom: '24px' }}>Vui lÃ²ng nháº­p mÃ£ PIN Ä‘á»ƒ tiáº¿p tá»¥c</p>
-        <form onSubmit={handleSubmit} className="stack" style={{ gap: '16px' }}>
-          <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="MÃ£ PIN" autoFocus style={{ width: '100%', textAlign: 'center', fontSize: '20px', height: '60px' }} />
-          <button type="submit" className="primary-btn wide" style={{ height: '50px' }}>Má»Ÿ khÃ³a há»‡ thá»‘ng</button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function printDocumentElement(elementId, title = 'TÃ i liá»‡u', pageSize = 'A4') {
-  const content = document.getElementById(elementId);
-  if (!content) {
-    alert('ChÆ°a tÃ¬m tháº¥y ná»™i dung Ä‘á»ƒ in.');
-    return;
-  }
-
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow.document;
-  doc.open();
-  doc.write(`
-    <html>
-      <head>
-        <title>${title}</title>
-        <style>
-          @page { size: ${pageSize}; margin: 12mm 0 14mm; }
-          html, body { margin: 0; padding: 0; background: white; color: black; }
-          body { font-family: "Times New Roman", Times, serif; font-size: 13px; line-height: 1.38; }
-          .contract-paper,
-          .appendix-content-v1 {
-            width: 210mm !important;
-            max-width: none !important;
-            min-height: 273mm !important;
-            margin: 0 auto !important;
-            padding: 2mm 20mm 6mm !important;
-            box-sizing: border-box !important;
-            box-shadow: none !important;
-            background: white !important;
-            color: black !important;
-            transform: none !important;
-          }
-          .contract-header-text { text-align: center; margin-bottom: 18px; }
-          h1 { font-size: 18px; text-align: center; margin: 12px 0 8px; }
-          h2 { font-size: 15px; text-align: center; margin: 8px 0 5px; }
-          h3, h4 { font-size: 13px; margin: 10px 0 5px; break-after: avoid; page-break-after: avoid; }
-          p { margin: 3px 0; orphans: 3; widows: 3; }
-          table { width: 100%; border-collapse: collapse; margin: 8px 0; page-break-inside: avoid; break-inside: avoid; }
-          th, td { border: 1px solid #111; padding: 4px 6px; vertical-align: top; }
-          .appendix-page { page-break-before: always; margin-top: 0 !important; border-top: 0 !important; padding-top: 10mm !important; }
-          .appendix-section { break-inside: avoid; page-break-inside: avoid; }
-          .signature-row,
-          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; text-align: center; margin-top: 18px; break-inside: avoid; page-break-inside: avoid; }
-          .signature-space { height: 58px; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        </style>
-      </head>
-      <body>${content.outerHTML}</body>
-    </html>
-  `);
-  doc.close();
-
-  setTimeout(() => {
-    iframe.contentWindow.focus();
-    iframe.contentWindow.print();
-    setTimeout(() => document.body.removeChild(iframe), 1500);
-  }, 500);
-}
-
-function ContractPreview({ contract, room, tenants, bankInfo, report, type = 'main', onClose }) {
-  const primaryTenant = tenants.find(t => t.role === 'primary') || tenants[0] || {};
-  const signedDay = formatContractDate(contract.signedDate);
-  const startDay = formatBusinessDate(contract.startDate);
-  const endDay = formatBusinessDate(contract.endDate);
-  const duration = calculateRentalDuration(contract.startDate, contract.endDate);
-  const rentAmount = Number(contract.rent || room.rent || 0);
-  const depositAmount = Number(contract.deposit || room.deposit || rentAmount || 0);
-  const electricPrice = Number(contract.terms?.electricPrice || room.electricPrice || 3800);
-  const waterPrice = Number(contract.terms?.waterPrice || room.waterPrice || 32000);
-  const baseFixedServiceTotal = Number(room.internet || 0) + Number(room.cleaning || 0) + Number(room.elevator || 0) + Number(room.laundry || 0);
-  const occupantCount = Math.max(1, tenants.length || 1);
-  const appliedFixedServiceTotal = fixedServiceTotal(room, occupantCount);
-  const fixedServiceDiscount = Math.max(0, baseFixedServiceTotal - appliedFixedServiceTotal);
-  const isMain = type === 'main';
-  const isLiquidation = type === 'liquidation';
-  const isRenewal = type === 'renewal';
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2" style={{ maxWidth: '950px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header no-print">
-          <div>
-            <h2 style={{ margin: 0 }}>{isLiquidation ? 'BiÃªn báº£n táº¥t toÃ¡n' : isRenewal ? 'Phá»¥ lá»¥c gia háº¡n' : 'Há»£p Ä‘á»“ng thuÃª'} P{room.id}</h2>
-            <p className="muted small">TÃ i liá»‡u Ä‘áº§y Ä‘á»§ 12 Äiá»u khoáº£n & 3 Phá»¥ lá»¥c (Khá»• A4)</p>
-          </div>
-          <div className="btn-group">
-            <button className="primary-btn" onClick={() => printDocumentElement('contract-preview-paper', `${isRenewal ? 'Phá»¥ lá»¥c gia háº¡n' : isLiquidation ? 'BiÃªn báº£n táº¥t toÃ¡n' : 'Há»£p Ä‘á»“ng thuÃª'} P${room.id}`)}>ğŸ–¨ï¸ In tÃ i liá»‡u</button>
-            <button className="secondary-btn" onClick={onClose}>ÄÃ³ng</button>
-          </div>
-        </div>
-        <div id="contract-preview-paper" className="contract-paper">
-          {(isMain || isRenewal) && (
-            <>
-              <div className="contract-header-text">
-                <h1>Cá»˜NG HÃ’A XÃƒ Há»˜I CHá»¦ NGHÄ¨A VIá»†T NAM</h1>
-                <h2>Äá»™c láº­p â€“ Tá»± do â€“ Háº¡nh phÃºc</h2>
-                <p style={{ fontStyle: 'italic' }}>HÃ  Ná»™i, ngÃ y {signedDay}</p>
-              </div>
-              <h1 style={{ textAlign: 'center', margin: '30px 0 20px' }}>Há»¢P Äá»’NG THUÃŠ PHÃ’NG</h1>
-              {isMain && (
-                <div className="contract-section">
-                  <p>- CÄƒn cá»© Bá»™ luáº­t DÃ¢n sá»± sá»‘ 91/2015/QH13 ngÃ y 24/11/2015;</p>
-                  <p>- CÄƒn cá»© Luáº­t ThÆ°Æ¡ng máº¡i sá»‘ 36/2005/QH11 ngÃ y 14/06/2005;</p>
-                  <p>- CÄƒn cá»© nhu cáº§u vÃ  sá»± thá»a thuáº­n cá»§a cÃ¡c BÃªn.</p>
-                  <p style={{ marginTop: '10px' }}>HÃ´m nay, ngÃ y {signedDay}, chÃºng tÃ´i gá»“m:</p>
-                </div>
-              )}
-              <div className="contract-section">
-                <h3>BÃŠN CHO THUÃŠ (BÃªn A)</h3>
-                <p>BÃ : <b>DIá»†M THá»Š BÃŒNH</b></p>
-                <p>CCCD Sá»‘: <b>019169000011</b> &nbsp;&nbsp;&nbsp; NgÃ y cáº¥p: <b>07/04/2021</b></p>
-                <p>Táº¡i: <b>Cá»¥c Cáº£nh sÃ¡t Quáº£n lÃ½ hÃ nh chÃ­nh vá» tráº­t tá»± xÃ£ há»™i</b></p>
-                <p>SÄT/Zalo: <b>056.201.1613</b></p>
-                <p>TÃ i khoáº£n ngÃ¢n hÃ ng: <b>{bankInfo.bankName} - {bankInfo.accountNo} - {bankInfo.accountName}</b></p>
-                <h3>BÃŠN THUÃŠ (BÃªn B)</h3>
-                <p>Ã”ng/BÃ : <b>{primaryTenant.name}</b></p>
-                <p>CCCD sá»‘: <b>{primaryTenant.cccd || '................'}</b> &nbsp;&nbsp;&nbsp; NgÃ y cáº¥p: <b>{primaryTenant.cccdDate || '................'}</b></p>
-                <p>CÆ¡ quan cáº¥p: <b>{primaryTenant.cccdPlace || '................'}</b></p>
-                <p>NÆ¡i ÄKTT: <b>{primaryTenant.address || '................'}</b></p>
-                <p>Äá»‹a chá»‰ liÃªn há»‡/SÄT/Zalo: <b>{primaryTenant.phone || '................'}</b></p>
-                <p style={{ marginTop: '10px' }}>BÃªn A vÃ  BÃªn B sau Ä‘Ã¢y gá»i chung lÃ  "CÃ¡c BÃªn".</p>
-              </div>
-              <div className="main-articles">
-                <h3>ÄIá»€U 1. TÃ€I Sáº¢N THUÃŠ VÃ€ Má»¤C ÄÃCH Sá»¬ Dá»¤NG</h3>
-                <p>1.1. BÃªn A cho BÃªn B thuÃª phÃ²ng sá»‘ <b>{room.id}</b> táº¡i Sá»‘ 28, ngÃ¡ch 1, ngÃµ 162 KhÆ°Æ¡ng ÄÃ¬nh, phÆ°á»ng KhÆ°Æ¡ng ÄÃ¬nh, TP HÃ  Ná»™i (sau Ä‘Ã¢y gá»i â€œPhÃ²ng thuÃªâ€) Ä‘á»ƒ lÃ m nÆ¡i á»Ÿ.</p>
-                <p>1.2. Sá»‘ ngÆ°á»i á»Ÿ tá»‘i Ä‘a: 03 ngÆ°á»i/phÃ²ng. Náº¿u thÃªm ngÆ°á»i, BÃªn B pháº£i bÃ¡o trÆ°á»›c vÃ  Ä‘Æ°á»£c BÃªn A Ä‘á»“ng Ã½ báº±ng tin nháº¯n/vÄƒn báº£n; khÃ¡ch á»Ÿ quÃ¡ 03 ngÃ y sáº½ tÃ­nh thÃªm 50.000 Ä‘á»“ng/ngÆ°á»i vÃ  BÃªn B chá»‹u chi phÃ­ pháº¡t hÃ nh chÃ­nh náº¿u khÃ¡ch chÆ°a khai bÃ¡o táº¡m trÃº náº¿u á»Ÿ â‰¥15 ngÃ y.</p>
-                <p>1.3. BÃªn A cam káº¿t PhÃ²ng thuÃª thuá»™c quyá»n sá»Ÿ há»¯u/sá»­ dá»¥ng há»£p phÃ¡p cá»§a BÃªn A; náº¿u phÃ¡t sinh tranh cháº¥p liÃªn quan tÃ i sáº£n cho thuÃª, BÃªn A chá»‹u trÃ¡ch nhiá»‡m trÆ°á»›c phÃ¡p luáº­t.</p>
-                <p>1.4. Má»—i phÃ²ng Ä‘Æ°á»£c bá»‘ trÃ­ tá»‘i Ä‘a 02 (hai) xe mÃ¡y. TrÆ°á»ng há»£p cÃ³ xe thá»© 03, BÃªn B tá»± gá»­i ngoÃ i. Táº¥t cáº£ xe Ä‘á»ƒ táº¡i táº§ng 1 pháº£i Ä‘Äƒng kÃ½ biá»ƒn sá»‘/loáº¡i xe vá»›i BÃªn A. Khi thay Ä‘á»•i xe, BÃªn B pháº£i thÃ´ng bÃ¡o cáº­p nháº­t trÆ°á»›c khi Ä‘Æ°a xe vÃ o gá»­i.</p>
-                <p>1.5. KhÃ´ng Ä‘á»ƒ qua Ä‘Ãªm Ä‘á»‘i vá»›i xe khÃ´ng thuá»™c cÆ° dÃ¢n trong cÃ¹ng tÃ²a nhÃ .</p>
-                <p>1.6. Náº¿u phÃ¡t hiá»‡n vi pháº¡m cÃ¡c quy Ä‘á»‹nh 1.5, BÃªn A cÃ³ quyá»n yÃªu cáº§u di chuyá»ƒn xe ngay vÃ  Ã¡p dá»¥ng má»©c pháº¡t 300.000 Ä‘á»“ng cho má»—i xe/má»—i láº§n (hoáº·c má»—i Ä‘Ãªm) vi pháº¡m.</p>
-                <p>1.7. Nháº±m Ä‘áº£m báº£o PCCC táº¡i tÃ²a nhÃ , BÃªn A cáº¥m tuyá»‡t Ä‘á»‘i sáº¡c má»i loáº¡i xe mÃ¡y Ä‘iá»‡n/xe Ä‘áº¡p Ä‘iá»‡n/scooter Ä‘iá»‡n vÃ  pin, áº¯c-quy rá»i cá»§a cÃ¡c phÆ°Æ¡ng tiá»‡n nÃ y trong má»i khu vá»±c tÃ²a nhÃ  (phÃ²ng, hÃ nh lang, cáº§u thang, khu ká»¹ thuáº­t, bÃ£i Ä‘á»ƒ xe, khu vá»±c chung). BÃªn A Ä‘Æ°á»£c quyá»n ngáº¯t nguá»“n, yÃªu cáº§u dá»«ng sáº¡c/di chuyá»ƒn ngay; vi pháº¡m bá»‹ pháº¡t tá»« 300.000 â€“ 500.000 Ä‘á»“ng/láº§n, tÃ¡i pháº¡m cÃ³ thá»ƒ cháº¥m dá»©t quyá»n gá»­i xe hoáº·c cháº¥m dá»©t Há»£p Ä‘á»“ng. Má»i rá»§i ro, thiá»‡t háº¡i phÃ¡t sinh do sáº¡c trÃ¡i quy Ä‘á»‹nh do BÃªn B tá»± chá»‹u vÃ  bá»“i thÆ°á»ng.</p>
-                <h3>ÄIá»€U 2. BÃ€N GIAO VÃ€ HIá»†N TRáº NG</h3>
-                <p>2.1. NgÃ y kÃ½ Há»£p Ä‘á»“ng: <b>{signedDay}</b>. NgÃ y bÃ n giao dá»± kiáº¿n/thá»±c táº¿: <b>{startDay}</b>.</p>
-                <p>2.2. Hai BÃªn láº­p Phá»¥ lá»¥c 01 â€“ BiÃªn báº£n bÃ n giao kÃ¨m áº£nh/video, ghi rÃµ tá»«ng thiáº¿t bá»‹, tÃ¬nh tráº¡ng thiáº¿t bá»‹, hiá»‡n tráº¡ng phÃ²ng, chá»‰ sá»‘ Ä‘iá»‡n/nÆ°á»›c Ä‘áº§u ká»³, sá»‘ chÃ¬a khÃ³a/tháº»/vÃ¢n tay Ä‘Ã£ bÃ n giao.</p>
-                <p>2.3. Ká»ƒ tá»« thá»i Ä‘iá»ƒm bÃ n giao thá»±c táº¿ theo Phá»¥ lá»¥c 01, BÃªn B cÃ³ toÃ n quyá»n sá»­ dá»¥ng PhÃ²ng thuÃª theo Há»£p Ä‘á»“ng.</p>
-                <h3>ÄIá»€U 3. THá»œI Háº N THUÃŠ</h3>
-                <p>3.1. Thá»i háº¡n thuÃª: <b>{duration}</b>.</p>
-                <p>3.2. Thá»i háº¡n Ä‘Æ°á»£c tÃ­nh tá»« ngÃ y <b>{startDay}</b> Ä‘áº¿n háº¿t ngÃ y <b>{endDay}</b>. Náº¿u ngÃ y bÃ n giao thá»±c táº¿ khÃ¡c ngÃ y báº¯t Ä‘áº§u thuÃª, Hai BÃªn ghi nháº­n báº±ng Phá»¥ lá»¥c 01 hoáº·c tin nháº¯n xÃ¡c nháº­n.</p>
-                <p>3.3. Háº¿t thá»i háº¡n thuÃª, Há»£p Ä‘á»“ng tá»± Ä‘á»™ng gia háº¡n theo thÃ¡ng vá»›i Ä‘iá»u khoáº£n khÃ´ng Ä‘á»•i, trá»« khi má»™t BÃªn thÃ´ng bÃ¡o cháº¥m dá»©t trÆ°á»›c Ã­t nháº¥t 30 ngÃ y báº±ng vÄƒn báº£n/tin nháº¯n (Zalo/SMS).</p>
-                <h3>ÄIá»€U 4. TIá»€N Äáº¶T Cá»ŒC</h3>
-                <p>4.1. Má»©c Ä‘áº·t cá»c: <b>{formatMoney(depositAmount)}</b> (báº±ng chá»¯: <b>{numberToWords(depositAmount)}</b>), ná»™p ngay khi kÃ½ hoáº·c theo thá»a thuáº­n thanh toÃ¡n cá»§a Hai BÃªn.</p>
-                <p>4.2. KhÃ´ng dÃ¹ng cá»c Ä‘á»ƒ trá»« tiá»n thuÃª trá»« khi Hai BÃªn Ä‘á»“ng Ã½ báº±ng vÄƒn báº£n/tin nháº¯n.</p>
-                <p><b>4.3. Thá»i háº¡n thuÃª tá»‘i thiá»ƒu vÃ  xá»­ lÃ½ tiá»n Ä‘áº·t cá»c khi cháº¥m dá»©t trÆ°á»›c háº¡n</b></p>
-                <p>4.3.1. BÃªn B cam káº¿t thá»i gian thuÃª tá»‘i thiá»ƒu lÃ  <b>12 (mÆ°á»i hai) thÃ¡ng liÃªn tá»¥c</b>, tÃ­nh tá»« ngÃ y BÃªn A bÃ n giao phÃ²ng cho BÃªn B theo Há»£p Ä‘á»“ng nÃ y.</p>
-                <p>4.3.2. TrÆ°á»ng há»£p BÃªn B tá»± Ã½ tráº£ phÃ²ng, ngá»«ng thuÃª hoáº·c Ä‘Æ¡n phÆ°Æ¡ng cháº¥m dá»©t Há»£p Ä‘á»“ng trÆ°á»›c khi Ä‘á»§ 12 (mÆ°á»i hai) thÃ¡ng vÃ¬ nguyÃªn nhÃ¢n thuá»™c vá» BÃªn B, thÃ¬ Ä‘Æ°á»£c xÃ¡c Ä‘á»‹nh lÃ  vi pháº¡m cam káº¿t vá» thá»i háº¡n thuÃª tá»‘i thiá»ƒu. Khi Ä‘Ã³, <b>toÃ n bá»™ sá»‘ tiá»n Ä‘áº·t cá»c thuá»™c vá» BÃªn A vÃ  BÃªn A khÃ´ng cÃ³ nghÄ©a vá»¥ hoÃ n tráº£ cho BÃªn B</b>, ká»ƒ cáº£ trÆ°á»ng há»£p BÃªn B Ä‘Ã£ thÃ´ng bÃ¡o trÆ°á»›c Ã­t nháº¥t 30 ngÃ y.</p>
-                <p>Viá»‡c thÃ´ng bÃ¡o trÆ°á»›c chá»‰ nháº±m thá»±c hiá»‡n nghÄ©a vá»¥ thÃ´ng bÃ¡o khi cháº¥m dá»©t Há»£p Ä‘á»“ng vÃ  <b>khÃ´ng lÃ m phÃ¡t sinh quyá»n Ä‘Æ°á»£c hoÃ n tráº£ tiá»n Ä‘áº·t cá»c</b> cá»§a BÃªn B trong trÆ°á»ng há»£p nÃ y.</p>
-                <p>4.3.3. NgoÃ i viá»‡c khÃ´ng Ä‘Æ°á»£c hoÃ n tráº£ tiá»n Ä‘áº·t cá»c, BÃªn B váº«n cÃ³ trÃ¡ch nhiá»‡m thanh toÃ¡n Ä‘áº§y Ä‘á»§ tiá»n thuÃª phÃ²ng, tiá»n Ä‘iá»‡n, nÆ°á»›c, dá»‹ch vá»¥ vÃ  cÃ¡c khoáº£n cÃ´ng ná»£ khÃ¡c phÃ¡t sinh Ä‘áº¿n thá»i Ä‘iá»ƒm bÃ n giao thá»±c táº¿; Ä‘á»“ng thá»i bá»“i thÆ°á»ng chi phÃ­ sá»­a chá»¯a, kháº¯c phá»¥c cÃ¡c hÆ° há»ng do lá»—i cá»§a BÃªn B gÃ¢y ra. TrÆ°á»ng há»£p cÃ¡c khoáº£n pháº£i thanh toÃ¡n vÃ  thiá»‡t háº¡i thá»±c táº¿ vÆ°á»£t quÃ¡ sá»‘ tiá»n Ä‘áº·t cá»c thÃ¬ BÃªn B pháº£i thanh toÃ¡n pháº§n chÃªnh lá»‡ch cÃ²n thiáº¿u cho BÃªn A.</p>
-                <p>4.3.4. Quy Ä‘á»‹nh khÃ´ng hoÃ n tráº£ tiá»n Ä‘áº·t cá»c táº¡i Khoáº£n 4.3.2 khÃ´ng Ã¡p dá»¥ng trong cÃ¡c trÆ°á»ng há»£p sau:</p>
-                <p>a) Hai BÃªn cÃ³ thá»a thuáº­n báº±ng vÄƒn báº£n vá» viá»‡c cháº¥m dá»©t Há»£p Ä‘á»“ng vÃ  hoÃ n tráº£ tiá»n Ä‘áº·t cá»c;</p>
-                <p>b) BÃªn B cháº¥m dá»©t Há»£p Ä‘á»“ng do BÃªn A vi pháº¡m nghiÃªm trá»ng nghÄ©a vá»¥ theo Há»£p Ä‘á»“ng hoáº·c thuá»™c trÆ°á»ng há»£p BÃªn B cÃ³ quyá»n Ä‘Æ¡n phÆ°Æ¡ng cháº¥m dá»©t Há»£p Ä‘á»“ng theo quy Ä‘á»‹nh phÃ¡p luáº­t;</p>
-                <p>c) Xáº£y ra sá»± kiá»‡n báº¥t kháº£ khÃ¡ng khiáº¿n má»¥c Ä‘Ã­ch thuÃª phÃ²ng khÃ´ng thá»ƒ tiáº¿p tá»¥c thá»±c hiá»‡n vÃ  hai BÃªn cÃ³ vÄƒn báº£n xÃ¡c nháº­n hoáº·c cÆ¡ quan cÃ³ tháº©m quyá»n xÃ¡c Ä‘á»‹nh;</p>
-                <p>d) CÃ¡c trÆ°á»ng há»£p khÃ¡c do hai BÃªn thá»‘ng nháº¥t báº±ng vÄƒn báº£n.</p>
-                <p>Trong cÃ¡c trÆ°á»ng há»£p trÃªn, BÃªn A hoÃ n tráº£ pháº§n tiá»n Ä‘áº·t cá»c cÃ²n láº¡i cho BÃªn B sau khi kháº¥u trá»« cÃ¡c khoáº£n cÃ´ng ná»£, chi phÃ­ sá»­a chá»¯a vÃ  nghÄ©a vá»¥ tÃ i chÃ­nh há»£p lá»‡ trong thá»i háº¡n <b>07 ngÃ y lÃ m viá»‡c</b> ká»ƒ tá»« ngÃ y hai BÃªn hoÃ n táº¥t bÃ n giao vÃ  Ä‘á»‘i soÃ¡t cÃ´ng ná»£.</p>
-                <p>4.3.5. TrÆ°á»ng há»£p BÃªn B cháº¥m dá»©t Há»£p Ä‘á»“ng sau khi Ä‘Ã£ thuÃª Ä‘á»§ 12 thÃ¡ng, BÃªn B pháº£i thÃ´ng bÃ¡o cho BÃªn A trÆ°á»›c Ã­t nháº¥t 30 ngÃ y báº±ng vÄƒn báº£n hoáº·c tin nháº¯n theo phÆ°Æ¡ng thá»©c liÃªn láº¡c Ä‘Ã£ thá»a thuáº­n. Sau khi hoÃ n táº¥t viá»‡c bÃ n giao phÃ²ng vÃ  thanh toÃ¡n Ä‘áº§y Ä‘á»§ cÃ¡c nghÄ©a vá»¥, BÃªn A hoÃ n tráº£ pháº§n tiá»n Ä‘áº·t cá»c cÃ²n láº¡i cho BÃªn B theo Khoáº£n 4.4 cá»§a Há»£p Ä‘á»“ng.</p>
-                <p>4.4. Khi tráº£ phÃ²ng, Hai BÃªn láº­p BiÃªn báº£n kiá»ƒm tra hiá»‡n tráº¡ng. BÃªn A chá»‰ Ä‘Æ°á»£c kháº¥u trá»« cá»c Ä‘á»‘i vá»›i cÃ´ng ná»£, hÆ° há»ng do lá»—i BÃªn B hoáº·c chi phÃ­ cÃ³ báº£ng kÃª/hÃ³a Ä‘Æ¡n/chá»©ng tá»« há»£p lá»‡. BÃªn A hoÃ n cá»c trong 07 (báº£y) ngÃ y lÃ m viá»‡c ká»ƒ tá»« khi nháº­n Ä‘á»§ chÃ¬a khÃ³a/tháº», bÃ n giao xong vÃ  quyáº¿t toÃ¡n cÃ´ng ná»£ vá»›i BÃªn B.</p>
-                <h3>ÄIá»€U 5. GIÃ THUÃŠ VÃ€ PHÃ Dá»ŠCH Vá»¤</h3>
-                <p>5.1. Tiá»n thuÃª: <b>{formatMoney(rentAmount)}</b>/thÃ¡ng (báº±ng chá»¯: <b>{numberToWords(rentAmount)}</b>).</p>
-                <p>5.2. PhÃ­ dá»‹ch vá»¥ chÆ°a gá»“m trong tiá»n thuÃª. Tá»•ng phÃ­ dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh gá»‘c: <b>{formatMoney(baseFixedServiceTotal)}</b>/thÃ¡ng. TrÆ°á»ng há»£p BÃªn B á»Ÿ má»™t mÃ¬nh trong phÃ²ng Ä‘Æ°á»£c giáº£m 50% phÃ­ dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh; tá»« 02 ngÆ°á»i trá»Ÿ lÃªn Ã¡p dá»¥ng Ä‘á»§ phÃ­ dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh.</p>
-                <p>5.3. Má»©c phÃ­ dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh Ä‘ang Ã¡p dá»¥ng cho Há»£p Ä‘á»“ng nÃ y: <b>{formatMoney(appliedFixedServiceTotal)}</b>/thÃ¡ng theo sá»‘ ngÆ°á»i á»Ÿ hiá»‡n táº¡i lÃ  <b>{occupantCount}</b> ngÆ°á»i{fixedServiceDiscount > 0 ? <>, Ä‘Ã£ giáº£m <b>{formatMoney(fixedServiceDiscount)}</b>/thÃ¡ng.</> : <>.</>}</p>
-                <p>- Äiá»‡n: <b>{formatMoney(electricPrice)}</b>/kWh, theo chá»‰ sá»‘ cÃ´ng tÆ¡ (ghi Ä‘áº§u/cuá»‘i ká»³ trong phiáº¿u thu).</p>
-                <p>- NÆ°á»›c: <b>{formatMoney(waterPrice)}</b>/mÂ³, theo chá»‰ sá»‘ cÃ´ng tÆ¡ (ghi Ä‘áº§u/cuá»‘i ká»³ trong phiáº¿u thu).</p>
-                <p>- Máº¡ng internet: <b>{formatMoney(room.internet)}</b>/phÃ²ng/thÃ¡ng.</p>
-                <p>- Vá»‡ sinh rÃ¡c & dá»‹ch vá»¥ chung: <b>{formatMoney(room.cleaning)}</b>/phÃ²ng/thÃ¡ng.</p>
-                <p>- PhÃ­ báº£o trÃ¬ thang mÃ¡y: <b>{formatMoney(room.elevator)}</b>/phÃ²ng/thÃ¡ng.</p>
-                <p>- PhÃ­ sá»­ dá»¥ng mÃ¡y giáº·t chung: <b>{formatMoney(room.laundry)}</b>/phÃ²ng/thÃ¡ng.</p>
-                <p>5.4. Khi Ä‘Æ¡n giÃ¡ Ä‘áº§u vÃ o, sá»‘ ngÆ°á»i á»Ÿ hoáº·c phÃ­ dá»‹ch vá»¥ thay Ä‘á»•i, BÃªn A bÃ¡o trÆ°á»›c Ã­t nháº¥t 15 ngÃ y vÃ  gá»­i báº£ng tÃ­nh kÃ¨m cÄƒn cá»©/chá»©ng tá»« náº¿u cÃ³.</p>
-                <h3>ÄIá»€U 6. PHÆ¯Æ NG THá»¨C VÃ€ Háº N THANH TOÃN</h3>
-                <p>6.1. Ká»³ thanh toÃ¡n: 01 (má»™t) thÃ¡ng/láº§n.</p>
-                <p>6.2. Háº¡n thanh toÃ¡n thá»‘ng nháº¥t: cháº­m nháº¥t ngÃ y 10 cá»§a thÃ¡ng thuÃª.</p>
-                <p>6.3. HÃ¬nh thá»©c: tiá»n máº·t hoáº·c chuyá»ƒn khoáº£n VND vÃ o tÃ i khoáº£n BÃªn A; thanh toÃ¡n Ä‘Æ°á»£c coi lÃ  hoÃ n thÃ nh khi tiá»n ghi cÃ³ vÃ o tÃ i khoáº£n BÃªn A.</p>
-                <p>6.4. Ná»£ quÃ¡ háº¡n & cháº¿ tÃ i:</p>
-                <p>- QuÃ¡ háº¡n {'>'}03 ngÃ y: pháº¡t 100.000 Ä‘/ká»³;</p>
-                <p>- Sau Ä‘Ã³, má»—i 02 ngÃ y quÃ¡ háº¡n cá»™ng thÃªm 50.000 Ä‘, tá»‘i Ä‘a 500.000 Ä‘/ká»³;</p>
-                <p>- Tá»•ng pháº¡t khÃ´ng quÃ¡ 1 thÃ¡ng tiá»n thuÃª/ká»³.</p>
-                <p>- QuÃ¡ háº¡n Ä‘á»§ 10 ngÃ y ká»ƒ tá»« háº¡n, BÃªn A cÃ³ quyá»n Ä‘Æ¡n phÆ°Æ¡ng cháº¥m dá»©t Há»£p Ä‘á»“ng (Äiá»u 9) sau khi gá»­i ThÃ´ng bÃ¡o cháº¥m dá»©t tá»‘i thiá»ƒu 05 ngÃ y.</p>
-                <p>- BÃªn A khÃ´ng Ã¡p dá»¥ng biá»‡n phÃ¡p cáº¯t Ä‘iá»‡n, cáº¯t nÆ°á»›c, niÃªm phong phÃ²ng, xÃ³a vÃ¢n tay Ä‘á»ƒ cÆ°á»¡ng cháº¿.</p>
-                <h3>ÄIá»€U 7. QUYá»€N VÃ€ NGHÄ¨A Vá»¤ BÃŠN A</h3>
-                <p>7.1. Quyá»n: YÃªu cáº§u BÃªn B thanh toÃ¡n Ä‘á»§, Ä‘Ãºng háº¡n; yÃªu cáº§u bá»“i thÆ°á»ng hÆ° há»ng do lá»—i BÃªn B. VÃ o phÃ²ng 08:00â€“20:00, bÃ¡o trÆ°á»›c â‰¥24 giá» Ä‘á»ƒ kiá»ƒm tra/sá»­a chá»¯a; trÆ°á»ng há»£p kháº©n cáº¥p (chÃ¡y ná»•, rÃ² rá»‰, nguy hiá»ƒmâ€¦), Ä‘Æ°á»£c vÃ o ngay vÃ  thÃ´ng bÃ¡o sau. Cháº¥m dá»©t Há»£p Ä‘á»“ng theo Äiá»u 9 khi BÃªn B vi pháº¡m.</p>
-                <p>7.2. NghÄ©a vá»¥: BÃ n giao Ä‘Ãºng háº¡n, Ä‘Ãºng hiá»‡n tráº¡ng; Ä‘áº£m báº£o viá»‡c cho thuÃª há»£p phÃ¡p. Sá»­a chá»¯a ká»‹p thá»i hÆ° há»ng thuá»™c khÃ´ng gian chung. Äáº£m báº£o quyá»n sá»­ dá»¥ng liÃªn tá»¥c, an toÃ n, riÃªng tÆ°; khÃ´ng xÃ¢m pháº¡m tÃ i sáº£n. Há»— trá»£ khai bÃ¡o táº¡m trÃº. ThÃ´ng bÃ¡o trÆ°á»›c â‰¥30 ngÃ y náº¿u muá»‘n Ä‘iá»u chá»‰nh giÃ¡ thuÃª/ná»™i quy hoáº·c cháº¥m dá»©t. Báº£o máº­t CCCD, sá»‘ Ä‘iá»‡n thoáº¡i, dá»¯ liá»‡u vÃ¢n tay.</p>
-                <h3>ÄIá»€U 8. QUYá»€N VÃ€ NGHÄ¨A Vá»¤ BÃŠN B</h3>
-                <p>8.1. Quyá»n: Nháº­n bÃ n giao Ä‘Ãºng thá»i gian/hiá»‡n tráº¡ng; sá»­ dá»¥ng PhÃ²ng thuÃª Ä‘á»ƒ á»Ÿ; yÃªu cáº§u BÃªn A sá»­a chá»¯a sá»± cá»‘ khÃ´ng do lá»—i mÃ¬nh; Ä‘Æ°á»£c gia háº¡n theo Äiá»u 3; Ä‘Æ°á»£c hoÃ n cá»c theo Äiá»u 4; thÃ¡o dá»¡ tÃ i sáº£n cÃ¡ nhÃ¢n khi cháº¥m dá»©t.</p>
-                <p>8.2. NghÄ©a vá»¥: Thanh toÃ¡n Ä‘á»§, Ä‘Ãºng háº¡n tiá»n thuÃª vÃ  dá»‹ch vá»¥. Sá»­ dá»¥ng Ä‘Ãºng má»¥c Ä‘Ã­ch; khÃ´ng dÃ¹ng lÃ m nÆ¡i kinh doanh, kho táº­p káº¿t hÃ ng, hoáº·c má»¥c Ä‘Ã­ch trÃ¡i phÃ¡p luáº­t. Báº£o quáº£n tÃ i sáº£n; bá»“i thÆ°á»ng hÆ° há»ng do lá»—i mÃ¬nh. KhÃ´ng Ä‘á»¥c phÃ¡ káº¿t cáº¥u khi chÆ°a Ä‘Æ°á»£c Ä‘á»“ng Ã½. Tráº£ phÃ²ng Ä‘Ãºng nguyÃªn tráº¡ng. Cung cáº¥p há»“ sÆ¡ (CCCD/há»™ chiáº¿u) trong 24 giá» Ä‘á»ƒ khai bÃ¡o táº¡m trÃº.</p>
-                <h3>ÄIá»€U 9. GIA Háº N â€“ CHáº¤M Dá»¨T Há»¢P Äá»’NG</h3>
-                <p>9.1. Há»£p Ä‘á»“ng cháº¥m dá»©t khi háº¿t háº¡n vÃ  cÃ³ thÃ´ng bÃ¡o cháº¥m dá»©t trÆ°á»›c Ã­t nháº¥t 30 ngÃ y theo Äiá»u 3; náº¿u khÃ´ng, gia háº¡n theo thÃ¡ng.</p>
-                <p>9.2. Há»£p Ä‘á»“ng cháº¥m dá»©t trÆ°á»›c háº¡n náº¿u cÄƒn nhÃ  hÆ° há»ng náº·ng do báº¥t kháº£ khÃ¡ng (há»a hoáº¡n, thiÃªn tai, dá»‹ch bá»‡nh, cÆ°á»¡ng cháº¿ nhÃ  nÆ°á»›câ€¦) khiáº¿n BÃªn B khÃ´ng thá»ƒ tiáº¿p tá»¥c á»Ÿ bÃ¬nh thÆ°á»ng.</p>
-                <p>9.3. Má»™t BÃªn vi pháº¡m há»£p Ä‘á»“ng, BÃªn cÃ²n láº¡i cÃ³ quyá»n Ä‘Æ¡n phÆ°Æ¡ng cháº¥m dá»©t sau khi thÃ´ng bÃ¡o nÃªu rÃµ lÃ½ do; BÃªn vi pháº¡m bá»“i thÆ°á»ng cho BÃªn cÃ²n láº¡i sá»‘ tiá»n tÆ°Æ¡ng Ä‘Æ°Æ¡ng tiá»n cá»c.</p>
-                <p>9.4. Náº¿u cÃ¡c BÃªn cháº¥m dá»©t trÆ°á»›c háº¡n khÃ´ng thuá»™c 9.1â€“9.3, BÃªn Ä‘Æ¡n phÆ°Æ¡ng pháº£i bá»“i thÆ°á»ng sá»‘ tiá»n tÆ°Æ¡ng Ä‘Æ°Æ¡ng tiá»n cá»c.</p>
-                <p>9.5. TrÆ°á»ng há»£p BÃªn B muá»‘n sang nhÆ°á»£ng há»£p Ä‘á»“ng: pháº£i Ä‘Ã£ á»Ÿ â‰¥03 thÃ¡ng, bÃ¡o trÆ°á»›c 20â€“30 ngÃ y, Ä‘Æ°á»£c BÃªn A Ä‘á»“ng Ã½; phÃ­ sang nhÆ°á»£ng: 200.000 Ä‘.</p>
-                <h3>ÄIá»€U 10. Báº¢O Máº¬T & Dá»® LIá»†U RA/VÃ€O</h3>
-                <p>10.1. BÃªn A khÃ´ng Ä‘Æ°á»£c tá»± Ã½ di chuyá»ƒn/thu giá»¯ tÃ i sáº£n cá»§a BÃªn B. Chá»‰ xá»­ lÃ½ trong trÆ°á»ng há»£p kháº©n cáº¥p hoáº·c khi BÃªn B bá» láº¡i tÃ i sáº£n sau thá»i háº¡n thÃ´ng bÃ¡o.</p>
-                <p>10.2. BÃªn A chá»‰ thu tháº­p vÃ¢n tay Ä‘á»ƒ quáº£n lÃ½ ra/vÃ o; khÃ´ng dÃ¹ng cho má»¥c Ä‘Ã­ch khÃ¡c. XÃ³a dá»¯ liá»‡u khi cháº¥m dá»©t há»£p Ä‘á»“ng.</p>
-                <h3>ÄIá»€U 11. GIáº¢I QUYáº¾T TRANH CHáº¤P</h3>
-                <p>Khi phÃ¡t sinh báº¥t Ä‘á»“ng liÃªn quan Há»£p Ä‘á»“ng, cÃ¡c BÃªn trÆ°á»›c háº¿t thÆ°Æ¡ng lÆ°á»£ng. Náº¿u thÆ°Æ¡ng lÆ°á»£ng khÃ´ng thÃ nh, tranh cháº¥p sáº½ do TÃ²a Ã¡n nhÃ¢n dÃ¢n cÃ³ tháº©m quyá»n giáº£i quyáº¿t. Há»£p Ä‘á»“ng vÃ  má»i tranh cháº¥p phÃ¡t sinh Ä‘Æ°á»£c Ä‘iá»u chá»‰nh bá»Ÿi phÃ¡p luáº­t Viá»‡t Nam.</p>
-                <h3>ÄIá»€U 12. ÄIá»€U KHOáº¢N CHUNG</h3>
-                <p>Há»£p Ä‘á»“ng cÃ³ hiá»‡u lá»±c tá»« ngÃ y kÃ½. Má»i sá»­a Ä‘á»•i pháº£i láº­p báº±ng vÄƒn báº£n. Há»£p Ä‘á»“ng láº­p 02 báº£n cÃ³ giÃ¡ trá»‹ phÃ¡p lÃ½ nhÆ° nhau.</p>
-              </div>
-              <div className="signature-row">
-                <div><p><b>BÃŠN CHO THUÃŠ (BÃªn A)</b></p><div className="signature-space"></div><p><b>DIá»†M THá»Š BÃŒNH</b></p></div>
-                <div><p><b>BÃŠN THUÃŠ (BÃªn B)</b></p><div className="signature-space"></div><p><b>{primaryTenant.name}</b></p></div>
-              </div>
-            </>
-          )}
-          {isMain && (
-            <div className="appendix-container">
-              <div className="appendix-page">
-                <h1 style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}>PHá»¤ Lá»¤C 01 â€“ BIÃŠN Báº¢N BÃ€N GIAO</h1>
-                <p>NgÃ y kÃ½ há»£p Ä‘á»“ng: <b>{signedDay}</b>; NgÃ y bÃ n giao: <b>{startDay}</b>; PhÃ²ng sá»‘: <b>{room.id}</b></p>
-                <p>Chá»‰ sá»‘ Ä‘iá»‡n cÅ©: <b>{room.electricOld || room.electricStart || room.initialElectric || '.......'}</b> kWh; Chá»‰ sá»‘ nÆ°á»›c cÅ©: <b>{room.waterOld || room.waterStart || room.initialWater || '.......'}</b> mÂ³</p>
-                <p>Hai BÃªn thá»‘ng nháº¥t chá»¥p áº£nh/quay video hiá»‡n tráº¡ng phÃ²ng, thiáº¿t bá»‹, cÃ´ng tÆ¡ Ä‘iá»‡n/nÆ°á»›c vÃ  lÆ°u kÃ¨m biÃªn báº£n nÃ y. áº¢nh/video lÃ  cÄƒn cá»© Ä‘á»‘i chiáº¿u khi tráº£ phÃ²ng vÃ  hoÃ n cá»c.</p>
-                <table className="contract-table">
-                  <thead>
-                    <tr><th>STT</th><th>DANH Má»¤C THIáº¾T Bá»Š</th><th>Sá» LÆ¯á»¢NG</th><th>HIá»†N TRáº NG</th></tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      'Äiá»u hÃ²a + Äiá»u khiá»ƒn', 'GiÆ°á»ng', 'Tá»§ quáº§n Ã¡o', 'ChÄƒn', 'Ga', 'Gá»‘i', 'Äá»‡m', 'Sofa', 'BÃ n trÃ ', 
-                      'BÃ n trang Ä‘iá»ƒm + Gháº¿', 'BÃ³ng Ä‘iá»‡n chiáº¿u sÃ¡ng', 'HÃºt mÃ¹i', 'Tá»§ láº¡nh', 'RÃ¨m váº£i', 'Modem Wi-Fi', 
-                      'Tranh treo tÆ°á»ng', 'Máº·t náº¡ phÃ²ng Ä‘á»™c', 'ChÃ¬a khÃ³a phÃ²ng', 'GÆ°Æ¡ng soi', 'BÃ¬nh nÃ³ng láº¡nh', 'Lavabo'
-                    ].map((item, i) => (
-                      <tr key={i}>
-                        <td style={{ textAlign: 'center' }}>{i + 1}</td>
-                        <td>{item}</td>
-                        <td style={{ textAlign: 'center' }}>01</td>
-                        <td>â˜ Tá»‘t &nbsp; â˜ Tráº§y/xÆ°á»›c &nbsp; â˜ Cáº§n kiá»ƒm tra &nbsp; â˜ Há»ng &nbsp; Ghi chÃº: ............</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="appendix-page">
-                <h1 style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold' }}>PHá»¤ Lá»¤C 03 â€“ Ná»˜I QUY TÃ’A NHÃ€</h1>
-                <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
-                  {[
-                    ['1. TuÃ¢n thá»§ phÃ¡p luáº­t', 'NghiÃªm cáº¥m Ä‘Ã¡nh nhau, cá» báº¡c, máº¡i dÃ¢m, ma tÃºy, tÃ ng trá»¯ hoáº·c sá»­ dá»¥ng cháº¥t cáº¥m vÃ  cÃ¡c hÃ nh vi vi pháº¡m phÃ¡p luáº­t khÃ¡c.'],
-                    ['2. PCCC', 'Cáº¤M TUYá»†T Äá»I Sáº C XE ÄIá»†N, pin hoáº·c áº¯c-quy xe Ä‘iá»‡n trong má»i khu vá»±c tÃ²a nhÃ , bao gá»“m phÃ²ng á»Ÿ, hÃ nh lang, cáº§u thang, khu Ä‘á»ƒ xe vÃ  khu vá»±c chung.'],
-                    ['3. Khai bÃ¡o táº¡m trÃº', 'Cung cáº¥p giáº¥y tá» trong 24 giá» ká»ƒ tá»« khi vÃ o á»Ÿ Ä‘á»ƒ BÃªn A há»— trá»£ lÃ m thá»§ tá»¥c khai bÃ¡o táº¡m trÃº theo quy Ä‘á»‹nh.'],
-                    ['4. ThoÃ¡t nÆ°á»›c', 'KhÃ´ng Ä‘á»• rÃ¡c, thá»©c Äƒn thá»«a, tÃ³c, dáº§u má»¡ hoáº·c váº­t cá»©ng xuá»‘ng bá»“n cáº§u, lavabo, cháº­u rá»­a vÃ  thoÃ¡t sÃ n.'],
-                    ['5. Vá»‡ sinh', 'KhÃ´ng Ä‘á»ƒ rÃ¡c á»Ÿ hÃ nh lang, cáº§u thang hoáº·c khu vá»±c chung. Bá» rÃ¡c Ä‘Ãºng nÆ¡i quy Ä‘á»‹nh vÃ  giá»¯ gÃ¬n vá»‡ sinh phÃ²ng á»Ÿ, khu sinh hoáº¡t chung.'],
-                    ['6. Tiáº¿ng á»“n', 'Giá»¯ tráº­t tá»± trong khung giá» 22:00â€“06:00. Táº¯t mÃ¡y xe khi vÃ o nhÃ  ban Ä‘Ãªm, háº¡n cháº¿ nÃ³i chuyá»‡n lá»›n, má»Ÿ nháº¡c, kÃ©o Ä‘á»“ hoáº·c gÃ¢y tiáº¿ng á»“n sau 22:30.'],
-                    ['7. Ra vÃ o', 'ÄÃ³ng cá»­a cá»•ng/cá»­a chÃ­nh cáº©n tháº­n, khÃ´ng má»Ÿ cá»­a cho ngÆ°á»i láº¡. Giá» tiáº¿p khÃ¡ch thÃ´ng thÆ°á»ng tá»« 06:00â€“22:30; khÃ¡ch á»Ÿ láº¡i qua Ä‘Ãªm pháº£i bÃ¡o trÆ°á»›c vÃ  Ä‘Æ°á»£c BÃªn A Ä‘á»“ng Ã½.'],
-                    ['8. Káº¿t cáº¥u', 'KhÃ´ng tá»± Ã½ khoan, Ä‘á»¥c, váº½, dÃ¡n, sá»­a chá»¯a hoáº·c thay Ä‘á»•i káº¿t cáº¥u tÆ°á»ng, tráº§n, sÃ n, cá»­a, há»‡ thá»‘ng Ä‘iá»‡n nÆ°á»›c khi chÆ°a Ä‘Æ°á»£c BÃªn A Ä‘á»“ng Ã½.'],
-                    ['9. Bá»“i thÆ°á»ng', 'Chá»‹u trÃ¡ch nhiá»‡m bá»“i thÆ°á»ng hoáº·c thanh toÃ¡n chi phÃ­ sá»­a chá»¯a Ä‘á»‘i vá»›i hÆ° há»ng, máº¥t mÃ¡t tÃ i sáº£n, thiáº¿t bá»‹ do lá»—i cá»§a mÃ¬nh hoáº·c khÃ¡ch cá»§a mÃ¬nh gÃ¢y ra.'],
-                    ['10. TÃ i sáº£n', 'Tá»± báº£o quáº£n tÃ i sáº£n cÃ¡ nhÃ¢n, tiá»n báº¡c, giáº¥y tá» vÃ  phÆ°Æ¡ng tiá»‡n. BÃªn A khÃ´ng chá»‹u trÃ¡ch nhiá»‡m Ä‘á»‘i vá»›i máº¥t mÃ¡t do BÃªn B khÃ´ng khÃ³a cá»­a hoáº·c tá»± quáº£n lÃ½ sÆ¡ suáº¥t.'],
-                    ['11. Trung thá»±c', 'KhÃ´ng láº¥y, sá»­ dá»¥ng hoáº·c di chuyá»ƒn tÃ i sáº£n cá»§a ngÆ°á»i khÃ¡c khi chÆ°a Ä‘Æ°á»£c Ä‘á»“ng Ã½. Má»i tranh cháº¥p phÃ¡t sinh pháº£i bÃ¡o ngay cho BÃªn A Ä‘á»ƒ phá»‘i há»£p xá»­ lÃ½.'],
-                    ['12. Váº­t nuÃ´i', 'KhÃ´ng nuÃ´i Ä‘á»™ng váº­t gÃ¢y máº¥t vá»‡ sinh, tiáº¿ng á»“n, mÃ¹i hoáº·c nguy cÆ¡ máº¥t an toÃ n. TrÆ°á»ng há»£p cÃ³ váº­t nuÃ´i pháº£i Ä‘Æ°á»£c BÃªn A Ä‘á»“ng Ã½ trÆ°á»›c báº±ng tin nháº¯n/vÄƒn báº£n.'],
-                    ['13. Kinh doanh', 'KhÃ´ng sá»­ dá»¥ng phÃ²ng lÃ m nÆ¡i kinh doanh, kho hÃ ng, táº­p káº¿t hÃ ng hÃ³a, livestream bÃ¡n hÃ ng gÃ¢y áº£nh hÆ°á»Ÿng cÆ° dÃ¢n hoáº·c má»¥c Ä‘Ã­ch trÃ¡i phÃ¡p luáº­t.'],
-                    ['14. Váº­n chuyá»ƒn', 'KhÃ´ng chá»Ÿ quÃ¡ táº£i thang mÃ¡y, khÃ´ng kÃ©o lÃª váº­t náº·ng gÃ¢y hÆ° há»ng sÃ n, tÆ°á»ng, cá»­a hoáº·c thiáº¿t bá»‹ chung. Khi chuyá»ƒn Ä‘á»“ lá»›n pháº£i bÃ¡o trÆ°á»›c cho BÃªn A.'],
-                    ['15. Ká»¹ thuáº­t', 'KhÃ´ng tá»± Ã½ vÃ o phÃ²ng ká»¹ thuáº­t, tá»§ Ä‘iá»‡n, khu mÃ¡y bÆ¡m, mÃ¡i, kho hoáº·c khu vá»±c cÃ³ biá»ƒn cáº¥m. KhÃ´ng tá»± Ã½ Ä‘áº¥u ná»‘i, sá»­a chá»¯a Ä‘iá»‡n nÆ°á»›c trong tÃ²a nhÃ .'],
-                    ['16. KhÃ¡ch', 'Tiáº¿p khÃ¡ch trong khung giá» 06:00â€“22:30. KhÃ¡ch á»Ÿ láº¡i qua Ä‘Ãªm pháº£i bÃ¡o trÆ°á»›c vÃ  Ä‘Æ°á»£c BÃªn A Ä‘á»“ng Ã½; BÃªn B chá»‹u trÃ¡ch nhiá»‡m vá» hÃ nh vi, tÃ i sáº£n vÃ  an ninh liÃªn quan Ä‘áº¿n khÃ¡ch cá»§a mÃ¬nh.'],
-                    ['17. á» ghÃ©p', 'KhÃ´ng cho thuÃª láº¡i, chuyá»ƒn nhÆ°á»£ng, cho ngÆ°á»i khÃ¡c á»Ÿ ghÃ©p hoáº·c thay Ä‘á»•i ngÆ°á»i á»Ÿ khi chÆ°a cÃ³ cháº¥p thuáº­n cá»§a BÃªn A vÃ  chÆ°a bá»• sung thÃ´ng tin cÆ° trÃº.'],
-                    ['18. Cam káº¿t', 'TuÃ¢n thá»§ nghiÃªm tÃºc ná»™i quy tÃ²a nhÃ , há»£p Ä‘á»“ng thuÃª phÃ²ng vÃ  cÃ¡c thÃ´ng bÃ¡o quáº£n lÃ½ há»£p lÃ½ cá»§a BÃªn A. TÃ¡i pháº¡m nhiá»u láº§n hoáº·c vi pháº¡m nghiÃªm trá»ng cÃ³ thá»ƒ bá»‹ cháº¥m dá»©t há»£p Ä‘á»“ng theo thá»a thuáº­n.']
-                  ].map(([title, content], idx) => (
-                    <p key={idx} style={{ marginBottom: '3px' }}><b>{title}:</b> {content}</p>
-                  ))}
-                </div>
-                <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '15px' }}>CHáº¾ TÃ€I Xá»¬ PHáº T</h3>
-                <table className="contract-table" style={{ fontSize: '10px' }}>
-                  <thead>
-                    <tr style={{ background: '#f0f0f0' }}><th>HÃ€NH VI VI PHáº M</th><th>Má»¨C PHáº T (VNÄ)</th></tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      ['Sáº¡c xe/pin Ä‘iá»‡n trong phÃ²ng/hÃ nh lang', '500.000/láº§n'], 
-                      ['Äá»ƒ xe khÃ´ng khai bÃ¡o/qua Ä‘Ãªm (xe khÃ¡ch)', '300.000/xe/Ä‘Ãªm'], 
-                      ['Vá»©t rÃ¡c bá»«a bÃ£i, nÃ©m rÃ¡c qua cá»­a sá»•', '200.000/láº§n'], 
-                      ['GÃ¢y táº¯c cá»‘ng (Ä‘á»• thá»©c Äƒn, tÃ³c...)', '200.000 + phÃ­ sá»­a'],
-                      ['GÃ¢y á»“n Ã o sau 22:00', '100.000 - 300.000/láº§n'], 
-                      ['Cáº£i táº¡o (khoan, Ä‘á»¥c...) khÃ´ng phÃ©p', '500.000/láº§n']
-                    ].map((item, idx) => (
-                      <tr key={idx}>
-                        <td>{item[0]}</td>
-                        <td style={{ textAlign: 'right' }}>{item[1]}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                  <p><b>Äáº I DIá»†N NGÆ¯á»œI THUÃŠ CAM Káº¾T</b></p>
-                  <div className="signature-space" style={{ height: '50px' }}></div>
-                  <p><b>{primaryTenant.name}</b></p>
-                </div>
-              </div>
-            </div>
-          )}
-          {isLiquidation && report && (
-            <div className="liquidation-document">
-              <div className="contract-header-text">
-                <h1>Cá»˜NG HÃ’A XÃƒ Há»˜I CHá»¦ NGHÄ¨A VIá»†T NAM</h1>
-                <h2>Äá»™c láº­p â€“ Tá»± do â€“ Háº¡nh phÃºc</h2>
-              </div>
-              <h1 style={{ textAlign: 'center', margin: '30px 0' }}>PHá»¤ Lá»¤C 02 â€“ BIÃŠN Báº¢N KIá»‚M TRA KHI TRáº¢ PHÃ’NG</h1>
-              <p>HÃ´m nay, ngÃ y {formatDisplayDate(report.actualEndDate)}, chÃºng tÃ´i tiáº¿n hÃ nh chá»‘t dá»n Ä‘i cho phÃ²ng <b>{room.id}</b>:</p>
-              <table className="contract-table" style={{ margin: '20px 0' }}>
-                <tbody>
-                  <tr><td>Chá»‰ sá»‘ Ä‘iá»‡n má»›i: <b>{report.electricNew || report.electricEnd}</b> kWh</td><td>Chá»‰ sá»‘ nÆ°á»›c má»›i: <b>{report.waterNew || report.waterEnd}</b> mÂ³</td></tr>
-                  <tr><td>PhÃ¡t sinh Ä‘iá»‡n: {report.electricUsed} kWh = <b>{formatMoney(report.electricAmount)}</b></td><td>PhÃ¡t sinh nÆ°á»›c: {report.waterUsed} mÂ³ = <b>{formatMoney(report.waterAmount)}</b></td></tr>
-                </tbody>
-              </table>
-              <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>QUYáº¾T TOÃN CÃ”NG Ná»¢</h3>
-              <div className="stack" style={{ gap: '5px' }}>
-                <div className="data-row"><span>Tiá»n phÃ²ng phÃ¡t sinh ({report.roomChargeDays || 0} ngÃ y)</span><b>{formatMoney(report.proratedRent || 0)}</b></div>
-                <div className="data-row"><span>Dá»‹ch vá»¥ phÃ¡t sinh ({report.roomChargeDays || 0} ngÃ y)</span><b>{formatMoney(report.proratedFixedServices || 0)}</b></div>
-                {report.settlementMode === 'prepaid_month_refund_deposit' && (
-                  <>
-                    <div className="data-row"><span>Tiá»n phÃ²ng Ä‘Ã£ thu thÃ¡ng nÃ y</span><b>{formatMoney(report.prepaidRentPaid || 0)}</b></div>
-                    <div className="data-row"><span>Dá»‹ch vá»¥ Ä‘Ã£ thu thÃ¡ng nÃ y</span><b>{formatMoney(report.prepaidFixedServicesPaid || 0)}</b></div>
-                    <div className="data-row"><span>HoÃ n tiá»n phÃ²ng chÆ°a sá»­ dá»¥ng</span><b>{formatMoney(report.prepaidUnusedRentRefund || 0)}</b></div>
-                    <div className="data-row"><span>HoÃ n dá»‹ch vá»¥ chÆ°a sá»­ dá»¥ng</span><b>{formatMoney(report.prepaidUnusedServicesRefund || 0)}</b></div>
-                  </>
-                )}
-                <div className="data-row"><span>Tiá»n Ä‘iá»‡n</span><b>{formatMoney(report.electricAmount || 0)}</b></div>
-                <div className="data-row"><span>Tiá»n nÆ°á»›c</span><b>{formatMoney(report.waterAmount || 0)}</b></div>
-                <div className="data-row"><span>PhÃ­ khÃ¡c</span><b>{formatMoney(Number(report.unpaidRent || 0) + Number(report.cleaningFee || 0) + Number(report.damageFee || 0) + Number(report.otherFee || 0))}</b></div>
-                <div className="data-row"><span>Tá»•ng phÃ¡t sinh</span><b>{formatMoney(report.totalIncurred || 0)}</b></div>
-                <div className="data-row"><span>Tiá»n cá»c Ä‘á»‘i trá»«</span><b>{formatMoney(report.depositUsed)}</b></div>
-                <div className="data-row" style={{ borderTop: '2px solid #000', paddingTop: '10px', marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '16px' }}><b>Káº¾T QUáº¢ Táº¤T TOÃN</b></span>
-                  {report.mustCollect > 0 ? <b style={{ fontSize: '20px', color: 'var(--danger)' }}>KhÃ¡ch tráº£ thÃªm: {formatMoney(report.mustCollect)}</b> : <b style={{ fontSize: '20px', color: 'var(--success)' }}>Chá»§ nhÃ  hoÃ n: {formatMoney(report.mustRefund)}</b>}
-                </div>
-              </div>
-              <div className="signature-row">
-                <div><p><b>BÃŠN CHO THUÃŠ</b></p><div className="signature-space"></div><p><b>DIá»†M THá»Š BÃŒNH</b></p></div>
-                <div><p><b>BÃŠN THUÃŠ</b></p><div className="signature-space"></div><p><b>{primaryTenant.name}</b></p></div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AppMain() {
-  const [data, setData] = useState(() => {
-    const loaded = safeRead(STORAGE_KEY, DEFAULT_DATA);
-    return {
-      ...DEFAULT_DATA,
-      ...loaded,
-      suppliers: (loaded.suppliers && loaded.suppliers.length > 20) 
-        ? loaded.suppliers.map(s => {
-            const def = DEFAULT_DATA.suppliers.find(d => d.id === s.id);
-            return def ? { ...def, ...s, defaultCategory: s.defaultCategory || def.defaultCategory } : s;
-          })
-        : DEFAULT_DATA.suppliers,
-      expenseCategories: loaded.expenseCategories || DEFAULT_DATA.expenseCategories,
-      expensePayments: loaded.expensePayments || [],
-      contractRenewals: loaded.contractRenewals || [],
-      roomTransfers: loaded.roomTransfers || [],
-    };
-  });
-  const [bankInfo, setBankInfo] = useState(() => {
-    const saved = safeRead(BANK_KEY, DEFAULT_BANK);
-    // Replace the old demo account while preserving any real account configured by the user.
-    if (!saved?.accountNo || saved.accountNo === '0123456789') return DEFAULT_BANK;
-    return { ...DEFAULT_BANK, ...saved };
-  });
-  const [tab, setTab] = useState('dashboard');
-  const [query, setQuery] = useState('');
-  const [paymentFilters, setPaymentFilters] = useState(null);
-  const [selectedRoom, setSelectedRoom] = useState(null);
-  const [detailTenant, setDetailTenant] = useState(null);
-  const [newRentalRoom, setNewRentalRoom] = useState(null);
-  const [addingRoommate, setAddingRoommate] = useState(null);
-  const [settlingRoom, setSettlingRoom] = useState(null);
-  const [transferringContract, setTransferringContract] = useState(null);
-  const [viewingContract, setViewingContract] = useState(null);
-  const [renewingContract, setRenewingContract] = useState(null);
-  const [viewingAppendix, setViewingAppendix] = useState(null);
-  const [viewingReceipt, setViewingReceipt] = useState(null);
-  const [printingReceipts, setPrintingReceipts] = useState(null);
-  const [paymentReceipt, setPaymentReceipt] = useState(null);
-  const [editingTenant, setEditingTenant] = useState(null);
-  const [editingContract, setEditingContract] = useState(null);
-  const [viewingExpense, setViewingExpense] = useState(null);
-  const [editingExpense, setEditingExpense] = useState(null);
-  const [addingExpense, setAddingExpense] = useState(false);
-  const [expenseFocusFilter, setExpenseFocusFilter] = useState(null);
-  const [viewingSupplier, setViewingSupplier] = useState(null);
-  const [editingSupplier, setEditingSupplier] = useState(null);
-  const [addingSupplier, setAddingSupplier] = useState(false);
-  const [roomOpsModal, setRoomOpsModal] = useState(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
-  const [cloudEnabled, setCloudEnabled] = useState(true);
-  const [lastSynced, setLastSynced] = useState(null);
-  const fileInputRef = React.useRef(null);
-  const cloudFailureRef = React.useRef(0);
-
-  // Initial Fetch from Cloud
-  useEffect(() => {
-    async function initCloud() {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      try {
-        const res = await fetch('/api/data', { signal: controller.signal });
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
-          throw new Error(`GET /api/data ${res.status}: ${body.slice(0, 400) || res.statusText}`);
-        }
-        const cloudData = await res.json();
-        if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
-          // Cloud is authoritative after a successful fetch. Choosing the newer
-          // local timestamp can resurrect records that were intentionally deleted
-          // or restored directly on the server.
-          setData(prev => ({
-            ...prev,
-            ...cloudData,
-            suppliers: cloudData.suppliers || prev.suppliers || [],
-            expenseCategories: cloudData.expenseCategories || prev.expenseCategories || DEFAULT_DATA.expenseCategories,
-            expensePayments: cloudData.expensePayments || prev.expensePayments || [],
-            contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
-            roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
-          }));
-          setLastSynced(new Date());
-          setCloudEnabled(true);
-        }
-      } catch (err) {
-        setCloudEnabled(false);
-        console.info("Cloud sync inactive; using local storage only.", err?.message || err);
-      } finally {
-        clearTimeout(timeout);
-        setHasLoadedCloud(true);
-      }
-    }
-    initCloud();
-  }, []);
-
-  // Cloud Sync Logic (Debounced)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      if (!data || data === DEFAULT_DATA || !hasLoadedCloud || !cloudEnabled) return;
-      
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      setIsSyncing(true);
-      fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'full_sync', payload: data }),
-        signal: controller.signal
-      })
-      .then(async res => {
-        if (res.ok) {
-          cloudFailureRef.current = 0;
-          setLastSynced(new Date());
-        } else {
-          const errData = await res.json().catch(async () => ({ raw: await res.text().catch(() => '') }));
-          cloudFailureRef.current += 1;
-          console.info(`Cloud sync failed (${res.status}); local data was saved.`, errData);
-          if (res.status >= 500 || cloudFailureRef.current >= 2) {
-            setCloudEnabled(false);
-          }
-        }
-        clearTimeout(timeout);
-        setIsSyncing(false);
-      })
-      .catch(err => {
-        clearTimeout(timeout);
-        cloudFailureRef.current += 1;
-        setIsSyncing(false);
-        console.info("Cloud sync unavailable; local data was saved.", err?.message || err);
-        setCloudEnabled(false);
-      });
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [data, hasLoadedCloud, cloudEnabled]);
-  useEffect(() => {
-    if (!data || !data.contracts || !data.memberships) return;
-    
-    let changed = false;
-    // 1. Ensure memberships sync with contract status
-    const updatedMemberships = data.memberships.map(m => {
-      const contract = data.contracts.find(c => c.id === m.contractId);
-      if (!contract || contract.status === 'ended' || contract.status === 'cancelled') {
-        if (m.status === 'active') {
-          changed = true;
-          return { ...m, status: 'ended' };
-        }
-      }
-      return m;
-    });
-
-    if (changed) {
-      setData(prev => ({ ...prev, memberships: updatedMemberships }));
-    }
-  }, [data?.contracts, data?.memberships]);
-
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }, [data]);
-  useEffect(() => { localStorage.setItem(BANK_KEY, JSON.stringify(bankInfo)); }, [bankInfo]);
-
-  const filteredTenants = useMemo(() => {
-    const q = query.toLowerCase();
-    return (data.tenants || []).filter(t => t.name.toLowerCase().includes(q) || (t.phone && t.phone.includes(q)) || (t.cccd && t.cccd.includes(q)));
-  }, [data.tenants, query]);
-
-  const confirmDanger = (title, consequence) => {
-    if (!window.confirm(`${title}\n\n${consequence}`)) return false;
-    return window.confirm('XÃ¡c nháº­n láº§n 2: thao tÃ¡c nÃ y sáº½ Ä‘Æ°á»£c ghi vÃ o dá»¯ liá»‡u phÃ²ng. Báº¡n cháº¯c cháº¯n tiáº¿p tá»¥c?');
-  };
-
-  function handleAction(type, roomOrTenant) {
-    if (type === 'add_tenant') {
-      if (!roomOrTenant?.id) {
-        alert('Vui lÃ²ng chá»n phÃ²ng cá»¥ thá»ƒ Ä‘á»ƒ thÃªm khÃ¡ch thuÃª.');
-        return;
-      }
-      const room = data.rooms.find(r => r.id === roomOrTenant.id);
-      if (!room) {
-        alert('KhÃ´ng tÃ¬m tháº¥y phÃ²ng cáº§n táº¡o há»£p Ä‘á»“ng.');
-        return;
-      }
-      const roomStatus = getRoomStatusInfo(data, room.id);
-      if (roomStatus.ownerOccupied) {
-        alert('PhÃ²ng chá»§ nhÃ  á»Ÿ khÃ´ng cáº§n táº¡o há»£p Ä‘á»“ng thuÃª.');
-        return;
-      }
-      if (roomStatus.contract && ['active', 'notice', 'moving_out'].includes(roomStatus.contract.status)) {
-        alert(`PhÃ²ng ${room.id} Ä‘ang cÃ³ há»£p Ä‘á»“ng hiá»‡u lá»±c. Vui lÃ²ng táº¥t toÃ¡n/káº¿t thÃºc há»£p Ä‘á»“ng hiá»‡n táº¡i trÆ°á»›c khi táº¡o há»£p Ä‘á»“ng má»›i.`);
-        return;
-      }
-      setNewRentalRoom(room);
-    } else if (type === 'add_roommate') {
-      const roomId = roomOrTenant?.id || roomOrTenant?.roomId;
-      const room = data.rooms.find(r => r.id === roomId);
-      const activeContract = roomOrTenant?.contractId
-        ? data.contracts.find(c => c.id === roomOrTenant.contractId)
-        : data.contracts.find(c => c.roomId === roomId && ['active', 'notice', 'moving_out'].includes(c.status));
-      if (!room || !activeContract) {
-        alert('PhÃ²ng cáº§n cÃ³ há»£p Ä‘á»“ng hiá»‡u lá»±c trÆ°á»›c khi thÃªm ngÆ°á»i á»Ÿ cÃ¹ng.');
-        return;
-      }
-      setAddingRoommate({ room, contract: activeContract });
-    } else if (type === 'notice') {
-      if (window.confirm(`XÃ¡c nháº­n bÃ¡o chuyá»ƒn cho phÃ²ng ${roomOrTenant.id}?\n\nPhÃ²ng sáº½ Ä‘Æ°á»£c Ä‘Æ°a vÃ o tráº¡ng thÃ¡i sáº¯p trá»‘ng Ä‘á»ƒ theo dÃµi cÃ´ng ná»£ vÃ  lá»‹ch kiá»ƒm phÃ²ng.`)) updateContractStatus(roomOrTenant.id, 'notice');
-    } else if (type === 'cancel_notice') {
-      if (window.confirm(`Há»§y bÃ¡o chuyá»ƒn phÃ²ng ${roomOrTenant.id}?`)) updateContractStatus(roomOrTenant.id, 'active');
-    } else if (type === 'moving_out') {
-      const roomId = roomOrTenant.id || roomOrTenant.roomId;
-      const room = data.rooms.find(r => r.id === roomId);
-      const activeContract = roomOrTenant.contractId
-        ? data.contracts.find(c => c.id === roomOrTenant.contractId)
-        : getCurrentContractForRoom(data, roomId);
-      if (activeContract && confirmDanger(
-        `Báº¡n cháº¯c cháº¯n muá»‘n táº¥t toÃ¡n/káº¿t thÃºc thuÃª phÃ²ng ${roomId}?`,
-        'Há»‡ thá»‘ng sáº½ chá»‘t cÃ´ng ná»£, cáº­p nháº­t tráº¡ng thÃ¡i há»£p Ä‘á»“ng, káº¿t thÃºc cÆ° trÃº vÃ  ghi lá»‹ch sá»­ tráº£ phÃ²ng.'
-      )) setSettlingRoom({ room, contract: activeContract });
-    } else if (type === 'view_contract') {
-      const roomForContract = roomOrTenant?.roomId ? data.rooms.find(r => r.id === roomOrTenant.roomId) : data.rooms.find(r => r.id === roomOrTenant?.id);
-      if (isOwnerOccupiedRoom(roomForContract)) {
-        alert('PhÃ²ng chá»§ nhÃ  á»Ÿ khÃ´ng cáº§n há»£p Ä‘á»“ng.');
-        return;
-      }
-      const tenantMembership = roomOrTenant && !roomOrTenant.roomId
-        ? (data.memberships || []).find(m => m.tenantId === roomOrTenant.id && m.status === 'active')
-        : null;
-      const roomId = roomOrTenant.roomId || tenantMembership?.roomId || roomOrTenant.id;
-      const contractId = roomOrTenant.contractId || tenantMembership?.contractId;
-      const targetContract = contractId 
-        ? data.contracts.find(c => c.id === contractId)
-        : data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'));
-      
-      if (targetContract) setViewingContract({ contract: targetContract, room: data.rooms.find(r => r.id === targetContract.roomId), type: 'main' });
-      else alert('KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng phÃ¹ há»£p.');
-    } else if (type === 'edit_contract') {
-      const roomId = roomOrTenant.id || roomOrTenant.roomId;
-      const contractId = roomOrTenant.contractId;
-      const targetContract = contractId 
-        ? data.contracts.find(c => c.id === contractId)
-        : data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'));
-      
-      if (targetContract) setEditingContract(targetContract);
-      else alert('KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng phÃ¹ há»£p.');
-    } else if (type === 'view_history') {
-      setTab('rental_history');
-      setQuery(`P${roomOrTenant.id}`);
-    } else if (type === 'view_payments') {
-      setTab('payment_history');
-      setQuery(`P${roomOrTenant.id}`);
-    } else if (type === 'view_qr') {
-      setViewingReceipt(roomOrTenant);
-    } else if (type === 'pay_receipt') {
-      setPaymentReceipt(roomOrTenant);
-    } else if (type === 'detail_tenant') {
-      setDetailTenant(roomOrTenant);
-    } else if (type === 'edit_tenant') {
-      const activeMemberships = (data.memberships || []).filter(m => m.tenantId === roomOrTenant.id && m.status === 'active');
-      const targetMembership = activeMemberships.find(m => m.contractId === roomOrTenant.contractId)
-        || activeMemberships.find(m => m.roomId === roomOrTenant.roomId)
-        || activeMemberships[0];
-      setEditingTenant({
-        ...roomOrTenant,
-        role: targetMembership?.role || roomOrTenant.role || 'secondary',
-        membershipId: targetMembership?.id || roomOrTenant.membershipId || '',
-        contractId: targetMembership?.contractId || roomOrTenant.contractId || '',
-        roomId: targetMembership?.roomId || roomOrTenant.roomId || ''
-      });
-    } else if (type === 'leave_roommate') {
-      const membershipId = roomOrTenant.membershipId;
-      const tenantName = roomOrTenant.name || 'ngÆ°á»i á»Ÿ cÃ¹ng';
-      const tenantId = roomOrTenant.id;
-      const membership = (data.memberships || []).find(m => m.id === membershipId);
-      if (!membership || membership.role === 'primary') {
-        alert('Chá»‰ cÃ³ thá»ƒ chuyá»ƒn Ä‘i riÃªng vá»›i ngÆ°á»i á»Ÿ cÃ¹ng. NgÆ°á»i Ä‘á»©ng tÃªn cáº§n dÃ¹ng luá»“ng tráº£ phÃ²ng hoáº·c Ä‘á»•i ngÆ°á»i Ä‘áº¡i diá»‡n.');
-        return;
-      }
-      const defaultDate = new Date().toISOString().slice(0, 10);
-      const leftDate = window.prompt(`Nháº­p ngÃ y ${tenantName} chuyá»ƒn Ä‘i (YYYY-MM-DD):`, defaultDate);
-      if (!leftDate) return;
-      if (!parseDateFlexible(leftDate)) {
-        alert('NgÃ y chuyá»ƒn Ä‘i khÃ´ng há»£p lá»‡.');
-        return;
-      }
-      if (!window.confirm(`XÃ¡c nháº­n ${tenantName} chuyá»ƒn Ä‘i khá»i phÃ²ng ${membership.roomId} ngÃ y ${formatDisplayDate(leftDate)}?`)) return;
-      setData(old => {
-        const updatedMemberships = (old.memberships || []).map(m =>
-          m.id === membershipId ? { ...m, status: 'ended', leftDate } : m
-        );
-        const stillActiveElsewhere = updatedMemberships.some(m => m.tenantId === tenantId && m.status === 'active');
-        const updatedTenants = (old.tenants || []).map(t => {
-          if (t.id !== tenantId) return t;
-          return {
-            ...t,
-            status: stillActiveElsewhere ? (t.status || 'active') : 'moved_out',
-            lastRoomId: membership.roomId,
-            fingerprintStatus: t.fingerprintCode ? 'Cáº§n xÃ³a' : (t.fingerprintStatus || 'ChÆ°a Ä‘Äƒng kÃ½')
-          };
-        });
-        return { ...old, memberships: updatedMemberships, tenants: updatedTenants };
-      });
-      const tenant = (data.tenants || []).find(t => t.id === tenantId);
-      alert(`ÄÃ£ ghi nháº­n ${tenantName} chuyá»ƒn Ä‘i.${tenant?.fingerprintCode ? `\nNháº¯c admin: cáº§n xÃ³a vÃ¢n tay ${tenant.fingerprintCode}.` : ''}`);
-    } else if (type === 'renew_contract') {
-      const roomId = roomOrTenant.id || roomOrTenant.roomId;
-      const activeContract = roomOrTenant.contractId
-        ? data.contracts.find(c => c.id === roomOrTenant.contractId)
-        : getCurrentContractForRoom(data, roomId);
-      if (activeContract) setRenewingContract(activeContract);
-    } else if (type === 'print_appendix') {
-      const roomId = roomOrTenant.id || roomOrTenant.roomId;
-      const contractId = roomOrTenant.contractId;
-      const targetContract = contractId
-        ? data.contracts.find(c => c.id === contractId)
-        : data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice' || c.status === 'moving_out'));
-      if (!targetContract) {
-        alert('KhÃ´ng tÃ¬m tháº¥y há»£p Ä‘á»“ng phÃ¹ há»£p.');
-        return;
-      }
-      const renewalRows = [
-        ...(data.contractRenewals || []),
-        ...(targetContract.renewalHistory || [])
-      ]
-        .filter(r => r.contractId === targetContract.id)
-        .filter((r, idx, arr) => arr.findIndex(x => x.id === r.id) === idx)
-        .sort((a, b) => new Date(b.createdAt || b.signedDate || 0) - new Date(a.createdAt || a.signedDate || 0));
-      const renewal = renewalRows[0];
-      if (!renewal) {
-        alert('Há»£p Ä‘á»“ng nÃ y chÆ°a cÃ³ phá»¥ lá»¥c gia háº¡n Ä‘á»ƒ in.');
-        return;
-      }
-      const oldRent = renewal.oldRent ?? targetContract.rent;
-      const oldDeposit = renewal.oldDeposit ?? targetContract.deposit;
-      const newRent = renewal.newRent ?? targetContract.rent;
-      const newDeposit = renewal.newDeposit ?? targetContract.deposit;
-      const oldEndDate = renewal.oldEndDate || targetContract.previousEndDate || targetContract.endDate;
-      const appendixContract = {
-        ...targetContract,
-        endDate: oldEndDate,
-        rent: oldRent,
-        deposit: oldDeposit
-      };
-      const form = {
-        signedDate: formatDateForInput(renewal.signedDate || renewal.createdAt || new Date().toISOString()),
-        newStartDate: renewal.newStartDate || (isValidBusinessDate(oldEndDate) ? addDaysToDate(oldEndDate, 1) : ''),
-        newEndDate: renewal.newEndDate || targetContract.endDate,
-        keepPricing: Number(newRent || 0) === Number(oldRent || 0) && Number(newDeposit || 0) === Number(oldDeposit || 0),
-        newRent,
-        newDeposit,
-        note: renewal.note || ''
-      };
-      setViewingAppendix({ contract: appendixContract, form });
-    } else if (type === 'transfer_room') {
-      const roomId = roomOrTenant.id || roomOrTenant.roomId;
-      const activeContract = data.contracts.find(c => c.roomId === roomId && (c.status === 'active' || c.status === 'notice'));
-      if (activeContract && window.confirm(`Äá»•i phÃ²ng cho P${roomId}?\n\nHá»‡ thá»‘ng sáº½ káº¿t thÃºc há»£p Ä‘á»“ng phÃ²ng cÅ©, táº¡o há»£p Ä‘á»“ng phÃ²ng má»›i vÃ  ghi lá»‹ch sá»­ chuyá»ƒn phÃ²ng.`)) setTransferringContract(activeContract);
-    } else if (type === 'add_asset') {
-      setRoomOpsModal({ type: 'asset', room: roomOrTenant });
-    } else if (type === 'add_maintenance') {
-      setRoomOpsModal({ type: 'maintenance', room: roomOrTenant });
-    } else if (type === 'add_file') {
-      setRoomOpsModal({ type: 'file', room: roomOrTenant });
-    } else if (type === 'record_meter') {
-      setRoomOpsModal({ type: 'meter', room: roomOrTenant });
-    } else if (type === 'view_tenants') {
-      setQuery(`P${roomOrTenant.id}`);
-      setTab('tenants');
-    } else if (type === 'view_room') {
-      const room = data.rooms.find(r => r.id === roomOrTenant.id || r.id === roomOrTenant.roomId);
-      if (room) setSelectedRoom(room);
-    } else if (type === 'create_receipt_all') {
-      setTab('receipts');
-      // Trigger batch create logic if needed, but for now just navigation is fine
-    } else if (type === 'view_payments_all') {
-      setTab('payment_history');
-      setQuery('');
-    } else if (type === 'add_new_rental') {
-      setTab('rooms');
-      setQuery('');
-    } else if (type === 'export_json') {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `room_manager_backup_${new Date().toISOString().slice(0,10)}.json`;
-      a.click();
-    } else if (type === 'import_json') {
-      fileInputRef.current.click();
-    } else if (type === 'export_excel') {
-      try {
-        const wb = XLSX.utils.book_new();
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10);
-        const stats = getDashboardStats(data, getCurrentMonthLabel());
-
-        // 1. Sheet Tong quan
-        const overviewData = [
-          ['Chá»‰ tiÃªu', 'GiÃ¡ trá»‹'],
-          ['Tá»•ng sá»‘ phÃ²ng', stats.totalRooms],
-          ['PhÃ²ng Ä‘ang á»Ÿ', stats.occupiedRooms],
-          ['PhÃ²ng trá»‘ng', stats.vacantRooms],
-          ['PhÃ²ng bÃ¡o chuyá»ƒn', stats.notifyingMoveOut.length],
-          ['Tá»•ng ngÆ°á»i Ä‘ang á»Ÿ', stats.currentTenants],
-          ['Tá»•ng phiáº¿u thu', data.receipts.length],
-          ['Tá»•ng pháº£i thu', stats.totalDebt + data.receipts.reduce((s, r) => s + (r.paidAmount || 0), 0)],
-          ['Tá»•ng Ä‘Ã£ thu', data.receipts.reduce((s, r) => s + (r.paidAmount || 0), 0)],
-          ['Tá»•ng cÃ²n ná»£', stats.totalDebt],
-          ['NgÃ y xuáº¥t dá»¯ liá»‡u', now.toLocaleDateString('vi-VN')]
-        ];
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(overviewData), "Tong quan");
-
-        // 2. Sheet Phong
-        const roomsData = data.rooms.map(r => {
-          const statusInfo = getRoomStatusInfo(data, r.id);
-          const contract = statusInfo.contract;
-          const tenant = contract ? getPrimaryTenantByContract(data, contract.id) : null;
-          const memberCount = (data.memberships || []).filter(m => m.roomId === r.id && m.status === 'active').length;
-          return {
-            'MÃ£ phÃ²ng': r.id,
-            'Tráº¡ng thÃ¡i': statusInfo.label,
-            'NgÆ°á»i Ä‘á»©ng tÃªn hiá»‡n táº¡i': tenant ? tenant.name : '',
-            'Sá»‘ ngÆ°á»i Ä‘ang á»Ÿ': memberCount,
-            'GiÃ¡ thuÃª máº·c Ä‘á»‹nh': r.rent,
-            'Tiá»n cá»c máº·c Ä‘á»‹nh': r.deposit,
-            'PhÃ­ vá»‡ sinh': r.cleaning || 0,
-            'PhÃ­ thang mÃ¡y': r.elevator || 0,
-            'PhÃ­ giáº·t': r.laundry || 0,
-            'Internet': r.internet || 0,
-            'ÄÆ¡n giÃ¡ Ä‘iá»‡n': r.electricPrice,
-            'ÄÆ¡n giÃ¡ nÆ°á»›c': r.waterPrice,
-            'NgÃ y háº¿t háº¡n HÄ hiá»‡n táº¡i': contract ? (contract.endDate || '') : '',
-            'Ghi chÃº': r.note || ''
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(roomsData), "Phong");
-
-        // 3. Sheet Nguoi thue hien tai
-        const currentTenantsData = data.tenants.filter(t => (data.memberships || []).some(m => m.tenantId === t.id && m.status === 'active')).map(t => {
-          const m = data.memberships.find(m => m.tenantId === t.id && m.status === 'active');
-          return {
-            'MÃ£ ngÆ°á»i thuÃª': t.id,
-            'PhÃ²ng': m ? m.roomId : '',
-            'Há» tÃªn': t.name,
-            'Vai trÃ²': m?.role === 'primary' ? 'NgÆ°á»i Ä‘á»©ng tÃªn' : 'NgÆ°á»i á»Ÿ cÃ¹ng',
-            'SÄT': t.phone,
-            'CCCD': t.cccd,
-            'Biá»ƒn sá»‘ xe': t.licensePlate || '',
-            'MÃ£ vÃ¢n tay': t.fingerprintCode || '',
-            'Tráº¡ng thÃ¡i vÃ¢n tay': t.fingerprintStatus || '',
-            'Äá»‹a chá»‰': t.address || '',
-            'NgÃ y vÃ o': m ? (m.joinedDate || '') : '',
-            'Tráº¡ng thÃ¡i': 'Äang á»Ÿ',
-            'Ghi chÃº': t.note || ''
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(currentTenantsData), "Nguoi thue hien tai");
-
-        // 4. Sheet Hop dong hien tai
-        const currentContractsData = data.contracts.filter(c => ['active', 'notice', 'moving_out'].includes(c.status)).map(c => {
-          const tenant = getPrimaryTenantByContract(data, c.id);
-          return {
-            'MÃ£ há»£p Ä‘á»“ng': c.id,
-            'PhÃ²ng': c.roomId,
-            'NgÆ°á»i Ä‘á»©ng tÃªn': tenant ? tenant.name : '',
-            'SÄT': tenant ? tenant.phone : '',
-            'NgÃ y kÃ½': c.signedDate || '',
-            'NgÃ y báº¯t Ä‘áº§u': c.startDate || '',
-            'NgÃ y háº¿t háº¡n': c.endDate || '',
-            'GiÃ¡ thuÃª': c.rent,
-            'Tiá»n cá»c': c.deposit,
-            'Tráº¡ng thÃ¡i': c.status === 'active' ? 'Äang hiá»‡u lá»±c' : c.status === 'notice' ? 'BÃ¡o chuyá»ƒn' : 'Äang táº¥t toÃ¡n',
-            'NgÃ y bÃ¡o chuyá»ƒn': c.noticeDate || '',
-            'NgÃ y dá»± kiáº¿n dá»n': c.expectedMoveOutDate || '',
-            'Ghi chÃº': c.note || ''
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(currentContractsData), "Hop dong hien tai");
-
-        // 5. Sheet Lich su hop dong
-        const pastContractsData = data.contracts.filter(c => c.status === 'ended').map(c => {
-          const tenant = getPrimaryTenantByContract(data, c.id);
-          return {
-            'MÃ£ há»£p Ä‘á»“ng': c.id,
-            'PhÃ²ng': c.roomId,
-            'NgÆ°á»i Ä‘á»©ng tÃªn': tenant ? tenant.name : '',
-            'NgÃ y báº¯t Ä‘áº§u': c.startDate || '',
-            'NgÃ y háº¿t háº¡n dá»± kiáº¿n': c.endDate || '',
-            'NgÃ y káº¿t thÃºc thá»±c táº¿': c.actualEndDate || '',
-            'GiÃ¡ thuÃª': c.rent,
-            'Tiá»n cá»c': c.deposit,
-            'Tráº¡ng thÃ¡i': 'ÄÃ£ káº¿t thÃºc',
-            'Ghi chÃº': c.note || ''
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pastContractsData), "Lich su hop dong");
-
-        // 6. Sheet Phieu thang
-        const monthlyReceiptsData = data.receipts.filter(r => r.type === 'monthly').map(r => {
-          const tenant = getTenantForReceipt(data, r);
-          return {
-            'MÃ£ phiáº¿u': r.id,
-            'ThÃ¡ng': r.month,
-            'PhÃ²ng': r.roomId,
-            'MÃ£ há»£p Ä‘á»“ng': r.contractId,
-            'NgÆ°á»i Ä‘á»©ng tÃªn': tenant ? tenant.name : '',
-            'Tiá»n phÃ²ng': r.rent,
-            'Dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh': r.fixedServices,
-            'Äiá»‡n cÅ©': getElectricOld(r),
-            'Äiá»‡n má»›i': getElectricNew(r),
-            'Äiá»‡n dÃ¹ng': r.electricUsed,
-            'ÄÆ¡n giÃ¡ Ä‘iá»‡n': r.electricPrice || (data.rooms.find(rm => rm.id === r.roomId)?.electricPrice),
-            'Tiá»n Ä‘iá»‡n': r.electricAmount,
-            'NÆ°á»›c cÅ©': getWaterOld(r),
-            'NÆ°á»›c má»›i': getWaterNew(r),
-            'NÆ°á»›c dÃ¹ng': r.waterUsed,
-            'ÄÆ¡n giÃ¡ nÆ°á»›c': r.waterPrice || (data.rooms.find(rm => rm.id === r.roomId)?.waterPrice),
-            'Tiá»n nÆ°á»›c': r.waterAmount,
-            'Loáº¡i khoáº£n khÃ¡c': getOtherReceiptType(r).label,
-            'Ná»™i dung khoáº£n khÃ¡c': r.otherNote || '',
-            'Khoáº£n khÃ¡c': r.other || 0,
-            'Tá»•ng tiá»n': r.total,
-            'ÄÃ£ thanh toÃ¡n': r.paidAmount || 0,
-            'CÃ²n ná»£': r.total - (r.paidAmount || 0),
-            'Tráº¡ng thÃ¡i': r.status,
-            'NgÃ y táº¡o': r.createdAt ? new Date(r.createdAt).toLocaleDateString('vi-VN') : '',
-            'NgÃ y lÆ°u': r.savedAt ? new Date(r.savedAt).toLocaleDateString('vi-VN') : '',
-            'Ghi chÃº': r.note || ''
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthlyReceiptsData), "Phieu thang");
-
-        // 7. Sheet Thanh toan
-        const paymentsData = data.receipts.map(r => {
-          const tenant = getTenantForReceipt(data, r);
-          return {
-            'MÃ£ phiáº¿u': r.id,
-            'Loáº¡i phiáº¿u': receiptTypeLabel(r.type),
-            'ThÃ¡ng': r.month,
-            'PhÃ²ng': r.roomId,
-            'NgÆ°á»i Ä‘á»©ng tÃªn': tenant ? tenant.name : '',
-            'Tá»•ng tiá»n': r.total,
-            'ÄÃ£ tráº£': r.paidAmount || 0,
-            'CÃ²n ná»£': r.total - (r.paidAmount || 0),
-            'Tráº¡ng thÃ¡i': r.status,
-            'NgÃ y thanh toÃ¡n': r.paidDate || '',
-            'Ná»™i dung chuyá»ƒn khoáº£n': transferContent(r),
-            'Ghi chÃº': r.note || ''
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paymentsData), "Thanh toan");
-
-        // 8. Sheet Lich su tra phong
-        const moveOutData = (data.moveOutReports || []).map(rep => ({
-          'MÃ£ biÃªn báº£n': rep.id,
-          'PhÃ²ng': rep.roomId,
-          'MÃ£ há»£p Ä‘á»“ng': rep.contractId,
-          'NgÆ°á»i Ä‘á»©ng tÃªn': getPrimaryTenantByContract(data, rep.contractId)?.name || '',
-          'NgÃ y tráº£ phÃ²ng': rep.actualEndDate || '',
-          'Äiá»‡n Ä‘áº§u': rep.electricOld,
-          'Äiá»‡n chá»‘t': rep.electricNew,
-          'Tiá»n Ä‘iá»‡n': rep.electricAmount,
-          'NÆ°á»›c Ä‘áº§u': rep.waterOld,
-          'NÆ°á»›c chá»‘t': rep.waterNew,
-          'Tiá»n nÆ°á»›c': rep.waterAmount,
-          'Sá»‘ ngÃ y tÃ­nh tiá»n phÃ²ng': rep.roomChargeDays || '',
-          'Tiá»n phÃ²ng phÃ¡t sinh': rep.proratedRent || 0,
-          'Dá»‹ch vá»¥ phÃ¡t sinh': rep.proratedFixedServices || 0,
-          'Tiá»n phÃ²ng Ä‘Ã£ thu thÃ¡ng nÃ y': rep.prepaidRentPaid || 0,
-          'Dá»‹ch vá»¥ Ä‘Ã£ thu thÃ¡ng nÃ y': rep.prepaidFixedServicesPaid || 0,
-          'Tiá»n phÃ²ng Ä‘Ã£ sá»­ dá»¥ng': rep.prepaidRentCovered || 0,
-          'Dá»‹ch vá»¥ Ä‘Ã£ sá»­ dá»¥ng': rep.prepaidFixedServicesCovered || 0,
-          'HoÃ n tiá»n phÃ²ng chÆ°a sá»­ dá»¥ng': rep.prepaidUnusedRentRefund || 0,
-          'HoÃ n dá»‹ch vá»¥ chÆ°a sá»­ dá»¥ng': rep.prepaidUnusedServicesRefund || 0,
-          'Tiá»n phÃ²ng/phÃ­ cÃ²n ná»£ khÃ¡c': rep.unpaidRent,
-          'PhÃ­ hÆ° há»ng': rep.damageFee || 0,
-          'PhÃ­ vá»‡ sinh': rep.cleaningFee || 0,
-          'PhÃ­ khÃ¡c': rep.otherFee || 0,
-          'Tiá»n cá»c Ä‘á»‘i trá»«': rep.depositUsed,
-          'Tá»•ng phÃ¡t sinh': rep.totalIncurred,
-          'KhÃ¡ch cÃ²n pháº£i tráº£': rep.mustCollect,
-          'Cáº§n hoÃ n cá»c': rep.mustRefund,
-          'Cáº§n xÃ³a vÃ¢n tay': (rep.accessRemovalTasks || []).filter(t => t.status === 'Cáº§n xÃ³a').map(t => `${t.name} (${t.fingerprintCode})`).join(', '),
-          'Biá»ƒn sá»‘ xe cáº§n kiá»ƒm tra': (rep.accessRemovalTasks || []).map(t => t.licensePlate).filter(Boolean).join(', '),
-          'Ghi chÃº': rep.note || '',
-          'NgÃ y táº¡o': rep.createdAt ? new Date(rep.createdAt).toLocaleDateString('vi-VN') : ''
-        }));
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(moveOutData), "Lich su tra phong");
-
-        // 9. Sheet Lich su nguoi thue
-        const pastTenantsData = data.tenants.filter(t => (data.memberships || []).some(m => m.tenantId === t.id && (m.status === 'ended' || m.status === 'moved_out'))).map(t => {
-          const m = data.memberships.find(m => m.tenantId === t.id && (m.status === 'ended' || m.status === 'moved_out'));
-          return {
-            'MÃ£ ngÆ°á»i thuÃª': t.id,
-            'Há» tÃªn': t.name,
-            'SÄT': t.phone,
-            'CCCD': t.cccd,
-            'Biá»ƒn sá»‘ xe': t.licensePlate || '',
-            'MÃ£ vÃ¢n tay': t.fingerprintCode || '',
-            'Tráº¡ng thÃ¡i vÃ¢n tay': t.fingerprintStatus || '',
-            'PhÃ²ng cÅ©': m ? m.roomId : '',
-            'Vai trÃ²': m?.role === 'primary' ? 'NgÆ°á»i Ä‘á»©ng tÃªn' : 'NgÆ°á»i á»Ÿ cÃ¹ng',
-            'NgÃ y vÃ o': m ? (m.joinedDate || '') : '',
-            'NgÃ y rá»i Ä‘i': m ? (m.leftDate || '') : '',
-            'MÃ£ há»£p Ä‘á»“ng': m ? (m.contractId || '') : '',
-            'Tráº¡ng thÃ¡i': 'ÄÃ£ rá»i Ä‘i',
-            'Ghi chÃº': t.note || ''
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pastTenantsData), "Lich su nguoi thue");
-
-        // 10. Sheet Lich su doi phong
-        const transferData = (data.roomTransfers || []).map(tr => ({
-          'MÃ£ chuyá»ƒn phÃ²ng': tr.id,
-          'NgÃ y chuyá»ƒn': tr.transferDate || '',
-          'NgÆ°á»i Ä‘á»©ng tÃªn': (data.tenants || []).find(t => t.id === tr.tenantId)?.name || '',
-          'PhÃ²ng cÅ©': tr.oldRoomId,
-          'PhÃ²ng má»›i': tr.newRoomId,
-          'HÄ cÅ©': tr.oldContractId,
-          'HÄ má»›i': tr.newContractId,
-          'GiÃ¡ thuÃª cÅ©': tr.oldRent,
-          'GiÃ¡ thuÃª má»›i': tr.newRent,
-          'Cá»c cÅ©': tr.oldDeposit,
-          'Cá»c má»›i': tr.newDeposit,
-          'Ghi chÃº': tr.note || '',
-          'NgÃ y táº¡o': tr.createdAt ? new Date(tr.createdAt).toLocaleDateString('vi-VN') : ''
-        }));
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transferData), "Lich su doi phong");
-
-        // 11. Sheet Cau hinh
-        const configData = [
-          ['ThÃ´ng tin', 'GiÃ¡ trá»‹'],
-          ['TÃªn chá»§ nhÃ ', 'DIá»†M THá»Š BÃŒNH'],
-          ['SÄT chá»§ nhÃ ', '0123.456.789'],
-          ['NgÃ¢n hÃ ng', bankInfo.bankName],
-          ['Sá»‘ tÃ i khoáº£n', bankInfo.accountNo],
-          ['TÃªn chá»§ tÃ i khoáº£n', bankInfo.accountName],
-          ['MÃ£ ngÃ¢n hÃ ng VietQR', bankInfo.bankCode],
-          ['NgÃ y thu tiá»n hÃ ng thÃ¡ng', 5],
-          ['ÄÆ¡n giÃ¡ Ä‘iá»‡n máº·c Ä‘á»‹nh', 3800],
-          ['ÄÆ¡n giÃ¡ nÆ°á»›c máº·c Ä‘á»‹nh', 32000]
-        ];
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(configData), "Cau hinh");
-
-        XLSX.writeFile(wb, `quan-ly-phong-${dateStr}.xlsx`);
-        alert('ÄÃ£ xuáº¥t file Excel thÃ nh cÃ´ng!');
-      } catch (err) {
-        console.error(err);
-        alert('KhÃ´ng thá»ƒ xuáº¥t Excel. Vui lÃ²ng thá»­ láº¡i.');
-      }
-    } else if (type === 'create_receipt') {
-      const roomId = roomOrTenant.id;
-      const month = getCurrentMonthLabel();
-      const transferTarget = findTransferTargetForOldRoom(data, roomId, month);
-      const activeContract = getCurrentContractForRoom(data, roomId);
-      const targetContract = transferTarget?.contract || activeContract;
-      const targetRoom = transferTarget?.room || roomOrTenant;
-      if (!targetContract) return alert('PhÃ²ng trá»‘ng hoáº·c khÃ´ng cÃ³ há»£p Ä‘á»“ng cáº§n láº­p phiáº¿u.');
-      const exists = (data.receipts || []).find(r => r.roomId === targetRoom.id && r.contractId === targetContract.id && r.month === month && r.type === 'monthly');
-      if (exists) {
-        const tenant = getPrimaryTenantByContract(data, targetContract.id);
-        if (!window.confirm(`Há»£p Ä‘á»“ng ${targetContract.contractNo || targetContract.id} cá»§a ${tenant?.name || `P${targetRoom.id}`} Ä‘Ã£ cÃ³ phiáº¿u thÃ¡ng ${month}. Báº¡n muá»‘n lÃ m má»›i/ghi Ä‘Ã¨ phiáº¿u cá»§a chÃ­nh há»£p Ä‘á»“ng nÃ y?`)) return;
-      }
-      const prev = getPreviousReceiptByRoom(data.receipts, targetRoom.id, month, {
-        includeSameMonth: true,
-        excludeReceiptId: exists?.id,
-        excludeSameMonthContractId: targetContract.id
-      });
-      const billingContext = getMonthlyBillingContext(data, targetContract, month);
-      if (billingContext.mode === 'transfer_old_room_skip') return alert(`PhÃ²ng ${roomId} Ä‘Ã£ chuyá»ƒn sang P${billingContext.transfer?.newRoomId}. HÃ£y láº­p phiáº¿u gá»™p táº¡i phÃ²ng má»›i.`);
-      const newRec = createMonthlyReceipt(targetRoom, targetContract, prev, month, billingContext);
-      setData(old => ({
-        ...old,
-        receipts: [...(old.receipts || []).filter(r => r.id !== exists?.id), newRec]
-      }));
-      alert(`ÄÃ£ táº¡o phiáº¿u thÃ¡ng ${month} cho ${transferTarget ? `P${transferTarget.transfer.oldRoomId} â†’ P${targetRoom.id}` : `P${targetRoom.id}`}`);
-      setTab('receipts');
-    } else if (type === 'delete_receipt') {
-      if (window.confirm('Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n xÃ³a phiáº¿u thu nÃ y?')) {
-        setData(old => ({ ...old, receipts: old.receipts.filter(r => r.id !== roomOrTenant.id) }));
-      }
-    }
-  }
-
-  function updateContractStatus(roomId, status) {
-    setData(old => ({
-      ...old,
-      contracts: old.contracts.map(c => {
-        if (c.roomId !== roomId || !(c.status === 'active' || c.status === 'notice')) return c;
-        return {
-          ...c,
-          status,
-          noticeDate: status === 'notice' ? (c.noticeDate || new Date().toISOString().slice(0, 10)) : '',
-          expectedMoveOutDate: status === 'notice' ? c.expectedMoveOutDate : ''
-        };
-      })
-    }));
-  }
-
-  return (
-    <div className="app">
-      <header className="app-header no-print">
-        <div><h1 className="app-title">Room Manager</h1><p className="app-subtitle">Há»‡ thá»‘ng quáº£n lÃ½ phÃ²ng trá» chuyÃªn nghiá»‡p</p></div>
-        <div className="search-container" style={{ maxWidth: '400px' }}><input className="search" type="text" placeholder="TÃ¬m nhanh..." value={query} onChange={e => setQuery(e.target.value)} /></div>
-      </header>
-      <div className="layout">
-        <aside className="sidebar no-print">
-          <button className={`nav-item ${tab === 'dashboard' ? 'active' : ''}`} onClick={() => setTab('dashboard')}>ğŸ“Š Thá»‘ng kÃª</button>
-          <button className={`nav-item ${tab === 'rooms' ? 'active' : ''}`} onClick={() => setTab('rooms')}>ğŸ  PhÃ²ng trá»</button>
-          <button className={`nav-item ${tab === 'tenants' ? 'active' : ''}`} onClick={() => setTab('tenants')}>ğŸ‘¥ NgÆ°á»i thuÃª</button>
-          <button className={`nav-item ${tab === 'receipts' ? 'active' : ''}`} onClick={() => setTab('receipts')}>ğŸ§¾ Phiáº¿u thÃ¡ng</button>
-          <button className={`nav-item ${tab === 'rental_history' ? 'active' : ''}`} onClick={() => setTab('rental_history')}>ğŸ“œ Lá»‹ch sá»­ thuÃª</button>
-          <button className={`nav-item ${tab === 'payment_history' ? 'active' : ''}`} onClick={() => setTab('payment_history')}>ğŸ’° Thanh toÃ¡n</button>
-          <button className={`nav-item ${tab === 'expenses' ? 'active' : ''}`} onClick={() => setTab('expenses')}>ğŸ’¸ Chi phÃ­</button>
-          <button className={`nav-item ${tab === 'financial_report' ? 'active' : ''}`} onClick={() => setTab('financial_report')}>ğŸ“Š BÃ¡o cÃ¡o thu chi</button>
-          <button className={`nav-item ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>âš™ï¸ CÃ i Ä‘áº·t</button>
-        </aside>
-        <div className="content content-fade">
-          {tab === 'dashboard' && (
-            <Dashboard 
-              data={data} 
-              onRoomClick={(id) => { setTab('rooms'); setQuery(id); }} 
-              onAction={handleAction} 
-              isSyncing={isSyncing} 
-              lastSynced={lastSynced} 
-            />
-          )}
-          {tab === 'rooms' && <RoomsTab data={data} onAction={handleAction} onSelect={setSelectedRoom} query={query} />}
-          {tab === 'tenants' && <TenantsTab tenants={filteredTenants} data={data} onAction={(type, t) => { if (type==='detail') setDetailTenant(t); else handleAction(type, t); }} query={query} setQuery={setQuery} setData={setData} />}
-          {tab === 'receipts' && (
-            <ReceiptsTab 
-              data={data} bankInfo={bankInfo}
-              onUpdateReceipt={(updated) => setData(old => {
-                const newReceipts = old.receipts.map(r => r.id === updated.id ? updated : r);
-                // Äá»“ng bá»™ chá»‰ sá»‘ vÃ o room
-                const newRooms = old.rooms.map(room => {
-                  if (room.id === updated.roomId && updated.type === 'monthly') {
-                    return { ...room, electricOld: updated.electricOld, electricNew: updated.electricNew, waterOld: updated.waterOld, waterNew: updated.waterNew };
-                  }
-                  return room;
-                });
-                return { ...old, receipts: newReceipts, rooms: newRooms };
-              })}
-              onBatchCreate={(newReceipts) => setData(old => {
-                const existingIds = new Set(newReceipts.map(nr => `${nr.roomId}-${nr.contractId}-${nr.month}`));
-                const filteredOld = (old.receipts || []).filter(r => !existingIds.has(`${r.roomId}-${r.contractId}-${r.month}`));
-                const mergedReceipts = [...filteredOld, ...newReceipts];
-                
-                // Äá»“ng bá»™ chá»‰ sá»‘ cho nhá»¯ng phÃ²ng vá»«a táº¡o phiáº¿u
-                const newRooms = old.rooms.map(room => {
-                  const latestR = newReceipts.find(nr => nr.roomId === room.id && nr.type === 'monthly');
-                  if (latestR) {
-                    return { ...room, electricOld: latestR.electricOld, electricNew: latestR.electricNew, waterOld: latestR.waterOld, waterNew: latestR.waterNew };
-                  }
-                  return room;
-                });
-                
-                return { ...old, receipts: mergedReceipts, rooms: newRooms };
-              })}
-              onView={(r) => setViewingReceipt(r)} onPrintBatch={(receipts) => setPrintingReceipts(receipts)} onPay={(r) => setPaymentReceipt(r)}
-              onDeleteReceipt={(receipt) => {
-                const message = receipt.isFinalized
-                  ? `Phiáº¿u P${receipt.roomId} thÃ¡ng ${receipt.month} Ä‘Ã£ lÆ°u chÃ­nh thá»©c. Váº«n há»§y phiáº¿u nÃ y?`
-                  : `Há»§y phiáº¿u P${receipt.roomId} thÃ¡ng ${receipt.month}?`;
-                if (window.confirm(message)) {
-                  setData(old => ({ ...old, receipts: (old.receipts || []).filter(r => r.id !== receipt.id) }));
-                }
-              }}
-              onGoToPayment={(filters) => {
-                setPaymentFilters(filters);
-                setTab('payment_history');
-              }}
-            />
-          )}
-          {tab === 'rental_history' && <RentalHistoryTab data={data} onAction={handleAction} />}
-          {tab === 'payment_history' && (
-            <PaymentHistoryTab 
-              data={data} 
-              bankInfo={bankInfo} 
-              onAction={handleAction} 
-              initialFilter={paymentFilters}
-              onUpdateReceipt={(updated, deleteId) => {
-                if (deleteId) {
-                  setData(old => ({ ...old, receipts: old.receipts.filter(r => r.id !== deleteId) }));
-                } else {
-                  setData(old => ({ ...old, receipts: old.receipts.map(r => r.id === updated.id ? updated : r) }));
-                }
-              }} 
-              onView={(r) => setViewingReceipt(r)} 
-              onPay={(r) => setPaymentReceipt(r)} 
-            />
-          )}
-          {tab === 'expenses' && (
-            <ExpensesTab 
-              data={data} 
-              focusFilter={expenseFocusFilter}
-              onFocusConsumed={() => setExpenseFocusFilter(null)}
-              onAction={(type, item) => {
-                if (type === 'create_expense') setAddingExpense(true);
-                else if (type === 'edit_expense') setEditingExpense(item);
-                else if (type === 'delete_expense') {
-                  if (window.confirm('XÃ³a phiáº¿u chi nÃ y?')) {
-                    setData(old => ({ ...old, expensePayments: old.expensePayments.filter(e => e.id !== item.id) }));
-                  }
-                } else if (type === 'view_qr') setViewingExpense(item);
-                else if (type === 'manage_suppliers') setTab('suppliers');
-              }} 
-            />
-          )}
-          {tab === 'suppliers' && (
-            <SuppliersTab 
-              data={data} 
-              onAction={(type, item) => {
-                if (type === 'add_supplier') setAddingSupplier(true);
-                else if (type === 'edit_supplier') setEditingSupplier(item);
-                else if (type === 'delete_supplier') {
-                  if (window.confirm('XÃ³a nhÃ  cung cáº¥p nÃ y?')) {
-                    setData(old => ({ ...old, suppliers: old.suppliers.filter(s => s.id !== item.id) }));
-                  }
-                } else if (type === 'back') setTab('expenses');
-              }}
-            />
-          )}
-          {tab === 'financial_report' && (
-            <FinancialReportTab data={data} onAction={(type, arg) => {
-              if (type === 'view_receipt') {
-                setViewingReceipt(arg);
-              } else if (type === 'view_expense') {
-                setViewingExpense(arg);
-              }
-            }} />
-          )}
-          {tab === 'settings' && <SettingsTab data={data} setData={setData} bankInfo={bankInfo} setBankInfo={setBankInfo} onReset={() => { if(window.confirm('XÃ³a háº¿t dá»¯ liá»‡u?')) setData(DEFAULT_DATA); }} />}
-        </div>
-      </div>
-      {selectedRoom && (
-        <RoomDetailModal 
-          room={selectedRoom} 
-          data={data} 
-          onClose={() => setSelectedRoom(null)} 
-          onAction={(type, arg) => { 
-            handleAction(type, arg || selectedRoom); 
-            if (!['add_roommate', 'edit_tenant', 'leave_roommate'].includes(type)) setSelectedRoom(null);
-          }}
-          onAddRoommate={(result) => {
-            const { tenant, membership } = result;
-            setData(old => ({
-              ...old,
-              tenants: [...(old.tenants || []).filter(t => t.id !== tenant.id), tenant],
-              memberships: [...(old.memberships || []).filter(m => m.id !== membership.id), membership]
-            }));
-            alert(`ÄÃ£ thÃªm ${tenant.name} vÃ o phÃ²ng ${membership.roomId}.`);
-            return true;
-          }}
-        />
-      )}
-      {newRentalRoom && (
-        <RentalFlowModal 
-          room={newRentalRoom} 
-          onClose={() => setNewRentalRoom(null)} 
-          onSave={(result) => {
-            const { tenant, contract, memberships } = result;
-            const existingActiveContract = (data.contracts || []).find(c => c.roomId === contract.roomId && ['active', 'notice', 'moving_out'].includes(c.status));
-            if (existingActiveContract) {
-              alert(`PhÃ²ng ${contract.roomId} Ä‘Ã£ cÃ³ há»£p Ä‘á»“ng hiá»‡u lá»±c. Há»‡ thá»‘ng khÃ´ng táº¡o há»£p Ä‘á»“ng trÃ¹ng.`);
-              return false;
-            }
-            setData(old => {
-              const serviceConfig = contract.terms?.services || {};
-              const updatedRooms = (old.rooms || []).map(r => r.id === contract.roomId ? {
-                ...r,
-                rent: Number(contract.rent || r.rent || 0),
-                deposit: Number(contract.deposit || r.deposit || 0),
-                electricPrice: Number(contract.terms?.electricPrice || r.electricPrice || 3800),
-                waterPrice: Number(contract.terms?.waterPrice || r.waterPrice || 32000),
-                cleaning: Number(serviceConfig.cleaning ?? r.cleaning ?? 0),
-                elevator: Number(serviceConfig.elevator ?? r.elevator ?? 0),
-                laundry: Number(serviceConfig.laundry ?? r.laundry ?? 0),
-                internet: Number(serviceConfig.internet ?? r.internet ?? 0),
-              } : r);
-              return {
-                ...old,
-                rooms: updatedRooms,
-                tenants: [...(old.tenants || []).filter(t => t.id !== tenant.id), tenant],
-                contracts: [...(old.contracts || []).filter(c => c.id !== contract.id), contract],
-                memberships: [...(old.memberships || []).filter(m => !memberships.some(newM => newM.id === m.id)), ...memberships]
-              };
-            });
-            setNewRentalRoom(null);
-            setSelectedRoom(null);
-            setTab('rooms');
-            alert(`ÄÃ£ lÆ°u há»£p Ä‘á»“ng ${contract.contractNo || contract.id} cho phÃ²ng ${contract.roomId}.`);
-            return true;
-          }}
-        />
-      )}
-      {addingRoommate && (
-        <RoommateModal
-          room={addingRoommate.room}
-          contract={addingRoommate.contract}
-          onClose={() => setAddingRoommate(null)}
-          onSave={(result) => {
-            const { tenant, membership } = result;
-            setData(old => ({
-              ...old,
-              tenants: [...(old.tenants || []).filter(t => t.id !== tenant.id), tenant],
-              memberships: [...(old.memberships || []).filter(m => m.id !== membership.id), membership]
-            }));
-            setAddingRoommate(null);
-            alert(`ÄÃ£ thÃªm ${tenant.name} vÃ o phÃ²ng ${membership.roomId}.`);
-            return true;
-          }}
-        />
-      )}
-      {settlingRoom && (
-        <SettlementModal room={settlingRoom.room} contract={settlingRoom.contract} data={data} bankInfo={bankInfo} onClose={() => setSettlingRoom(null)} onSave={(report) => {
-            const affectedTenants = (data.memberships || [])
-              .filter(m => m.contractId === report.contractId)
-              .map(m => (data.tenants || []).find(t => t.id === m.tenantId))
-              .filter(Boolean);
-            setData(old => {
-              const updatedRooms = old.rooms.map(r => r.id === report.roomId ? {
-                ...r,
-                electricOld: report.electricOld,
-                electricNew: report.electricNew,
-                waterOld: report.waterOld,
-                waterNew: report.waterNew
-              } : r);
-              const updatedContracts = old.contracts.map(c => c.id === report.contractId ? { ...c, status: 'ended', actualEndDate: report.actualEndDate, endedAt: new Date().toISOString() } : c);
-              const updatedMemberships = old.memberships.map(m => m.contractId === report.contractId ? { ...m, status: 'ended', leftDate: report.actualEndDate } : m);
-              const affectedTenantIds = old.memberships.filter(m => m.contractId === report.contractId).map(m => m.tenantId);
-              const updatedTenants = old.tenants.map(t => affectedTenantIds.includes(t.id) ? { ...t, status: 'moved_out', lastRoomId: report.roomId, fingerprintStatus: t.fingerprintCode ? 'Cáº§n xÃ³a' : (t.fingerprintStatus || 'ChÆ°a Ä‘Äƒng kÃ½') } : t);
-              const accessRemovalTasks = old.tenants
-                .filter(t => affectedTenantIds.includes(t.id))
-                .map(t => ({
-                  tenantId: t.id,
-                  name: t.name,
-                  phone: t.phone,
-                  fingerprintCode: t.fingerprintCode || '',
-                  licensePlate: t.licensePlate || t.vehicle || '',
-                  action: t.fingerprintCode ? 'XÃ³a vÃ¢n tay khá»i mÃ¡y cháº¥m/khÃ³a cá»­a' : 'KhÃ´ng cÃ³ vÃ¢n tay Ä‘Ã£ lÆ°u',
-                  status: t.fingerprintCode ? 'Cáº§n xÃ³a' : 'KhÃ´ng cáº§n xá»­ lÃ½'
-                }));
-              
-              // Táº¡o phiáº¿u thu chá»‘t tráº£ phÃ²ng náº¿u khÃ¡ch cÃ²n pháº£i thanh toÃ¡n thÃªm
-              let newReceipts = [...(old.receipts || [])];
-              if (report.mustCollect > 0) {
-                newReceipts.push({
-                  id: uid('receipt'),
-                  roomId: report.roomId,
-                  contractId: report.contractId,
-                  type: 'move_out_settlement',
-                  month: report.actualEndDate.split('-').slice(0, 2).reverse().join('/'),
-                  rent: report.proratedRent || 0,
-                  fixedServices: report.proratedFixedServices || 0,
-                  electricOld: report.electricOld,
-                  electricNew: report.electricNew,
-                  electricUsed: report.electricUsed,
-                  electricAmount: report.electricAmount,
-                  waterOld: report.waterOld,
-                  waterNew: report.waterNew,
-                  waterUsed: report.waterUsed,
-                  waterAmount: report.waterAmount,
-                  other: Number(report.unpaidRent || 0) + Number(report.cleaningFee || 0) + Number(report.damageFee || 0) + Number(report.otherFee || 0),
-                  total: report.mustCollect,
-                  paidAmount: 0,
-                  debt: report.mustCollect,
-                  status: 'ChÆ°a thanh toÃ¡n',
-                  note: 'Phiáº¿u chá»‘t tráº£ phÃ²ng',
-                  createdAt: new Date().toISOString()
-                });
-              }
-
-              let newExpensePayments = [...(old.expensePayments || [])];
-              let createdExpense = null;
-              if (report.mustRefund > 0) {
-                const [m, y] = report.actualEndDate.split('-').slice(0, 2).reverse();
-                const prefix = `PC-${y}${m}`;
-                const count = newExpensePayments.filter(e => e.expenseCode && e.expenseCode.startsWith(prefix)).length + 1;
-                const expenseCode = `${prefix}-${String(count).padStart(3, '0')}`;
-                createdExpense = {
-                  id: uid('exp'),
-                  expenseCode,
-                  type: 'deposit_refund',
-                  source: 'move_out_settlement',
-                  sourceReportId: report.id,
-                  roomId: report.roomId,
-                  contractId: report.contractId,
-                  tenantId: report.tenantId,
-                  supplierId: '',
-                  recipientName: report.tenantName || 'KhÃ¡ch thuÃª',
-                  recipientPhone: report.tenantPhone || '',
-                  recipientBankName: report.refundBankName || '',
-                  recipientBankAccount: report.refundBankAccount || '',
-                  recipientBankOwner: report.refundBankOwner || report.tenantName || '',
-                  recipientQrImageUrl: report.refundQrImageUrl || '',
-                  categoryId: 'cat_other',
-                  month: `${m}/${y}`,
-                  paymentDate: report.actualEndDate,
-                  title: report.settlementMode === 'prepaid_month_refund_deposit' ? `HoÃ n cá»c & tiá»n tráº£ trÆ°á»›c P${report.roomId}` : `HoÃ n cá»c tráº£ phÃ²ng P${report.roomId}`,
-                  description: report.settlementMode === 'prepaid_month_refund_deposit'
-                    ? `HoÃ n cá»c vÃ  tiá»n phÃ²ng/dá»‹ch vá»¥ tráº£ trÆ°á»›c chÆ°a sá»­ dá»¥ng cho ${report.tenantName || 'khÃ¡ch thuÃª'} sau khi táº¥t toÃ¡n phÃ²ng ${report.roomId}.`
-                    : `HoÃ n tiá»n cá»c cho ${report.tenantName || 'khÃ¡ch thuÃª'} sau khi táº¥t toÃ¡n phÃ²ng ${report.roomId}.`,
-                  totalAmount: report.mustRefund,
-                  amount: report.mustRefund,
-                  paidAmount: report.mustRefund,
-                  status: 'paid',
-                  paymentMethod: report.refundQrImageUrl || report.refundBankAccount ? 'transfer' : 'cash',
-                  note: report.note || 'Tá»± táº¡o tá»« luá»“ng hoÃ n táº¥t tráº£ phÃ²ng',
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString()
-                };
-                newExpensePayments.push(createdExpense);
-              }
-              
-              return { ...old, rooms: updatedRooms, contracts: updatedContracts, memberships: updatedMemberships, tenants: updatedTenants, receipts: newReceipts, expensePayments: newExpensePayments, moveOutReports: [{ ...report, accessRemovalTasks }, ...(old.moveOutReports || [])] };
-            });
-            const completionMessages = [];
-            if (report.mustRefund > 0) {
-              completionMessages.push(`ÄÃ£ táº¡o phiáº¿u chi ${formatMoney(report.mustRefund)} cho ${report.tenantName || 'khÃ¡ch thuÃª'}.`);
-              setExpenseFocusFilter({
-                month: report.actualEndDate.split('-').slice(0, 2).reverse().join('/'),
-                status: 'all',
-                supplierId: '',
-                categoryId: ''
-              });
-              setTab('expenses');
-            }
-            const fingerprintNames = affectedTenants.filter(t => t.fingerprintCode).map(t => `${t.name} (${t.fingerprintCode})`);
-            if (fingerprintNames.length > 0) {
-              completionMessages.push(`Nháº¯c admin: cáº§n xÃ³a vÃ¢n tay cho khÃ¡ch Ä‘Ã£ tráº£ phÃ²ng:\n${fingerprintNames.join('\n')}`);
-            }
-            if (completionMessages.length > 0) alert(completionMessages.join('\n\n'));
-            setSettlingRoom(null);
-          }}
-        />
-      )}
-      {viewingContract && <ContractPreview
-        {...viewingContract}
-        tenants={(data.memberships || [])
-          .filter(m => m.contractId === viewingContract.contract.id)
-          .map(m => {
-            const tenant = (data.tenants || []).find(t => t.id === m.tenantId);
-            return tenant ? { ...tenant, role: m.role, membershipStatus: m.status } : null;
-          })
-          .filter(Boolean)
-          .sort((a, b) => (b.role === 'primary' ? 1 : 0) - (a.role === 'primary' ? 1 : 0))}
-        bankInfo={bankInfo}
-        onClose={() => setViewingContract(null)}
-      />}
-      {viewingAppendix && (
-        <RenewalAppendixPreviewModal
-          contract={viewingAppendix.contract}
-          form={viewingAppendix.form}
-          data={data}
-          onClose={() => setViewingAppendix(null)}
-        />
-      )}
-      {renewingContract && (
-        <RenewalModal contract={renewingContract} data={data} onClose={() => setRenewingContract(null)} onSave={(form) => {
-            setData(old => {
-              const renewalRecord = {
-                id: uid('renewal'),
-                contractId: renewingContract.id,
-                roomId: renewingContract.roomId,
-                signedDate: form.signedDate,
-                oldEndDate: renewingContract.endDate,
-                newStartDate: form.newStartDate,
-                newEndDate: form.newEndDate,
-                oldRent: renewingContract.rent,
-                newRent: form.keepPricing ? renewingContract.rent : Number(form.newRent),
-                oldDeposit: renewingContract.deposit,
-                newDeposit: form.keepPricing ? renewingContract.deposit : Number(form.newDeposit),
-                note: form.note,
-                createdAt: new Date().toISOString()
-              };
-
-              const oldRent = Number(renewingContract.rent || 0);
-              const newRent = Number(renewalRecord.newRent || 0);
-              const oldDeposit = Number(renewingContract.deposit || 0);
-              const newDeposit = Number(renewalRecord.newDeposit || 0);
-              const rentDelta = newRent - oldRent;
-              const depositDelta = newDeposit - oldDeposit;
-              const rentIncrease = Math.max(0, rentDelta);
-              const depositIncrease = Math.max(0, depositDelta);
-              const rentRefund = Math.max(0, -rentDelta);
-              const depositRefund = Math.max(0, -depositDelta);
-              const amountToCollect = rentIncrease + depositIncrease;
-              const amountToRefund = rentRefund + depositRefund;
-              const renewalMonth = monthFromDate(form.newStartDate) || getCurrentMonthLabel();
-              const primaryTenant = getPrimaryTenantByContract(old, renewingContract.id) || {};
-              const adjustmentDetails = [
-                rentDelta !== 0 ? `GiÃ¡ thuÃª: ${formatMoney(oldRent)} â†’ ${formatMoney(newRent)} (${rentDelta > 0 ? 'tÄƒng' : 'giáº£m'} ${formatMoney(Math.abs(rentDelta))})` : '',
-                depositDelta !== 0 ? `Tiá»n cá»c: ${formatMoney(oldDeposit)} â†’ ${formatMoney(newDeposit)} (${depositDelta > 0 ? 'tÄƒng' : 'giáº£m'} ${formatMoney(Math.abs(depositDelta))})` : '',
-                `Ãp dá»¥ng tá»« ${formatDisplayDate(form.newStartDate)}`
-              ].filter(Boolean).join('. ');
-
-              const updatedReceipts = [...(old.receipts || [])];
-              if (amountToCollect > 0) {
-                updatedReceipts.unshift({
-                  id: uid('receipt'),
-                  roomId: renewingContract.roomId,
-                  contractId: renewingContract.id,
-                  type: 'renewal_adjustment',
-                  month: renewalMonth,
-                  rent: rentIncrease,
-                  fixedServices: 0,
-                  electricOld: 0,
-                  electricNew: 0,
-                  electricUsed: 0,
-                  electricAmount: 0,
-                  waterOld: 0,
-                  waterNew: 0,
-                  waterUsed: 0,
-                  waterAmount: 0,
-                  other: depositIncrease,
-                  total: amountToCollect,
-                  paidAmount: 0,
-                  debt: amountToCollect,
-                  status: 'ChÆ°a thanh toÃ¡n',
-                  note: `Äiá»u chá»‰nh gia háº¡n. ${adjustmentDetails}`,
-                  createdAt: new Date().toISOString()
-                });
-              }
-
-              const updatedExpenses = [...(old.expensePayments || [])];
-              if (amountToRefund > 0) {
-                const expensePrefix = `PC-${onlyDigits(renewalMonth)}-GH`;
-                const expenseCount = updatedExpenses.filter(e => String(e.expenseCode || '').startsWith(expensePrefix)).length + 1;
-                updatedExpenses.unshift({
-                  id: uid('exp'),
-                  expenseCode: `${expensePrefix}-${String(expenseCount).padStart(3, '0')}`,
-                  recipientName: primaryTenant.name || 'KhÃ¡ch thuÃª',
-                  supplierId: '',
-                  categoryId: 'cat_other',
-                  month: renewalMonth,
-                  paymentDate: form.newStartDate,
-                  title: `HoÃ n chÃªnh lá»‡ch gia háº¡n P${renewingContract.roomId}`,
-                  description: adjustmentDetails,
-                  totalAmount: amountToRefund,
-                  paidAmount: 0,
-                  status: 'unpaid',
-                  paymentMethod: 'transfer',
-                  note: form.note || 'Tá»± táº¡o khi giáº£m giÃ¡ thuÃª hoáº·c tiá»n cá»c lÃºc gia háº¡n',
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString()
-                });
-              }
-
-              const updatedContracts = old.contracts.map(c => c.id === renewingContract.id ? { 
-                ...c, 
-                endDate: form.newEndDate,
-                rent: form.keepPricing ? c.rent : Number(form.newRent),
-                deposit: form.keepPricing ? c.deposit : Number(form.newDeposit),
-                previousEndDate: renewingContract.endDate,
-                renewedAt: new Date().toISOString(),
-                renewalHistory: [renewalRecord, ...(c.renewalHistory || [])]
-              } : c);
-              
-              return { 
-                ...old, 
-                contracts: updatedContracts, 
-                receipts: updatedReceipts,
-                expensePayments: updatedExpenses,
-                contractRenewals: [renewalRecord, ...(old.contractRenewals || [])] 
-              };
-            });
-            setRenewingContract(null);
-          }}
-        />
-      )}
-      {transferringContract && (
-        <TransferRoomModal
-          contract={transferringContract}
-          data={data}
-          onClose={() => setTransferringContract(null)}
-          onSave={(form) => {
-            setData(old => {
-              const targetRoom = old.rooms.find(r => r.id === form.newRoomId);
-              if (!targetRoom) return old;
-
-              const oldContract = transferringContract;
-              const primaryMembership = (old.memberships || []).find(m => m.contractId === oldContract.id && m.role === 'primary');
-              const activeMembers = (old.memberships || []).filter(m => m.contractId === oldContract.id && m.status === 'active');
-              const newContractId = uid('contract');
-              const transferDate = form.transferDate;
-              const oldStayTo = form.oldRoomStayTo || formatDateInputValue(addDays(transferDate, -1)) || transferDate;
-              const transferRecord = {
-                id: uid('transfer'),
-                tenantId: primaryMembership?.tenantId || '',
-                oldContractId: oldContract.id,
-                newContractId,
-                oldRoomId: oldContract.roomId,
-                newRoomId: targetRoom.id,
-                transferDate,
-                oldBillingMonth: monthFromDate(oldStayTo || transferDate),
-                oldRoomStayFrom: form.oldRoomStayFrom || oldContract.startDate || '',
-                oldRoomStayTo: oldStayTo,
-                oldRoomServiceMode: form.oldRoomServiceMode || 'daily',
-                occupantCount: activeMembers.length || 1,
-                oldRent: Number(oldContract.rent || 0),
-                newRent: Number(form.rent || 0),
-                oldDeposit: Number(oldContract.deposit || 0),
-                newDeposit: Number(form.deposit || 0),
-                note: form.note,
-                createdAt: new Date().toISOString()
-              };
-
-              const newContract = {
-                ...oldContract,
-                id: newContractId,
-                roomId: targetRoom.id,
-                contractNo: form.contractNo,
-                signedDate: transferDate,
-                startDate: transferDate,
-                endDate: form.endDate,
-                rent: Number(form.rent || 0),
-                deposit: Number(form.deposit || 0),
-                status: 'active',
-                noticeDate: '',
-                expectedMoveOutDate: '',
-                actualEndDate: '',
-                endedAt: '',
-                previousEndDate: '',
-                renewedAt: '',
-                renewalHistory: [],
-                note: form.note,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              };
-
-              const updatedContracts = [
-                ...old.contracts.map(c => c.id === oldContract.id ? {
-                  ...c,
-                  status: 'ended',
-                  actualEndDate: transferDate,
-                  endedAt: new Date().toISOString(),
-                  note: [c.note, `Chuyá»ƒn sang phÃ²ng ${targetRoom.id} ngÃ y ${transferDate}`].filter(Boolean).join('\n')
-                } : c),
-                newContract
-              ];
-
-              const endedMemberships = old.memberships.map(m => m.contractId === oldContract.id ? { ...m, status: 'ended', leftDate: transferDate } : m);
-              const newMemberships = activeMembers.map(m => ({
-                ...m,
-                id: uid('membership'),
-                contractId: newContractId,
-                roomId: targetRoom.id,
-                status: 'active',
-                joinedDate: transferDate,
-                leftDate: ''
-              }));
-
-              return {
-                ...old,
-                contracts: updatedContracts,
-                memberships: [...endedMemberships, ...newMemberships],
-                roomTransfers: [transferRecord, ...(old.roomTransfers || [])]
-              };
-            });
-            setTransferringContract(null);
-          }}
-        />
-      )}
-      {detailTenant && <TenantDetailModal tenant={detailTenant} data={data} onClose={() => setDetailTenant(null)} />}
-      {editingTenant && (
-        <EditTenantModal 
-          tenant={editingTenant} 
-          onClose={() => setEditingTenant(null)} 
-          onSave={(updated) => {
-            setData(old => {
-              const { membershipId, contractId, roomId, role, ...tenantPatch } = updated;
-              const updatedTenants = old.tenants.map(t => t.id === updated.id ? { ...tenantPatch, role } : t);
-              const targetMembership = (old.memberships || []).find(m => m.id === updated.membershipId)
-                || (old.memberships || []).find(m => m.tenantId === updated.id && m.status === 'active' && (!updated.contractId || m.contractId === updated.contractId))
-                || (old.memberships || []).find(m => m.tenantId === updated.id && m.status === 'active');
-              const targetContractId = targetMembership?.contractId || updated.contractId;
-              const updatedMemberships = old.memberships.map(m => {
-                if (updated.role === 'primary' && targetContractId && m.contractId === targetContractId && m.status === 'active') {
-                  return { ...m, role: m.id === targetMembership?.id ? 'primary' : 'secondary' };
-                }
-                if (m.id === targetMembership?.id || (m.tenantId === updated.id && m.status === 'active' && (!targetContractId || m.contractId === targetContractId))) {
-                  return { ...m, role: updated.role || m.role };
-                }
-                return m;
-              });
-              return { ...old, tenants: updatedTenants, memberships: updatedMemberships };
-            });
-            setEditingTenant(null);
-          }} 
-        />
-      )}
-      {editingContract && (
-        <EditContractModal 
-          contract={editingContract} 
-          data={data}
-          onClose={() => setEditingContract(null)} 
-          onSave={(updated) => {
-            setData(old => ({
-              ...old,
-              contracts: old.contracts.map(c => c.id === updated.id ? {
-                ...updated,
-                rent: Number(updated.rent),
-                deposit: Number(updated.deposit),
-                paymentCycleDay: updated.paymentCycleDay ? Number(updated.paymentCycleDay) : updated.paymentCycleDay,
-                updatedAt: new Date().toISOString()
-              } : c)
-            }));
-            setEditingContract(null);
-          }} 
-        />
-      )}
-      {viewingReceipt && (() => {
-        const contextReceipts = (data.receipts || [])
-          .filter(r => r.month === viewingReceipt.month && r.type === viewingReceipt.type)
-          .sort((a, b) => a.roomId.localeCompare(b.roomId));
-        
-        const currentIndex = contextReceipts.findIndex(r => r.id === viewingReceipt.id);
-        const prevReceipt = currentIndex > 0 ? contextReceipts[currentIndex - 1] : null;
-        const nextReceipt = currentIndex < contextReceipts.length - 1 ? contextReceipts[currentIndex + 1] : null;
-
-        return (
-          <ReceiptModal 
-            receipt={viewingReceipt} 
-            room={data.rooms.find(r => r.id === viewingReceipt.roomId)} 
-            data={data} 
-            bankInfo={bankInfo} 
-            onClose={() => setViewingReceipt(null)} 
-            onPrev={prevReceipt ? () => setViewingReceipt(prevReceipt) : null}
-            onNext={nextReceipt ? () => setViewingReceipt(nextReceipt) : null}
-          />
-        );
-      })()}
-      {printingReceipts && (
-        <div className="print-overlay" style={{ position: 'fixed', inset: 0, background: 'white', zIndex: 9999, overflow: 'auto' }}>
-          <div className="no-print" style={{ position: 'sticky', top: 0, padding: '20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '10px' }}>
-            <button className="primary-btn" onClick={() => window.print()}>ğŸ–¨ï¸ Báº¯t Ä‘áº§u in</button><button className="secondary-btn" onClick={() => setPrintingReceipts(null)}>Há»§y bá»</button>
-          </div>
-          <div className="print-container">
-            {printingReceipts.map(r => <ReceiptItem key={r.id} receipt={r} room={data.rooms.find(rm => rm.id === r.roomId)} contract={data.contracts.find(c => c.id === r.contractId)} bankInfo={bankInfo} data={data} />)}
-          </div>
-        </div>
-      )}
-      {paymentReceipt && <PaymentModal receipt={paymentReceipt} onClose={() => setPaymentReceipt(null)} onSave={(updated) => { setData(old => ({ ...old, receipts: old.receipts.map(r => r.id === updated.id ? updated : r) })); setPaymentReceipt(null); }} />}
-      {roomOpsModal && (
-        <RoomOpsModal
-          mode={roomOpsModal.type}
-          room={roomOpsModal.room}
-          onClose={() => setRoomOpsModal(null)}
-          onSave={(payload) => {
-            setData(old => ({
-              ...old,
-              rooms: (old.rooms || []).map(r => {
-                if (r.id !== roomOpsModal.room.id) return r;
-                if (roomOpsModal.type === 'asset') {
-                  return { ...r, assets: [payload, ...(r.assets || [])] };
-                }
-                if (roomOpsModal.type === 'maintenance') {
-                  return { ...r, maintenanceTickets: [payload, ...(r.maintenanceTickets || [])] };
-                }
-                if (roomOpsModal.type === 'file') {
-                  return { ...r, attachments: [payload, ...(r.attachments || [])] };
-                }
-                return {
-                  ...r,
-                  electricOld: r.electricNew ?? r.electricOld ?? r.electricStart ?? 0,
-                  electricNew: payload.electricNew,
-                  waterOld: r.waterNew ?? r.waterOld ?? r.waterStart ?? 0,
-                  waterNew: payload.waterNew,
-                  lastMeterReading: payload
-                };
-              })
-            }));
-            setRoomOpsModal(null);
-          }}
-        />
-      )}
-      
-      {(addingExpense || editingExpense) && (
-        <ExpenseModal 
-          expense={editingExpense} 
-          data={data} 
-          onClose={() => { setAddingExpense(false); setEditingExpense(null); }} 
-          onSave={(updated) => {
-            setData(old => {
-              const list = old.expensePayments || [];
-              const exists = list.find(e => e.id === updated.id);
-              return { ...old, expensePayments: exists ? list.map(e => e.id === updated.id ? updated : e) : [...list, updated] };
-            });
-            setAddingExpense(false); setEditingExpense(null);
-          }} 
-        />
-      )}
-
-      {(addingSupplier || editingSupplier) && (
-        <SupplierModal 
-          supplier={editingSupplier} 
-          onClose={() => { setAddingSupplier(false); setEditingSupplier(null); }} 
-          onSave={(updated) => {
-            setData(old => {
-              const list = old.suppliers || [];
-              const exists = list.find(s => s.id === updated.id);
-              return { ...old, suppliers: exists ? list.map(s => s.id === updated.id ? updated : s) : [...list, updated] };
-            });
-            setAddingSupplier(false); setEditingSupplier(null);
-          }} 
-        />
-      )}
-
-      {viewingExpense && (
-        <ExpenseQRModal 
-          expense={viewingExpense} 
-          supplier={data.suppliers.find(s => s.id === viewingExpense.supplierId)}
-          onClose={() => setViewingExpense(null)} 
-        />
-      )}
-
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        style={{ display: 'none' }} 
-        accept=".json" 
-        onChange={(e) => {
-          const file = e.target.files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              try {
-                const imported = JSON.parse(event.target.result);
-                if (window.confirm('Cáº£nh bÃ¡o: Dá»¯ liá»‡u hiá»‡n táº¡i sáº½ bá»‹ ghi Ä‘Ã¨. Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n nháº­p dá»¯ liá»‡u tá»« file nÃ y?')) {
-                  setData(imported);
-                  localStorage.setItem(STORAGE_KEY, JSON.stringify(imported));
-                  setCloudEnabled(true);
-                  setHasLoadedCloud(true);
-                  setIsSyncing(true);
-                  fetch('/api/data', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'full_sync', payload: imported })
-                  })
-                    .then(async res => {
-                      setIsSyncing(false);
-                      if (!res.ok) {
-                        const errData = await res.json().catch(() => ({}));
-                        console.info('Import JSON saved locally but cloud sync failed.', errData);
-                        const message = String(errData.details || errData.error || res.status).slice(0, 260);
-                        alert(`Nháº­p JSON thÃ nh cÃ´ng trÃªn mÃ¡y nÃ y, nhÆ°ng chÆ°a Ä‘á»“ng bá»™ cloud: ${message}`);
-                        return;
-                      }
-                      cloudFailureRef.current = 0;
-                      setLastSynced(new Date());
-                      alert('Nháº­p JSON thÃ nh cÃ´ng vÃ  Ä‘Ã£ Ä‘á»“ng bá»™ lÃªn cloud!');
-                    })
-                    .catch(err => {
-                      setIsSyncing(false);
-                      console.info('Import JSON saved locally but cloud sync failed.', err?.message || err);
-                      alert(`Nháº­p JSON thÃ nh cÃ´ng trÃªn mÃ¡y nÃ y, nhÆ°ng chÆ°a Ä‘á»“ng bá»™ cloud: ${err?.message || 'Lá»—i káº¿t ná»‘i'}`);
-                    });
-                }
-              } catch (err) {
-                alert('Lá»—i: File JSON khÃ´ng há»£p lá»‡!');
-              }
-            };
-            reader.readAsText(file);
-          }
-          e.target.value = ''; // Reset input
-        }}
-      />
-    </div>
-  );
-}
-
-function RentalHistoryTab({ data, onAction }) {
-  const endedContracts = useMemo(() => (data.contracts || []).filter(c => c.status === 'ended').sort((a,b) => new Date(b.endedAt) - new Date(a.endedAt)), [data.contracts]);
-  return (
-    <div className="widget liquid-glass" style={{ padding: 0 }}>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>NgÃ y tráº£</th><th>PhÃ²ng</th><th>NgÆ°á»i Ä‘á»©ng tÃªn</th><th>NgÃ y báº¯t Ä‘áº§u</th><th>Thá»i háº¡n gá»‘c</th><th>Tiá»n cá»c</th><th>Ra vÃ o</th><th>Thao tÃ¡c</th></tr></thead>
-          <tbody>
-            {endedContracts.map(c => {
-              const tenant = getPrimaryTenantByContract(data, c.id) || { name: 'N/A' };
-              const report = (data.moveOutReports || []).find(r => r.contractId === c.id);
-              return (
-                <tr key={c.id}>
-                  <td><b>{c.actualEndDate?.split('-').reverse().join('/') || 'N/A'}</b></td>
-                  <td>P{c.roomId}</td>
-                  <td>{tenant.name}</td>
-                  <td>{formatBusinessDate(c.startDate)}</td>
-                  <td>{formatBusinessDate(c.endDate)}</td>
-                  <td>{formatMoney(c.deposit)}</td>
-                  <td>{(report?.accessRemovalTasks || []).some(t => t.status === 'Cáº§n xÃ³a') ? <span className="status-badge-liquid debt">Cáº§n xÃ³a vÃ¢n tay</span> : <span className="status-badge-liquid active">ÄÃ£ kiá»ƒm tra</span>}</td>
-                  <td><button className="secondary-btn sm" onClick={() => onAction('view_contract', { roomId: c.roomId, contractId: c.id })}>Xem HÄ</button></td>
-                </tr>
-              );
-            })}
-            {endedContracts.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>ChÆ°a cÃ³ lá»‹ch sá»­ há»£p Ä‘á»“ng nÃ o káº¿t thÃºc.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, onPay, initialFilter }) {
-  const [filter, setFilter] = useState({ roomId: '', status: 'all', type: 'all', month: '' });
-
-  useEffect(() => {
-    if (initialFilter) {
-      setFilter(prev => ({ ...prev, ...initialFilter }));
-    }
-  }, [initialFilter]);
-
-  const filteredReceipts = useMemo(() => {
-    return (data.receipts || []).filter(r => {
-      if (filter.roomId && r.roomId !== filter.roomId) return false;
-      if (filter.status !== 'all' && r.status !== filter.status) return false;
-      if (filter.type !== 'all' && r.type !== filter.type) return false;
-      if (filter.month && r.month !== filter.month) return false;
-      return true;
-    }).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }, [data.receipts, filter]);
-
-  const stats = useMemo(() => {
-    const total = filteredReceipts.reduce((sum, r) => sum + r.total, 0);
-    const paid = filteredReceipts.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-    const debt = total - paid;
-    return { total, paid, debt, count: filteredReceipts.length };
-  }, [filteredReceipts]);
-
-  const isFilteredByMonth = filter.month && filter.type === 'monthly';
-
-  return (
-    <div className="stack" style={{ gap: '16px' }}>
-      {isFilteredByMonth && (
-        <div className="widget liquid-glass" style={{ background: 'var(--primary-gradient)', color: 'white' }}>
-          <h2 style={{ fontSize: '20px', margin: 0 }}>Thanh toÃ¡n thÃ¡ng {filter.month}</h2>
-          <p style={{ opacity: 0.9, marginTop: '4px' }}>
-            {stats.count} phiáº¿u â€¢ Tá»•ng <b>{formatMoney(stats.total)}</b> â€¢ CÃ²n ná»£ <b style={{ color: '#fca5a5' }}>{formatMoney(stats.debt)}</b>
-          </p>
-        </div>
-      )}
-
-      <div className="widget liquid-glass no-print" style={{ padding: '16px' }}>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-          <label style={{ margin: 0 }}>ThÃ¡ng <input type="month" value={filter.month ? `${filter.month.split('/')[1]}-${filter.month.split('/')[0]}` : ''} onChange={e => {
-            if (!e.target.value) return setFilter({...filter, month: ''});
-            const [y, m] = e.target.value.split('-'); 
-            setFilter({...filter, month: `${m}/${y}`}); 
-          }} /></label>
-          <label style={{ margin: 0 }}>PhÃ²ng <select value={filter.roomId} onChange={e => setFilter({...filter, roomId: e.target.value})}><option value="">Táº¥t cáº£</option>{data.rooms.map(r => <option key={r.id} value={r.id}>P{r.id}</option>)}</select></label>
-          <label style={{ margin: 0 }}>Tráº¡ng thÃ¡i <select value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}><option value="all">Táº¥t cáº£</option><option value="ÄÃ£ thanh toÃ¡n">ÄÃ£ thanh toÃ¡n</option><option value="ChÆ°a thanh toÃ¡n">ChÆ°a thanh toÃ¡n</option><option value="Ná»£ má»™t pháº§n">Ná»£ má»™t pháº§n</option></select></label>
-          <label style={{ margin: 0 }}>Loáº¡i phiáº¿u <select value={filter.type} onChange={e => setFilter({...filter, type: e.target.value})}><option value="all">Táº¥t cáº£</option><option value="monthly">Phiáº¿u thÃ¡ng</option><option value="renewal_adjustment">Äiá»u chá»‰nh gia háº¡n</option><option value="move_out_settlement">Chá»‘t tráº£ phÃ²ng</option></select></label>
-          <button className="secondary-btn" onClick={() => setFilter({ roomId: '', status: 'all', type: 'all', month: '' })}>ğŸ”„ Reset</button>
-        </div>
-      </div>
-      <div className="widget liquid-glass" style={{ padding: 0 }}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>NgÃ y táº¡o</th><th>PhÃ²ng</th><th>NgÆ°á»i Ä‘á»©ng tÃªn</th><th>Loáº¡i</th><th>Tá»•ng tiá»n</th><th>ÄÃ£ tráº£</th><th>Tráº¡ng thÃ¡i</th><th>HÃ nh Ä‘á»™ng</th></tr></thead>
-            <tbody>
-              {filteredReceipts.map(r => {
-                const tenant = getTenantForReceipt(data, r) || { name: 'N/A' };
-                const paymentState = getReceiptPaymentState(r);
-                return (
-                  <tr key={r.id}>
-                    <td>{new Date(r.createdAt).toLocaleDateString('vi-VN')}</td>
-                    <td><b>P{r.roomId}</b></td>
-                    <td>{tenant.name}</td>
-                    <td><span style={{ fontSize: '12px' }}>{receiptTypeLabel(r.type, true)}</span></td>
-                    <td style={{ fontWeight: '700' }}>{formatMoney(r.total)}</td>
-                    <td>{formatMoney(paymentState.paidAmount)}</td>
-                    <td><span className={`status-badge-liquid ${paymentState.status === 'ÄÃ£ thanh toÃ¡n' ? 'active' : paymentState.status === 'Ná»£ má»™t pháº§n' ? 'notice' : 'debt'}`}>{paymentState.status}</span></td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {paymentState.isPaid
-                          ? <button className="secondary-btn sm paid-action" disabled>âœ“ ÄÃ£ thu</button>
-                          : <button className="primary-btn sm" onClick={() => onPay(r)}>ğŸ’¸ Thu</button>}
-                        <button className="secondary-btn sm" onClick={() => onView(r)}>ğŸ“± QR</button>
-                        <button className="secondary-btn sm" style={{ color: '#ef4444' }} onClick={() => { if(window.confirm('XÃ³a phiáº¿u nÃ y?')) onUpdateReceipt(null, r.id); }}>ğŸ—‘ï¸</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredReceipts.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>KhÃ´ng cÃ³ dá»¯ liá»‡u thanh toÃ¡n phÃ¹ há»£p.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
-  const today = new Date();
-  const [periodMode, setPeriodMode] = useState('month');
-  const [periodMonth, setPeriodMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
-  const [periodQuarter, setPeriodQuarter] = useState(`${today.getFullYear()}-Q${Math.floor(today.getMonth() / 3) + 1}`);
-  const [periodYear, setPeriodYear] = useState(String(today.getFullYear()));
-  const [customRange, setCustomRange] = useState({
-    start: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
-    end: today.toISOString().slice(0, 10)
-  });
-
-  const period = useMemo(() => {
-    if (periodMode === 'month') {
-      const [year, month] = periodMonth.split('-').map(Number);
-      return { start: new Date(year, month - 1, 1), end: new Date(year, month, 0), label: `ThÃ¡ng ${String(month).padStart(2, '0')}/${year}` };
-    }
-    if (periodMode === 'quarter') {
-      const [yearText, qText] = periodQuarter.split('-Q');
-      const year = Number(yearText);
-      const quarter = Number(qText);
-      const startMonth = (quarter - 1) * 3;
-      return { start: new Date(year, startMonth, 1), end: new Date(year, startMonth + 3, 0), label: `QuÃ½ ${quarter}/${year}` };
-    }
-    if (periodMode === 'year') {
-      const year = Number(periodYear);
-      return { start: new Date(year, 0, 1), end: new Date(year, 11, 31), label: `NÄƒm ${year}` };
-    }
-    return { start: parseDateFlexible(customRange.start) || new Date(), end: parseDateFlexible(customRange.end) || new Date(), label: `${formatDisplayDate(customRange.start)} - ${formatDisplayDate(customRange.end)}` };
-  }, [periodMode, periodMonth, periodQuarter, periodYear, customRange]);
-
-  const inPeriod = (value) => {
-    const date = parseDateFlexible(value) || new Date(value || 0);
-    if (!date || Number.isNaN(date.getTime())) return false;
-    date.setHours(0, 0, 0, 0);
-    const start = new Date(period.start); start.setHours(0, 0, 0, 0);
-    const end = new Date(period.end); end.setHours(23, 59, 59, 999);
-    return date >= start && date <= end;
-  };
-
-  const monthKey = (date) => `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-  const periodMonthKeys = [];
-  const cursor = new Date(period.start.getFullYear(), period.start.getMonth(), 1);
-  const endCursor = new Date(period.end.getFullYear(), period.end.getMonth(), 1);
-  while (cursor <= endCursor) {
-    periodMonthKeys.push(monthKey(cursor));
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  const currentMonth = getCurrentMonthLabel();
-  const stats = getDashboardStats(data, currentMonth);
-  const periodReceipts = (data.receipts || []).filter(r => periodMonthKeys.includes(r.month) || inPeriod(r.createdAt));
-  const periodExpenses = (data.expensePayments || []).filter(e => periodMonthKeys.includes(e.month) || inPeriod(e.paymentDate || e.date || e.createdAt));
-  const periodContracts = (data.contracts || []).filter(c => inPeriod(c.createdAt || c.startDate));
-  const periodMoveOuts = (data.moveOutReports || []).filter(r => inPeriod(r.actualEndDate || r.createdAt));
-
-  const totalRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.total || 0), 0);
-  const paidRevenue = periodReceipts.reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
-  const unpaidRevenue = Math.max(0, totalRevenue - paidRevenue);
-  const expenses = periodExpenses.reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
-  const netCash = paidRevenue - expenses;
-  const collectionRate = totalRevenue > 0 ? (paidRevenue / totalRevenue) * 100 : 0;
-  const occupancyRate = stats.totalRooms > 0 ? (stats.occupiedRooms / stats.totalRooms) * 100 : 0;
-  const recentReceipts = [...periodReceipts].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
-  const topDebtRooms = [...periodReceipts]
-    .map(r => ({ ...r, debt: getReceiptPaymentState(r).debt }))
-    .filter(r => r.debt > 0)
-    .sort((a, b) => b.debt - a.debt)
-    .slice(0, 5);
-  const expiringAlerts = [...stats.expiringContracts]
-    .map(contract => ({
-      contract,
-      roomId: contract.roomId,
-      daysLeft: getDaysUntil(contract.endDate),
-      tenant: getPrimaryTenantByContract(data, contract.id)
-    }))
-    .filter(item => item.daysLeft !== null)
-    .sort((a, b) => a.daysLeft - b.daysLeft);
-  const chartRows = periodMonthKeys.map(key => {
-    const income = periodReceipts.filter(r => r.month === key).reduce((sum, r) => sum + Number(r.paidAmount || 0), 0);
-    const out = periodExpenses.filter(e => e.month === key).reduce((sum, e) => sum + getExpensePaidAmount(e), 0);
-    return { key, income, expense: out, net: income - out };
-  });
-  const utilityRows = periodMonthKeys.map(key => {
-    const receipts = (data.receipts || []).filter(r => r.type === 'monthly' && r.month === key);
-    return {
-      key,
-      roomCount: new Set(receipts.map(r => r.roomId).filter(Boolean)).size,
-      electricUsed: receipts.reduce((sum, r) => sum + Number(r.electricUsed || 0), 0),
-      electricAmount: receipts.reduce((sum, r) => sum + Number(r.electricAmount || 0), 0),
-      waterUsed: receipts.reduce((sum, r) => sum + Number(r.waterUsed || 0), 0),
-      waterAmount: receipts.reduce((sum, r) => sum + Number(r.waterAmount || 0), 0),
-    };
-  });
-  const utilityTotals = utilityRows.reduce((totals, row) => ({
-    electricUsed: totals.electricUsed + row.electricUsed,
-    electricAmount: totals.electricAmount + row.electricAmount,
-    waterUsed: totals.waterUsed + row.waterUsed,
-    waterAmount: totals.waterAmount + row.waterAmount,
-  }), { electricUsed: 0, electricAmount: 0, waterUsed: 0, waterAmount: 0 });
-  const contractValueRows = (data.contracts || [])
-    .filter(contract => contract.status !== 'ended' && isValidContractRange(contract.startDate, contract.endDate))
-    .map(contract => {
-      const room = (data.rooms || []).find(item => item.id === contract.roomId);
-      const tenant = getPrimaryTenantByContract(data, contract.id);
-      const contractReceipts = (data.receipts || []).filter(receipt => receipt.contractId === contract.id && receipt.type === 'monthly');
-      const durationMonths = Math.max(1, diffMonths(contract.startDate, contract.endDate));
-      const occupantCount = getContractOccupantCount(data, contract);
-      const monthlyServices = room ? fixedServiceTotal(room, occupantCount || 1) : 0;
-      const plannedRent = Number(contract.rent || room?.rent || 0) * durationMonths;
-      const plannedServices = monthlyServices * durationMonths;
-      const actualServices = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.fixedServices || 0), 0);
-      const electricAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.electricAmount || 0), 0);
-      const waterAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.waterAmount || 0), 0);
-      const otherAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.other || 0), 0);
-      const billedAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.total || 0), 0);
-      const paidAmount = contractReceipts.reduce((sum, receipt) => sum + Number(receipt.paidAmount || 0), 0);
-      const start = parseDateFlexible(contract.startDate);
-      const end = parseDateFlexible(contract.endDate);
-      const totalDays = Math.max(1, Math.ceil((end - start) / 86400000));
-      const elapsedDays = Math.ceil((today - start) / 86400000);
-      const progress = Math.max(0, Math.min(100, elapsedDays / totalDays * 100));
-      return {
-        contract,
-        tenant,
-        durationMonths,
-        plannedRent,
-        plannedServices,
-        plannedValue: plannedRent + plannedServices,
-        actualServices,
-        electricAmount,
-        waterAmount,
-        otherAmount,
-        billedAmount,
-        paidAmount,
-        debt: Math.max(0, billedAmount - paidAmount),
-        progress,
-      };
-    })
-    .sort((a, b) => String(a.contract.roomId).localeCompare(String(b.contract.roomId), undefined, { numeric: true }));
-  const chartMax = Math.max(1, ...chartRows.flatMap(r => [r.income, r.expense, Math.abs(r.net)]));
-
-  return (
-    <div className="dashboard-container stack">
-      <div className="dashboard-header no-print">
-        <div className="stack">
-          <h2 style={{ fontSize: '24px' }}>Tá»•ng quan há»‡ thá»‘ng</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSyncing ? 'var(--warning)' : 'var(--success)' }}></span>
-            {isSyncing ? 'Äang Ä‘á»“ng bá»™...' : lastSynced ? `ÄÃ£ lÆ°u: ${lastSynced.toLocaleTimeString()}` : 'Cháº¿ Ä‘á»™ Local'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button className="primary-btn sm" onClick={() => onAction('create_receipt_all')}>âš¡ Táº¡o phiáº¿u thÃ¡ng</button>
-          <button className="secondary-btn sm" onClick={() => onAction('import_json')}>ğŸ“¤ Nháº­p JSON</button>
-          <button className="secondary-btn sm" onClick={() => onAction('export_json')}>ğŸ“¥ Xuáº¥t JSON</button>
-        </div>
-      </div>
-
-      <div className="dashboard-filter-bar">
-        {['month', 'quarter', 'year', 'custom'].map(mode => <button key={mode} className={periodMode === mode ? 'active' : ''} onClick={() => setPeriodMode(mode)}>{mode === 'month' ? 'ThÃ¡ng' : mode === 'quarter' ? 'QuÃ½' : mode === 'year' ? 'NÄƒm' : 'TÃ¹y chá»‰nh'}</button>)}
-        {periodMode === 'month' && <input type="month" value={periodMonth} onChange={e => setPeriodMonth(e.target.value)} />}
-        {periodMode === 'quarter' && <select value={periodQuarter} onChange={e => setPeriodQuarter(e.target.value)}>{[0, 1, 2].flatMap(offset => [1, 2, 3, 4].map(q => `${today.getFullYear() - offset}-Q${q}`)).map(v => <option key={v} value={v}>{v.replace('-Q', ' - QuÃ½ ')}</option>)}</select>}
-        {periodMode === 'year' && <select value={periodYear} onChange={e => setPeriodYear(e.target.value)}>{[0, 1, 2, 3].map(offset => <option key={today.getFullYear() - offset}>{today.getFullYear() - offset}</option>)}</select>}
-        {periodMode === 'custom' && <><input type="date" value={customRange.start} onChange={e => setCustomRange({...customRange, start: e.target.value})} /><input type="date" value={customRange.end} onChange={e => setCustomRange({...customRange, end: e.target.value})} /></>}
-        <span>{period.label}</span>
-      </div>
-
-      <div className="stats-grid dashboard-kpi-grid">
-        <div className="stat-card-liquid kpi money"><p className="stat-label">Tá»•ng doanh thu</p><p className="stat-value">{formatMoney(totalRevenue)}</p><p className="stat-note">{periodReceipts.length} phiáº¿u</p></div>
-        <div className="stat-card-liquid kpi success"><p className="stat-label">ÄÃ£ thu</p><p className="stat-value">{formatMoney(paidRevenue)}</p><p className="stat-note">Tá»· lá»‡ thu {collectionRate.toFixed(0)}%</p></div>
-        <div className="stat-card-liquid kpi danger"><p className="stat-label">ChÆ°a thu</p><p className="stat-value">{formatMoney(unpaidRevenue)}</p><p className="stat-note">CÃ´ng ná»£ trong ká»³</p></div>
-        <div className="stat-card-liquid kpi net"><p className="stat-label">DÃ²ng tiá»n rÃ²ng</p><p className="stat-value">{formatMoney(netCash)}</p><p className="stat-note">ÄÃ£ thu - chi phÃ­</p></div>
-        <div className="stat-card-liquid kpi rooms" onClick={() => onRoomClick('')}><p className="stat-label">PhÃ²ng Ä‘ang á»Ÿ</p><p className="stat-value">{stats.occupiedRooms}/{stats.totalRooms}</p><p className="stat-note">Láº¥p Ä‘áº§y {occupancyRate.toFixed(0)}%</p></div>
-        <div className="stat-card-liquid kpi vacant"><p className="stat-label">PhÃ²ng trá»‘ng</p><p className="stat-value">{stats.vacantRooms}</p><p className="stat-note">Sáºµn sÃ ng cho thuÃª</p></div>
-        <div className="stat-card-liquid kpi tenant"><p className="stat-label">ThuÃª má»›i / Rá»i Ä‘i</p><p className="stat-value">{periodContracts.length} / {periodMoveOuts.length}</p><p className="stat-note">Trong ká»³</p></div>
-        <div className="stat-card-liquid kpi warning"><p className="stat-label">HÄ sáº¯p háº¿t háº¡n</p><p className="stat-value">{stats.expiringContracts.length}</p><p className="stat-note">Trong 30 ngÃ y tá»›i</p></div>
-      </div>
-
-      <div className="dashboard-grid-main">
-        <div className="stack" style={{ gap: '24px' }}>
-          <div className="widget liquid-glass">
-            <h3 className="form-section-title">ğŸ“ˆ Doanh thu / Chi phÃ­ / Lá»£i nhuáº­n</h3>
-            <div className="mini-chart">
-              {chartRows.map(row => (
-                <div key={row.key} className="chart-row">
-                  <span>{row.key}</span>
-                  <div className="chart-bars">
-                    <i className="income" style={{ width: `${Math.max(4, row.income / chartMax * 100)}%` }} title={`Thu ${formatMoney(row.income)}`}></i>
-                    <i className="expense" style={{ width: `${Math.max(4, row.expense / chartMax * 100)}%` }} title={`Chi ${formatMoney(row.expense)}`}></i>
-                    <i className={row.net >= 0 ? 'net-positive' : 'net-negative'} style={{ width: `${Math.max(4, Math.abs(row.net) / chartMax * 100)}%` }} title={`RÃ²ng ${formatMoney(row.net)}`}></i>
-                  </div>
-                  <b>{formatMoney(row.net)}</b>
-                </div>
-              ))}
-            </div>
-            <div className="chart-legend"><span className="income"></span>Tiá»n vÃ o <span className="expense"></span>Tiá»n ra <span className="net-positive"></span>RÃ²ng</div>
-          </div>
-
-          <div className="widget liquid-glass">
-            <h3 className="form-section-title">âš¡ğŸ’§ Äiá»‡n nÆ°á»›c theo thÃ¡ng thu tiá»n</h3>
-            <p className="small muted" style={{ marginBottom: '12px' }}>Tá»•ng há»£p tá»« phiáº¿u thu thÃ¡ng cá»§a toÃ n bá»™ cÃ¡c phÃ²ng trong ká»³ Ä‘Ã£ chá»n.</p>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ThÃ¡ng thu</th>
-                    <th>Sá»‘ phÃ²ng</th>
-                    <th>Sá»‘ Ä‘iá»‡n (kWh)</th>
-                    <th>Tiá»n Ä‘iá»‡n</th>
-                    <th>Sá»‘ nÆ°á»›c (mÂ³)</th>
-                    <th>Tiá»n nÆ°á»›c</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {utilityRows.map(row => (
-                    <tr key={row.key}>
-                      <td><b>{row.key}</b></td>
-                      <td>{row.roomCount}</td>
-                      <td style={{ fontWeight: '700', color: 'var(--warning)' }}>{formatLocaleNumber(Math.round(row.electricUsed * 100) / 100)}</td>
-                      <td>{formatMoney(row.electricAmount)}</td>
-                      <td style={{ fontWeight: '700', color: 'var(--success)' }}>{formatLocaleNumber(Math.round(row.waterUsed * 100) / 100)}</td>
-                      <td>{formatMoney(row.waterAmount)}</td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td><b>Tá»•ng ká»³</b></td>
-                    <td>â€”</td>
-                    <td><b>{formatLocaleNumber(Math.round(utilityTotals.electricUsed * 100) / 100)}</b></td>
-                    <td><b>{formatMoney(utilityTotals.electricAmount)}</b></td>
-                    <td><b>{formatLocaleNumber(Math.round(utilityTotals.waterUsed * 100) / 100)}</b></td>
-                    <td><b>{formatMoney(utilityTotals.waterAmount)}</b></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="widget liquid-glass">
-            <h3 className="form-section-title">ğŸ“‘ GiÃ¡ trá»‹ & tiáº¿n Ä‘á»™ thá»±c hiá»‡n há»£p Ä‘á»“ng</h3>
-            <p className="small muted" style={{ marginBottom: '12px' }}>GiÃ¡ trá»‹ dá»± kiáº¿n gá»“m tiá»n phÃ²ng vÃ  dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh trong thá»i háº¡n há»£p Ä‘á»“ng. Äiá»‡n, nÆ°á»›c vÃ  chi phÃ­ khÃ¡c lÃ  sá»‘ thá»±c táº¿ Ä‘Ã£ phÃ¡t sinh trÃªn phiáº¿u thu.</p>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>PhÃ²ng / KhÃ¡ch thuÃª</th>
-                    <th>Thá»i háº¡n</th>
-                    <th>Tiáº¿n Ä‘á»™</th>
-                    <th>Tiá»n phÃ²ng dá»± kiáº¿n</th>
-                    <th>Dá»‹ch vá»¥ dá»± kiáº¿n</th>
-                    <th>GiÃ¡ trá»‹ há»£p Ä‘á»“ng dá»± kiáº¿n</th>
-                    <th>Äiá»‡n Ä‘Ã£ phÃ¡t sinh</th>
-                    <th>NÆ°á»›c Ä‘Ã£ phÃ¡t sinh</th>
-                    <th>Chi phÃ­ khÃ¡c</th>
-                    <th>Tá»•ng Ä‘Ã£ láº­p phiáº¿u</th>
-                    <th>ÄÃ£ thu</th>
-                    <th>CÃ²n pháº£i thu</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contractValueRows.map(row => (
-                    <tr key={row.contract.id}>
-                      <td>
-                        <b>P{row.contract.roomId}</b><br />
-                        <span className="small muted">{row.tenant?.name || 'ChÆ°a cáº­p nháº­t'}</span><br />
-                        <span className="small muted">CCCD: {row.tenant?.cccd || 'ChÆ°a cáº­p nháº­t'}</span><br />
-                        <span className="small muted">Sá»‘ HÄ: {row.contract.contractNo || row.contract.id}</span>
-                      </td>
-                      <td><span className="small">{formatBusinessDate(row.contract.startDate)} â†’ {formatBusinessDate(row.contract.endDate)}</span><br /><b>{row.durationMonths} thÃ¡ng</b></td>
-                      <td style={{ minWidth: '120px' }}>
-                        <div style={{ height: '8px', borderRadius: '999px', background: 'rgba(148,163,184,.25)', overflow: 'hidden' }}>
-                          <div style={{ width: `${row.progress}%`, height: '100%', background: 'var(--primary-gradient)' }}></div>
-                        </div>
-                        <b className="small">{row.progress.toFixed(0)}%</b>
-                      </td>
-                      <td>{formatMoney(row.plannedRent)}</td>
-                      <td>{formatMoney(row.plannedServices)}<br /><span className="small muted">ÄÃ£ láº­p: {formatMoney(row.actualServices)}</span></td>
-                      <td><b>{formatMoney(row.plannedValue)}</b></td>
-                      <td>{formatMoney(row.electricAmount)}</td>
-                      <td>{formatMoney(row.waterAmount)}</td>
-                      <td>{formatMoney(row.otherAmount)}</td>
-                      <td><b>{formatMoney(row.billedAmount)}</b></td>
-                      <td><b className="success">{formatMoney(row.paidAmount)}</b></td>
-                      <td><b className={row.debt > 0 ? 'danger' : 'success'}>{formatMoney(row.debt)}</b></td>
-                    </tr>
-                  ))}
-                  {contractValueRows.length === 0 && <tr><td colSpan="12" className="center muted" style={{ padding: '24px' }}>ChÆ°a cÃ³ há»£p Ä‘á»“ng Ä‘ang thá»±c hiá»‡n.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Cáº£nh bÃ¡o */}
-          <div className="widget liquid-glass">
-            <h3 className="form-section-title">âš ï¸ Cáº£nh bÃ¡o & Nháº¯c nhá»Ÿ</h3>
-            <div className="alert-list stack" style={{ gap: '12px' }}>
-              {stats.expiringContracts.length > 0 && (
-                <div className="alert-item warning" style={{ alignItems: 'flex-start' }}>
-                  <span>ğŸ“„ <b>{expiringAlerts.length} há»£p Ä‘á»“ng sáº¯p háº¿t háº¡n cáº§n xá»­ lÃ½</b></span>
-                  <div className="stack" style={{ gap: '8px', marginTop: '8px', width: '100%' }}>
-                    {expiringAlerts.map(item => (
-                      <div key={item.contract.id} className="actionable" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', paddingTop: '8px', borderTop: '1px solid rgba(146, 64, 14, 0.15)' }}>
-                        <div className="alert-content">
-                          <b>P{item.roomId} â€¢ {item.tenant?.name || 'ChÆ°a rÃµ khÃ¡ch'} â€¢ {formatBusinessDate(item.contract.endDate)}</b>
-                          <small>
-                            {item.daysLeft < 0
-                              ? `ÄÃ£ háº¿t háº¡n ${Math.abs(item.daysLeft)} ngÃ y`
-                              : item.daysLeft === 0
-                                ? 'Háº¿t háº¡n hÃ´m nay'
-                                : `CÃ²n ${item.daysLeft} ngÃ y`}
-                          </small>
-                        </div>
-                        <div className="alert-actions">
-                          <button className="secondary-btn sm" onClick={() => onAction('view_room', { id: item.roomId })}>Xem phÃ²ng</button>
-                          <button className="primary-btn sm" onClick={() => onAction('renew_contract', { roomId: item.roomId, contractId: item.contract.id })}>Gia háº¡n</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {stats.unpaidReceipts.length > 0 && (
-                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
-                  <span>ğŸ’¸ <b>{stats.unpaidReceipts.length} phÃ²ng chÆ°a Ä‘Ã³ng tiá»n thÃ¡ng {currentMonth}</b></span>
-                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
-                    {stats.unpaidReceipts
-                      .map(r => ({ ...r, debt: getReceiptPaymentState(r).debt }))
-                      .sort((a, b) => Number(b.debt || 0) - Number(a.debt || 0))
-                      .map(r => (
-                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                          <span>â€¢ PhÃ²ng P{r.roomId}</span>
-                          <b>{formatMoney(r.debt)}</b>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-              {stats.notifyingMoveOut.length > 0 && (
-                <div className="alert-item notice">
-                  <span>ğŸšª {stats.notifyingMoveOut.length} phÃ²ng Ä‘ang bÃ¡o chuyá»ƒn: </span>
-                  <b>{stats.notifyingMoveOut.map(c => c.roomId).join(', ')}</b>
-                </div>
-              )}
-              {stats.vacantRooms > 0 && (
-                <div className="alert-item secondary">
-                  <span>âœ¨ Äang cÃ³ {stats.vacantRooms} phÃ²ng trá»‘ng sáºµn sÃ ng cho thuÃª.</span>
-                </div>
-              )}
-              {topDebtRooms.length > 0 && (
-                <div className="alert-item danger" style={{ alignItems: 'flex-start' }}>
-                  <span>ğŸ“Œ <b>Top ná»£</b></span>
-                  <div className="stack" style={{ gap: '4px', marginTop: '8px', width: '100%' }}>
-                    {topDebtRooms.map((r, index) => (
-                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                        <span>{index + 1}. PhÃ²ng P{r.roomId}</span>
-                        <b>{formatMoney(r.debt)}</b>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {stats.expiringContracts.length === 0 && stats.unpaidReceipts.length === 0 && stats.notifyingMoveOut.length === 0 && (
-                <p className="muted center">Hiá»‡n táº¡i khÃ´ng cÃ³ cáº£nh bÃ¡o nÃ o.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Váº­n hÃ nh nhanh */}
-          <div className="widget liquid-glass">
-            <h3 className="form-section-title">âš¡ Váº­n hÃ nh nhanh</h3>
-            <div className="quick-actions-grid">
-              <button className="action-btn" onClick={() => onAction('create_receipt_all')}>
-                <span className="icon">ğŸ§¾</span>
-                <span>Táº¡o phiáº¿u thÃ¡ng</span>
-              </button>
-              <button className="action-btn" onClick={() => onAction('add_new_rental')}>
-                <span className="icon">ğŸ”‘</span>
-                <span>ThuÃª má»›i</span>
-              </button>
-              <button className="action-btn" onClick={() => onAction('view_payments_all')}>
-                <span className="icon">ğŸ’°</span>
-                <span>Lá»‹ch sá»­ thanh toÃ¡n</span>
-              </button>
-              <button className="action-btn" style={{ background: 'var(--primary-gradient)', color: 'white' }} onClick={() => onAction('export_excel')}>
-                <span className="icon">ğŸ“Š</span>
-                <span>Xuáº¥t Excel</span>
-              </button>
-              <button className="action-btn" onClick={() => onAction('export_json')}>
-                <span className="icon">ğŸ§©</span>
-                <span>Xuáº¥t JSON backup</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="stack" style={{ gap: '24px' }}>
-          <div className="widget liquid-glass">
-            <h3 className="form-section-title">ğŸ’µ DÃ²ng tiá»n</h3>
-            <div className="cashflow-list">
-              <div><span>Tiá»n vÃ o</span><b className="success">{formatMoney(paidRevenue)}</b></div>
-              <div><span>Tiá»n ra</span><b className="danger">{formatMoney(expenses)}</b></div>
-              <div><span>DÃ²ng tiá»n rÃ²ng</span><b className={netCash >= 0 ? 'success' : 'danger'}>{formatMoney(netCash)}</b></div>
-              <div><span>CÃ´ng ná»£ cÃ²n láº¡i</span><b>{formatMoney(unpaidRevenue)}</b></div>
-            </div>
-          </div>
-
-          {/* Danh sÃ¡ch nhanh */}
-          <div className="widget liquid-glass">
-            <h3 className="form-section-title">ğŸ“… Gáº§n Ä‘Ã¢y</h3>
-            <div className="quick-tabs">
-              <div className="quick-list-section">
-                <p className="op-label uppercase" style={{ marginBottom: '10px' }}>5 phiáº¿u thu má»›i nháº¥t</p>
-                <div className="mini-list stack" style={{ gap: '8px' }}>
-                  {recentReceipts.map(r => (
-                    <div key={r.id} className="mini-list-item">
-                      <span>P{r.roomId} - {r.month}</span>
-                      <b>{formatMoney(r.total)}</b>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="quick-list-section" style={{ marginTop: '20px' }}>
-                <p className="op-label uppercase" style={{ marginBottom: '10px' }}>5 há»£p Ä‘á»“ng sáº¯p háº¿t háº¡n</p>
-                <div className="mini-list stack" style={{ gap: '8px' }}>
-                  {stats.expiringContracts.slice(0, 5).map(c => (
-                    <div key={c.id} className="mini-list-item">
-                      <span>P{c.roomId}</span>
-                      <b className="danger">{formatBusinessDate(c.endDate)}</b>
-                    </div>
-                  ))}
-                  {stats.expiringContracts.length === 0 && <p className="small muted">KhÃ´ng cÃ³ há»£p Ä‘á»“ng nÃ o sáº¯p háº¿t háº¡n.</p>}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RoomsTab({ data, onAction, onSelect, query }) {
-  const [caseFilter, setCaseFilter] = useState('all');
-  const [selectedRoomId, setSelectedRoomId] = useState(null);
-  const currentMonth = getCurrentMonthLabel();
-  const roomCards = useMemo(() => {
-    const q = query.toLowerCase();
-    return (data.rooms || []).map(room => {
-      const statusInfo = getRoomStatusInfo(data, room.id);
-      const { label, color, contract, ownerOccupied } = statusInfo;
-      const roomActiveMember = (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active' && m.role === 'primary')
-        || (data.memberships || []).find(m => m.roomId === room.id && m.status === 'active');
-      const primaryTenant = contract
-        ? (getPrimaryTenantByContract(data, contract.id) || (roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null))
-        : roomActiveMember ? (data.tenants || []).find(t => t.id === roomActiveMember.tenantId) : null;
-      const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
-      const debt = currentReceipt ? getReceiptPaymentState(currentReceipt).debt : 0;
-      const caseType = ownerOccupied ? 'owner' : label === 'Trá»‘ng' ? 'vacant' : debt > 0 ? 'debt' : 'occupied';
-      return { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType };
-    }).filter(item => item.room.id.toLowerCase().includes(q));
-  }, [data, query, currentMonth]);
-
-  const caseOptions = [
-    ['all', 'Táº¥t cáº£', roomCards.length],
-    ['occupied', 'Äang á»Ÿ', roomCards.filter(r => r.caseType === 'occupied').length],
-    ['debt', 'Äang ná»£', roomCards.filter(r => r.caseType === 'debt').length],
-    ['vacant', 'Trá»‘ng', roomCards.filter(r => r.caseType === 'vacant').length],
-    ['owner', 'Chá»§ nhÃ ', roomCards.filter(r => r.caseType === 'owner').length],
-  ];
-  const visibleRooms = caseFilter === 'all' ? roomCards : roomCards.filter(r => r.caseType === caseFilter);
-  const selectedCard = visibleRooms.find(r => r.room.id === selectedRoomId) || null;
-
-  const renderActionButtons = ({ room, label, contract, ownerOccupied, currentReceipt }) => (
-    label === 'Trá»‘ng' ? (
-      <>
-        <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('add_tenant', room); }}>+ ThÃªm khÃ¡ch</button>
-        <button className="secondary-btn" title="Xem lá»‹ch sá»­" onClick={(e) => { e.stopPropagation(); onAction('view_history', room); }}>ğŸ“œ</button>
-      </>
-    ) : (
-      <>
-        <button className="secondary-btn" title={ownerOccupied && !contract ? 'KhÃ´ng cáº§n há»£p Ä‘á»“ng' : 'Xem há»£p Ä‘á»“ng'} onClick={(e) => { e.stopPropagation(); ownerOccupied && !contract ? setSelectedRoomId(room.id) : onAction('view_contract', room); }}>ğŸ“„</button>
-        {!ownerOccupied && <button className="primary-btn wide" onClick={(e) => { e.stopPropagation(); onAction('create_receipt', room); }}>{currentReceipt ? 'Sá»­a phiáº¿u' : 'Láº­p phiáº¿u'}</button>}
-      </>
-    )
-  );
-
-  return (
-    <div className={`rooms-panel character-select ${selectedCard ? 'has-selection' : ''}`}>
-      <div className="room-case-tabs">
-        {caseOptions.map(([id, text, count]) => (
-          <button key={id} className={caseFilter === id ? 'active' : ''} onClick={() => { setCaseFilter(id); setSelectedRoomId(null); }}>
-            <span>{text}</span><b>{count}</b>
-          </button>
-        ))}
-      </div>
-      <div className="character-select-layout">
-        <div className="room-roster">
-          {visibleRooms.map(({ room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType }) => {
-            const statusText = ownerOccupied ? 'Chá»§ nhÃ ' : label;
-            const receiptLabel = ownerOccupied ? 'KhÃ´ng láº­p phiáº¿u' : debt > 0 ? `Ná»£ ${formatMoney(debt)}` : currentReceipt ? 'ÄÃ£ thanh toÃ¡n' : 'ChÆ°a cÃ³ phiáº¿u';
-            const isSelected = selectedRoomId === room.id;
-            return (
-              <div key={room.id} className={`room-card-liquid compact character-card ${caseType} ${isSelected ? 'selected' : ''}`} onClick={() => setSelectedRoomId(isSelected ? null : room.id)}>
-                <div className="room-header">
-                  <span className="room-id">P{room.id}</span>
-                  <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
-                </div>
-                <div className="room-body">
-                  {primaryTenant ? (
-                    <div className="tenant-block-primary">
-                      <p className="tenant-name-main">{primaryTenant.name}</p>
-                      <div className="room-card-meta">
-                        <span>{ownerOccupied && !contract ? 'Chá»§ nhÃ  á»Ÿ' : formatMoney(contract?.rent || room.rent || 0)}</span>
-                        <b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b>
-                      </div>
-                    </div>
-                  ) : <p className="muted">PhÃ²ng Ä‘ang trá»‘ng</p>}
-                </div>
-                {!selectedCard && <div className="btn-group">{renderActionButtons({ room, label, contract, ownerOccupied, currentReceipt })}</div>}
-              </div>
-            );
-          })}
-          {!visibleRooms.length && <div className="empty-state-inline">KhÃ´ng cÃ³ phÃ²ng phÃ¹ há»£p vá»›i bá»™ lá»c nÃ y.</div>}
-        </div>
-
-        {selectedCard && (() => {
-          const { room, label, color, contract, ownerOccupied, primaryTenant, currentReceipt, debt, caseType } = selectedCard;
-          const activeMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
-          const occupantCount = contract ? getContractOccupantCount(data, contract) : activeMembers.length;
-          const fixedServices = fixedServiceTotal(room, occupantCount || (primaryTenant ? 1 : 0));
-          const latestReceipt = currentReceipt || (data.receipts || []).filter(r => r.roomId === room.id).sort((a, b) => new Date(b.createdAt || b.savedAt || 0) - new Date(a.createdAt || a.savedAt || 0))[0];
-          const statusText = ownerOccupied ? 'Chá»§ nhÃ ' : label;
-          const receiptLabel = ownerOccupied ? 'KhÃ´ng láº­p phiáº¿u' : debt > 0 ? `Ná»£ ${formatMoney(debt)}` : currentReceipt ? 'ÄÃ£ thanh toÃ¡n' : 'ChÆ°a cÃ³ phiáº¿u';
-          return (
-            <aside className={`character-detail ${caseType}`}>
-              <div className="character-detail-hero">
-                <div>
-                  <span className="detail-eyebrow">PhÃ²ng Ä‘Æ°á»£c chá»n</span>
-                  <h2>P{room.id}</h2>
-                  <p>{primaryTenant?.name || 'PhÃ²ng Ä‘ang trá»‘ng'}</p>
-                </div>
-                <span className={`status-badge-liquid ${ownerOccupied ? 'notice' : color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{statusText}</span>
-              </div>
-
-              <div className="detail-stat-grid">
-                <div><span>GiÃ¡ thuÃª</span><b>{formatMoney(contract?.rent || room.rent || 0)}</b></div>
-                <div><span>Tiá»n cá»c</span><b>{formatMoney(contract?.deposit || room.deposit || 0)}</b></div>
-                <div><span>CÃ´ng ná»£</span><b className={debt > 0 ? 'danger' : 'success'}>{formatMoney(debt)}</b></div>
-                <div><span>Thanh toÃ¡n</span><b className={debt > 0 ? 'danger' : ownerOccupied ? 'muted' : 'success'}>{receiptLabel}</b></div>
-              </div>
-
-              <div className="detail-info-list">
-                <div><span>NgÆ°á»i thuÃª</span><b>{primaryTenant?.name || 'ChÆ°a cÃ³ khÃ¡ch'}</b></div>
-                <div><span>Sá»‘ Ä‘iá»‡n thoáº¡i</span><b>{primaryTenant?.phone || 'â€”'}</b></div>
-                <div><span>NgÃ y vÃ o</span><b>{formatDisplayDate(activeMembers[0]?.joinedDate || contract?.startDate || '')}</b></div>
-                <div><span>Háº¿t háº¡n HÄ</span><b>{contract ? formatBusinessDate(contract.endDate) : ownerOccupied ? 'KhÃ´ng cáº§n HÄ' : 'â€”'}</b></div>
-                <div><span>Äiá»‡n gáº§n nháº¥t</span><b>{latestReceipt ? `${formatLocaleNumber(getElectricOld(latestReceipt))} â†’ ${formatLocaleNumber(getElectricNew(latestReceipt))}` : 'ChÆ°a cÃ³'}</b></div>
-                <div><span>NÆ°á»›c gáº§n nháº¥t</span><b>{latestReceipt ? `${formatLocaleNumber(getWaterOld(latestReceipt))} â†’ ${formatLocaleNumber(getWaterNew(latestReceipt))}` : 'ChÆ°a cÃ³'}</b></div>
-                <div><span>Dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh</span><b>{formatMoney(fixedServices)}</b></div>
-                <div><span>Ghi chÃº</span><b>{room.note || 'â€”'}</b></div>
-              </div>
-
-              <div className="character-detail-actions">
-                <button className="primary-btn" onClick={() => onSelect(room)}>Má»Ÿ chi tiáº¿t</button>
-                {!ownerOccupied && <button className="secondary-btn" onClick={() => onAction('create_receipt', room)}>{currentReceipt ? 'Sá»­a phiáº¿u' : 'Láº­p phiáº¿u'}</button>}
-                {!ownerOccupied && debt > 0 && currentReceipt && <button className="secondary-btn" onClick={() => onAction('pay_receipt', currentReceipt)}>Thanh toÃ¡n</button>}
-                <button className="secondary-btn" onClick={() => onAction('view_history', room)}>Lá»‹ch sá»­ thuÃª</button>
-                {label === 'Trá»‘ng' && <button className="primary-btn" onClick={() => onAction('add_tenant', room)}>ThÃªm khÃ¡ch</button>}
-                {!ownerOccupied && contract && <button className="secondary-btn danger" onClick={() => onAction('moving_out', room)}>Tráº£ phÃ²ng</button>}
-              </div>
-            </aside>
-          );
-        })()}
-      </div>
-    </div>
-  );
-}
-
-function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
-  const [statusFilter, setStatusFilter] = useState('active');
-  const [paymentFilter, setPaymentFilter] = useState('all');
-  const [contractFilter, setContractFilter] = useState('all');
-  const currentMonth = getCurrentMonthLabel();
-
-  const tenantRows = useMemo(() => {
-    return (data.memberships || []).map(m => {
-      const tenant = (data.tenants || []).find(t => t.id === m.tenantId);
-      if (!tenant) return null;
-      const contract = (data.contracts || []).find(c => c.id === m.contractId);
-      const room = (data.rooms || []).find(r => r.id === m.roomId);
-      const receipt = contract ? (data.receipts || []).find(r => r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
-      const debt = receipt ? getReceiptPaymentState(receipt).debt : 0;
-      const contractDaysLeft = contract ? getDaysUntil(contract.endDate) : null;
-      const contractState = !contract || isOwnerOccupiedRoom(room) ? 'none' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'expired' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'expiring' : 'valid';
-      const paymentState = debt > 0 ? 'debt' : receipt ? 'paid' : 'missing';
-      return { tenant, membership: m, contract, room, receipt, debt, contractDaysLeft, contractState, paymentState };
-    }).filter(Boolean).sort((a, b) => String(a.room?.id || a.membership.roomId).localeCompare(String(b.room?.id || b.membership.roomId), 'vi', { numeric: true }));
-  }, [data, currentMonth]);
-
-  const activeRows = tenantRows.filter(r => r.membership.status === 'active');
-  const moveOutThisMonth = (data.moveOutReports || []).filter(r => String(r.actualEndDate || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length;
-  const debtRows = activeRows.filter(r => r.debt > 0);
-  const expiringRows = activeRows.filter(r => r.contractState === 'expiring' || r.contractState === 'expired');
-  const normalizedQuery = String(query || '').trim().toLowerCase();
-
-  const filteredRows = tenantRows.filter(row => {
-    const roomId = String(row.room?.id || row.membership.roomId || '');
-    const searchBlob = `${row.tenant.name || ''} ${row.tenant.phone || ''} ${row.tenant.cccd || ''} ${roomId}`.toLowerCase();
-    if (normalizedQuery && !searchBlob.includes(normalizedQuery)) return false;
-    if (statusFilter === 'active' && row.membership.status !== 'active') return false;
-    if (statusFilter === 'notice' && row.membership.status !== 'notice' && row.contract?.status !== 'notice') return false;
-    if (statusFilter === 'left' && row.membership.status !== 'ended') return false;
-    if (paymentFilter === 'paid' && row.paymentState !== 'paid') return false;
-    if (paymentFilter === 'debt' && row.paymentState !== 'debt') return false;
-    if (paymentFilter === 'missing' && row.paymentState !== 'missing') return false;
-    if (contractFilter === 'expiring' && row.contractState !== 'expiring') return false;
-    if (contractFilter === 'expired' && row.contractState !== 'expired') return false;
-    return true;
-  });
-
-  return (
-    <div className="tenant-crm stack">
-      <div className="tenant-crm-header no-print">
-        <div>
-          <h2>ğŸ‘¥ NgÆ°á»i thuÃª</h2>
-          <p className="muted small">Quáº£n lÃ½ vÃ²ng Ä‘á»i khÃ¡ch thuÃª: vÃ o á»Ÿ, há»£p Ä‘á»“ng, thanh toÃ¡n vÃ  rá»i Ä‘i.</p>
-        </div>
-        <div className="btn-group" style={{ marginTop: 0 }}>
-          <button className="primary-btn" onClick={() => onAction('add_tenant')}>+ ThÃªm khÃ¡ch</button>
-          <button className="secondary-btn" onClick={() => setQuery('')}>ğŸ” XÃ³a tÃ¬m kiáº¿m</button>
-          <button className="secondary-btn" onClick={() => onAction('export_excel')}>ğŸ“Š Xuáº¥t Excel</button>
-        </div>
-      </div>
-
-      <div className="tenant-stats-grid">
-        <div className="tenant-stat-card active"><b>{activeRows.length}</b><span>Äang thuÃª</span><small>+{tenantRows.filter(r => String(r.membership.createdAt || '').slice(0, 7) === new Date().toISOString().slice(0, 7)).length} thÃ¡ng nÃ y</small></div>
-        <div className="tenant-stat-card notice"><b>{moveOutThisMonth}</b><span>Rá»i Ä‘i</span><small>{currentMonth}</small></div>
-        <div className="tenant-stat-card debt"><b>{debtRows.length}</b><span>Äang ná»£</span><small>{formatMoney(debtRows.reduce((s, r) => s + r.debt, 0))}</small></div>
-        <div className="tenant-stat-card warning"><b>{expiringRows.length}</b><span>HÄ cáº£nh bÃ¡o</span><small>Háº¿t háº¡n / 30 ngÃ y</small></div>
-      </div>
-
-      <div className="tenant-filter-bar no-print">
-        <label>Tráº¡ng thÃ¡i
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-            <option value="active">Äang á»Ÿ</option>
-            <option value="notice">Sáº¯p rá»i</option>
-            <option value="left">ÄÃ£ rá»i</option>
-            <option value="all">Táº¥t cáº£</option>
-          </select>
-        </label>
-        <label>Thanh toÃ¡n
-          <select value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}>
-            <option value="all">Táº¥t cáº£</option>
-            <option value="paid">ÄÃ£ Ä‘Ã³ng</option>
-            <option value="debt">Äang ná»£</option>
-            <option value="missing">ChÆ°a cÃ³ phiáº¿u</option>
-          </select>
-        </label>
-        <label>Há»£p Ä‘á»“ng
-          <select value={contractFilter} onChange={e => setContractFilter(e.target.value)}>
-            <option value="all">Táº¥t cáº£</option>
-            <option value="expiring">Sáº¯p háº¿t háº¡n</option>
-            <option value="expired">Háº¿t háº¡n</option>
-          </select>
-        </label>
-        <button className="secondary-btn sm" onClick={() => { setStatusFilter('active'); setPaymentFilter('all'); setContractFilter('all'); }}>Reset lá»c</button>
-      </div>
-
-      <div className="widget liquid-glass" style={{ padding: 0 }}>
-        <div className="table-wrap">
-        <table>
-          <thead><tr><th>NgÆ°á»i thuÃª</th><th>PhÃ²ng</th><th>Há»£p Ä‘á»“ng</th><th>Thanh toÃ¡n</th><th>NgÃ y vÃ o</th><th>Tráº¡ng thÃ¡i</th><th>Thao tÃ¡c</th></tr></thead>
-          <tbody>
-            {filteredRows.map(({ tenant: t, membership: m, contract, room, receipt, debt, contractDaysLeft, contractState, paymentState }) => {
-              const contractText = contractState === 'none' ? 'KhÃ´ng Ã¡p dá»¥ng' : contractDaysLeft === null ? 'ChÆ°a cáº­p nháº­t' : contractDaysLeft < 0 ? 'Háº¿t háº¡n' : `CÃ²n ${contractDaysLeft} ngÃ y`;
-              const contractBadge = contractState === 'valid' ? 'active' : contractState === 'expiring' ? 'notice' : contractState === 'expired' ? 'debt' : 'vacant';
-              const paymentBadge = paymentState === 'paid' ? 'active' : paymentState === 'debt' ? 'debt' : 'notice';
-              const membershipBadge = m.status === 'active' ? 'active' : m.status === 'notice' ? 'notice' : 'vacant';
-              const membershipLabel = m.status === 'active' ? (m.role === 'primary' ? 'Äáº¡i diá»‡n' : 'á» cÃ¹ng') : m.status === 'notice' ? 'Sáº¯p rá»i' : 'ÄÃ£ rá»i';
-              return (
-                <tr key={`${t.id}-${m.id || m.roomId}`}>
-                  <td>
-                    <button className="tenant-identity" onClick={() => onAction('detail', t)}>
-                      <b>ğŸ‘¤ {t.name}</b>
-                      <span>ğŸ“± {t.phone || 'ChÆ°a cÃ³ SÄT'}</span>
-                      <span>ğŸªª {t.cccd || 'ChÆ°a cÃ³ CCCD'}</span>
-                    </button>
-                  </td>
-                  <td><button className="secondary-btn sm" onClick={() => onAction('view_room', room || { id: m.roomId })}>P{m.roomId}</button></td>
-                  <td>
-                    <div className="tenant-contract-cell">
-                      <span className={`status-badge-liquid ${contractBadge}`}>{contractText}</span>
-                      {contract && <small>{formatBusinessDate(contract.startDate)} â†’ {formatBusinessDate(contract.endDate)}</small>}
-                    </div>
-                  </td>
-                  <td>
-                    <button className={`tenant-payment-pill ${paymentBadge}`} onClick={() => receipt ? onAction('view_qr', receipt) : onAction('create_receipt', room || { id: m.roomId })}>
-                      {paymentState === 'paid' ? `ÄÃ£ Ä‘Ã³ng ${receipt?.month || ''}` : paymentState === 'debt' ? `Ná»£ ${formatMoney(debt)}` : 'ChÆ°a cÃ³ phiáº¿u'}
-                    </button>
-                  </td>
-                  <td>{formatDisplayDate(m.joinedDate || contract?.startDate || String(m.createdAt || '').slice(0, 10))}</td>
-                  <td><span className={`status-badge-liquid ${membershipBadge}`}>{membershipLabel}</span></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {contract && <button className="secondary-btn sm" onClick={() => onAction('view_contract', { roomId: m.roomId, contractId: contract.id })}>HÄ</button>}
-                      <button className="secondary-btn sm" onClick={() => onAction('edit_tenant', t)}>Sá»­a</button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {filteredRows.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>KhÃ´ng tÃ¬m tháº¥y khÃ¡ch phÃ¹ há»£p.</td></tr>}
-          </tbody>
-        </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onDeleteReceipt, onGoToPayment }) {
-  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthLabel());
-  const [activeTab, setActiveTab] = useState('entry');
-  const [saveModal, setSaveModal] = useState(null);
-
-  const monthlyReceipts = useMemo(() => (data.receipts || []).filter(r => r.month === selectedMonth && r.type === 'monthly'), [data.receipts, selectedMonth]);
-  const isFinalized = monthlyReceipts.length > 0 && monthlyReceipts.every(r => r.isFinalized);
-
-  function handleBatchCreate() {
-    const billableContracts = getBillableContractsForMonth(data, selectedMonth);
-    if (billableContracts.length === 0) return alert('KhÃ´ng cÃ³ há»£p Ä‘á»“ng nÃ o cáº§n láº­p phiáº¿u trong thÃ¡ng nÃ y.');
-    
-    let createdCount = 0;
-    let skippedCount = 0;
-    const newReceipts = [];
-
-    billableContracts.forEach(contract => {
-      const room = data.rooms.find(r => r.id === contract.roomId);
-      if (!room) return;
-      const exists = (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === selectedMonth && r.type === 'monthly');
-      
-      if (!exists) {
-        const prev = getPreviousReceiptByRoom(data.receipts, room.id, selectedMonth, {
-          includeSameMonth: true,
-          excludeSameMonthContractId: contract.id
-        });
-        const billingContext = getMonthlyBillingContext(data, contract, selectedMonth);
-        newReceipts.push(createMonthlyReceipt(room, contract, prev, selectedMonth, billingContext));
-        createdCount++;
-      } else {
-        skippedCount++;
-      }
-    });
-
-    if (newReceipts.length > 0) {
-      if (window.confirm(`XÃ¡c nháº­n táº¡o ${newReceipts.length} phiáº¿u thu cho thÃ¡ng ${selectedMonth}?`)) {
-        onBatchCreate(newReceipts);
-        alert(`ÄÃ£ táº¡o ${createdCount} phiáº¿u, bá» qua ${skippedCount} phiáº¿u Ä‘Ã£ tá»“n táº¡i.`);
-      }
-    } else {
-      alert(`Táº¥t cáº£ phÃ²ng Ä‘á»u Ä‘Ã£ cÃ³ phiáº¿u thÃ¡ng ${selectedMonth}. Bá» qua ${skippedCount} phiáº¿u.`);
-    }
-  }
-
-  function handleRefreshMonthReadings() {
-    const refreshedReceipts = monthlyReceipts
-      .filter(r => !r.isFinalized)
-      .map(receipt => {
-        const room = data.rooms.find(r => r.id === receipt.roomId);
-        const contract = data.contracts.find(c => c.id === receipt.contractId);
-        if (!room || !contract) return null;
-        const previousReceipt = getPreviousReceiptByRoom(
-          (data.receipts || []).filter(r => r.id !== receipt.id),
-          receipt.roomId,
-          selectedMonth,
-          {
-            includeSameMonth: true,
-            excludeSameMonthContractId: receipt.contractId
-          }
-        );
-        const billingContext = getMonthlyBillingContext(data, contract, selectedMonth);
-        return {
-          ...createMonthlyReceipt(room, contract, previousReceipt, selectedMonth, billingContext),
-          id: receipt.id,
-          paidAmount: receipt.paidAmount || 0,
-          status: receipt.status || 'ChÆ°a thanh toÃ¡n',
-          note: receipt.note || ''
-        };
-      })
-      .filter(Boolean);
-
-    if (refreshedReceipts.length === 0) {
-      alert('KhÃ´ng cÃ³ phiáº¿u chÆ°a lÆ°u nÃ o Ä‘á»ƒ lÃ m má»›i chá»‰ sá»‘.');
-      return;
-    }
-
-    onBatchCreate(refreshedReceipts);
-    alert(`ÄÃ£ lÃ m má»›i chá»‰ sá»‘ cho ${refreshedReceipts.length} phiáº¿u thÃ¡ng ${selectedMonth}.`);
-  }
-
-  function handleFinalizeMonth() {
-    if (monthlyReceipts.length === 0) return alert('KhÃ´ng cÃ³ phiáº¿u nÃ o Ä‘á»ƒ lÆ°u.');
-    
-    const finalizedReceipts = monthlyReceipts.map(r => {
-      const paid = r.paidAmount || 0;
-      let status = 'ChÆ°a thanh toÃ¡n';
-      if (paid >= r.total) status = 'ÄÃ£ thanh toÃ¡n';
-      else if (paid > 0) status = 'Ná»£ má»™t pháº§n';
-
-      return {
-        ...r,
-        isFinalized: true,
-        savedAt: new Date().toISOString(),
-        type: 'monthly',
-        paidAmount: paid,
-        status: status
-      };
-    });
-
-    // Cáº­p nháº­t lÃªn store
-    finalizedReceipts.forEach(r => onUpdateReceipt(r));
-
-    // TÃ­nh toÃ¡n thá»‘ng kÃª cho modal
-    const totalAmount = finalizedReceipts.reduce((sum, r) => sum + r.total, 0);
-    const totalPaid = finalizedReceipts.reduce((sum, r) => sum + r.paidAmount, 0);
-    const unpaidCount = finalizedReceipts.filter(r => r.status !== 'ÄÃ£ thanh toÃ¡n').length;
-
-    setSaveModal({
-      month: selectedMonth,
-      count: finalizedReceipts.length,
-      totalAmount,
-      unpaidCount,
-      totalDebt: totalAmount - totalPaid
-    });
-  }
-
-  function handleUpdateWithWarning(updated) {
-    const original = monthlyReceipts.find(r => r.id === updated.id);
-    if (original?.isFinalized) {
-      const isPaid = original.status === 'ÄÃ£ thanh toÃ¡n';
-      const msg = isPaid 
-        ? "Phiáº¿u nÃ y ÄÃƒ THANH TOÃN. Thay Ä‘á»•i chá»‰ sá»‘ cÃ³ thá»ƒ lÃ m lá»‡ch lá»‹ch sá»­ thu tiá»n. Báº¡n váº«n muá»‘n cáº­p nháº­t?"
-        : "Phiáº¿u thÃ¡ng nÃ y Ä‘Ã£ Ä‘Æ°á»£c lÆ°u chÃ­nh thá»©c. Náº¿u cáº­p nháº­t chá»‰ sá»‘, tá»•ng tiá»n vÃ  mÃ£ QR sáº½ thay Ä‘á»•i. Báº¡n váº«n muá»‘n cáº­p nháº­t?";
-      
-      if (!window.confirm(msg)) return;
-      const originalState = getReceiptPaymentState(original);
-      if (originalState.isPaid) {
-        updated = {
-          ...updated,
-          adjustmentDueAmount: Number(updated.total || 0),
-          adjustmentPaidAmount: Number(updated.adjustmentPaidAmount || 0),
-          adjustmentCreatedAt: updated.adjustmentCreatedAt || new Date().toISOString(),
-          adjustmentReason: updated.adjustmentReason || 'PhÃ¡t sinh/chá»‰nh láº¡i Ä‘iá»‡n nÆ°á»›c sau khi phiáº¿u Ä‘Ã£ thanh toÃ¡n'
-        };
-      }
-    }
-    onUpdateReceipt(updated);
-  }
-  return (
-    <div className="receipts-tab stack">
-      <div className="widget liquid-glass no-print" style={{ padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px', margin: 0 }}>ThÃ¡ng: <input type="month" value={`${selectedMonth.split('/')[1]}-${selectedMonth.split('/')[0]}`} onChange={e => { const [y, m] = e.target.value.split('-'); setSelectedMonth(`${m}/${y}`); }} style={{ height: '40px' }} /></label>
-            <button className="primary-btn" onClick={handleBatchCreate}>âš¡ Táº¡o hÃ ng loáº¡t</button>
-            <button className="secondary-btn" onClick={handleRefreshMonthReadings}>ğŸ”„ LÃ m má»›i chá»‰ sá»‘</button>
-            <button className="secondary-btn" onClick={() => onPrintBatch(monthlyReceipts)}>ğŸ–¨ï¸ In táº¥t cáº£ ({monthlyReceipts.length})</button>
-          </div>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <button className="primary-btn" style={{ backgroundColor: '#10b981', boxShadow: '0 4px 12px rgba(16,185,129,0.2)' }} onClick={handleFinalizeMonth}>ğŸ’¾ LÆ°u dá»¯ liá»‡u</button>
-            <div className="btn-group" style={{ margin: 0 }}>
-              <button className={`secondary-btn ${activeTab === 'entry' ? 'active-tab' : ''}`} onClick={() => setActiveTab('entry')}>Nháº­p chá»‰ sá»‘</button>
-              <button className={`secondary-btn ${activeTab === 'history' ? 'active-tab' : ''}`} onClick={() => setActiveTab('history')}>Lá»‹ch sá»­ & QR</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {isFinalized && (
-        <div className="widget liquid-glass no-print" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid #10b981', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '20px' }}>âœ…</span>
-            <div>
-              <p style={{ fontWeight: 'bold', margin: 0, color: '#065f46' }}>Phiáº¿u thÃ¡ng {selectedMonth} Ä‘Ã£ Ä‘Æ°á»£c lÆ°u.</p>
-              <p className="small muted" style={{ margin: 0 }}>Báº¡n cÃ³ thá»ƒ sang Thanh toÃ¡n Ä‘á»ƒ theo dÃµi thu tiá»n, in QR hoáº·c Ä‘Ã¡nh dáº¥u Ä‘Ã£ thu.</p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-             <button className="secondary-btn sm" onClick={() => onGoToPayment({ month: selectedMonth, type: 'monthly', status: 'all' })}>ğŸ’° Äi Ä‘áº¿n Thanh toÃ¡n</button>
-             <button className="secondary-btn sm" onClick={() => onPrintBatch(monthlyReceipts)}>ğŸ–¨ï¸ In táº¥t cáº£</button>
-          </div>
-        </div>
-      )}
-
-      {saveModal && (
-        <div className="modal" onClick={() => setSaveModal(null)}>
-          <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '450px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>âœ…</div>
-            <h2 style={{ fontSize: '24px', marginBottom: '8px' }}>ÄÃ£ lÆ°u phiáº¿u thÃ¡ng</h2>
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '20px', borderRadius: '16px', margin: '20px 0', textAlign: 'left' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">ThÃ¡ng</span><b>{saveModal.month}</b></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">Sá»‘ phiáº¿u</span><b>{saveModal.count}</b></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">Tá»•ng pháº£i thu</span><b>{formatMoney(saveModal.totalAmount)}</b></div>
-              <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)', margin: '10px 0' }}></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}><span className="muted">Phiáº¿u chÆ°a tráº£</span><b className="danger">{saveModal.unpaidCount}</b></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="muted">Tá»•ng cÃ²n ná»£</span><b className="danger">{formatMoney(saveModal.totalDebt)}</b></div>
-            </div>
-            
-            <div className="stack" style={{ gap: '10px' }}>
-              <button className="primary-btn wide" onClick={() => { setSaveModal(null); onGoToPayment({ month: selectedMonth, type: 'monthly', status: 'all' }); }}>ğŸ’° Äi Ä‘áº¿n Thanh toÃ¡n</button>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="secondary-btn" style={{ flex: 1 }} onClick={() => onPrintBatch(monthlyReceipts)}>ğŸ–¨ï¸ In táº¥t cáº£ phiáº¿u</button>
-                <button className="secondary-btn" style={{ flex: 1 }} onClick={() => setSaveModal(null)}>ğŸ“ á» láº¡i nháº­p chá»‰ sá»‘</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {activeTab === 'entry' ? (
-        <div className="widget liquid-glass" style={{ padding: 0, overflow: 'hidden' }}>
-          <div className="table-wrap">
-            <table className="entry-table">
-              <thead>
-                <tr>
-                  <th>PhÃ²ng</th>
-                  <th>Chá»§ phÃ²ng</th>
-                  <th style={{ backgroundColor: '#fff7ed' }}>Äiá»‡n: Chá»‰ sá»‘ cÅ©</th>
-                  <th style={{ backgroundColor: '#fff7ed' }}>Chá»‰ sá»‘ má»›i</th>
-                  <th style={{ backgroundColor: '#fff7ed' }}>Sá»‘ sá»­ dá»¥ng</th>
-                  <th>Tiá»n Ä‘iá»‡n</th>
-                  <th style={{ backgroundColor: '#f0fdf4' }}>NÆ°á»›c: Chá»‰ sá»‘ cÅ©</th>
-                  <th style={{ backgroundColor: '#f0fdf4' }}>Chá»‰ sá»‘ má»›i</th>
-                  <th style={{ backgroundColor: '#f0fdf4' }}>Sá»‘ sá»­ dá»¥ng</th>
-                  <th>Tiá»n nÆ°á»›c</th>
-                  <th>Phá»¥ phÃ­</th>
-                  <th>Tá»•ng tiá»n</th>
-                  <th>Thao tÃ¡c</th>
-                </tr>
-              </thead>
-              <tbody>
-                {monthlyReceipts.sort((a,b) => a.roomId.localeCompare(b.roomId)).map(r => {
-                  const room = data.rooms.find(rm => rm.id === r.roomId);
-                  const tenant = getTenantForReceipt(data, r) || { name: 'N/A' };
-                  
-                  const eOld = r.electricOld ?? r.electricStart ?? 0;
-                  const eNew = r.electricNew ?? r.electricEnd ?? eOld;
-                  const wOld = r.waterOld ?? r.waterStart ?? 0;
-                  const wNew = r.waterNew ?? r.waterEnd ?? wOld;
-
-                  return (
-                    <tr key={r.id}>
-                      <td style={{ fontWeight: '800' }}>P{r.roomId}</td>
-                      <td>{tenant.name}</td>
-                      <td>
-                        <DecimalInput 
-                          value={eOld} 
-                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, electricOld: val }, room))} 
-                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid #e2e8f0', color: 'var(--text-muted)' }} 
-                        />
-                      </td>
-                      <td>
-                        <DecimalInput 
-                          value={eNew} 
-                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, electricNew: val }, room))} 
-                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid var(--warning)' }} 
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--warning)' }}>{r.electricUsed || 0}</td>
-                      <td className="small">{formatMoney(r.electricAmount || 0)}</td>
-                      
-                      <td>
-                        <DecimalInput 
-                          value={wOld} 
-                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, waterOld: val }, room))} 
-                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid #e2e8f0', color: 'var(--text-muted)' }} 
-                        />
-                      </td>
-                      <td>
-                        <DecimalInput 
-                          value={wNew} 
-                          onChange={val => handleUpdateWithWarning(recalculateReceipt({ ...r, waterNew: val }, room))} 
-                          style={{ width: '80px', height: '32px', padding: '0 8px', border: '1px solid var(--success)' }} 
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--success)' }}>{r.waterUsed || 0}</td>
-                      <td className="small">{formatMoney(r.waterAmount || 0)}</td>
-
-                      <td>
-                        <div style={{ display: 'grid', gap: '6px', minWidth: '150px' }}>
-                          <select
-                            value={r.otherType || 'other'}
-                            onChange={e => handleUpdateWithWarning(recalculateReceipt({ ...r, otherType: e.target.value }, room))}
-                            style={{ height: '30px', padding: '0 8px', fontSize: '12px' }}
-                          >
-                            {OTHER_RECEIPT_TYPES.map(type => <option key={type.value} value={type.value}>{type.icon} {type.label}</option>)}
-                          </select>
-                          <input
-                            value={r.otherNote || ''}
-                            onChange={e => handleUpdateWithWarning({ ...r, otherNote: e.target.value })}
-                            placeholder="Ná»™i dung khoáº£n khÃ¡c"
-                            style={{ height: '30px', padding: '0 8px', fontSize: '12px' }}
-                          />
-                        <input 
-                          type="number" 
-                          value={r.other} 
-                          onChange={e => handleUpdateWithWarning(recalculateReceipt({ ...r, other: e.target.value }, room))} 
-                            style={{ height: '32px', padding: '0 8px' }}
-                        />
-                        </div>
-                      </td>
-                      <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{formatMoney(r.total)}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <button className="secondary-btn sm" title="In phiáº¿u" onClick={() => onPrintBatch([r])}>ğŸ–¨ï¸</button>
-                          <button className="secondary-btn sm" title="Xem QR" onClick={() => onView(r)}>ğŸ“±</button>
-                          <button className="secondary-btn sm" title="Há»§y phiáº¿u" style={{ color: '#ef4444' }} onClick={() => onDeleteReceipt(r)}>âœ•</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {monthlyReceipts.length === 0 && <tr><td colSpan="13" style={{ textAlign: 'center', padding: '40px' }}>ChÆ°a cÃ³ phiáº¿u thu cho thÃ¡ng {selectedMonth}. HÃ£y báº¥m "Táº¡o hÃ ng loáº¡t" Ä‘á»ƒ báº¯t Ä‘áº§u.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div className="widget liquid-glass" style={{ padding: 0 }}>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>PhÃ²ng</th><th>ThÃ¡ng</th><th>Tá»•ng tiá»n</th><th>ÄÃ£ tráº£</th><th>CÃ²n ná»£</th><th>Tráº¡ng thÃ¡i</th><th>HÃ nh Ä‘á»™ng</th></tr></thead>
-              <tbody>
-                {monthlyReceipts.map(r => {
-                  const paymentState = getReceiptPaymentState(r);
-                  return (
-                    <tr key={r.id}>
-                      <td><b>P{r.roomId}</b></td><td>{r.month}</td><td>{formatMoney(r.total)}</td><td>{formatMoney(paymentState.paidAmount)}</td><td style={{ color: paymentState.debt > 0 ? 'var(--danger)' : 'inherit' }}>{formatMoney(paymentState.debt)}</td><td><span className={`status-badge-liquid ${paymentState.status === 'ÄÃ£ thanh toÃ¡n' ? 'active' : paymentState.status === 'Ná»£ má»™t pháº§n' ? 'notice' : 'debt'}`}>{paymentState.status}</span></td>
-                      <td><div style={{ display: 'flex', gap: '8px' }}>{paymentState.isPaid ? <button className="secondary-btn sm paid-action" disabled>âœ“ ÄÃ£ thu</button> : <button className="primary-btn sm" onClick={() => onPay(r)}>ğŸ’¸ Thu tiá»n</button>}<button className="secondary-btn sm" onClick={() => onView(r)}>ğŸ“„ Chi tiáº¿t</button></div></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SettingsTab({ data, setData, bankInfo, setBankInfo, onReset }) {
-  const buildTempIndices = (rooms) => rooms.map(r => ({
-    id: r.id,
-    electric: r.initialElectric ?? r.electricStart ?? r.electricNew ?? 0,
-    water: r.initialWater ?? r.waterStart ?? r.waterNew ?? 0
-  }));
-  const [tempIndices, setTempIndices] = useState(() => buildTempIndices(data.rooms));
-  const [savedMessage, setSavedMessage] = useState('');
-
-  useEffect(() => {
-    setTempIndices(buildTempIndices(data.rooms));
-  }, [data.rooms]);
-
-  const handleUpdateIndices = () => {
-    setData(old => ({
-      ...old,
-      rooms: old.rooms.map(r => {
-        const found = tempIndices.find(ti => ti.id === r.id);
-        if (found) {
-          const electric = parseLocaleNumber(found.electric);
-          const water = parseLocaleNumber(found.water);
-          return {
-            ...r,
-            initialElectric: electric,
-            initialWater: water,
-            electricStart: electric,
-            waterStart: water,
-            electricOld: electric,
-            waterOld: water,
-            electricNew: r.electricNew ?? electric,
-            waterNew: r.waterNew ?? water
-          };
-        }
-        return r;
-      })
-    }));
-    setSavedMessage(`ÄÃ£ lÆ°u chá»‰ sá»‘ Ä‘áº§u ká»³ lÃºc ${new Date().toLocaleTimeString('vi-VN')}`);
-  };
-
-  return (
-    <div className="stack" style={{ gap: '24px' }}>
-      <div className="widget liquid-glass" style={{ maxWidth: '800px' }}>
-        <section>
-          <h2 style={{ marginBottom: '16px' }}>ğŸ¦ ThÃ´ng tin chuyá»ƒn khoáº£n</h2>
-          <div className="form-grid-v2">
-            <label>NgÃ¢n hÃ ng <input value={bankInfo.bankName} onChange={e => setBankInfo({...bankInfo, bankName: e.target.value})} /></label>
-            <label>MÃ£ VietQR <input value={bankInfo.bankCode} onChange={e => setBankInfo({...bankInfo, bankCode: e.target.value})} /></label>
-            <label>Sá»‘ tÃ i khoáº£n <input value={bankInfo.accountNo} onChange={e => setBankInfo({...bankInfo, accountNo: e.target.value})} /></label>
-            <label>Chá»§ tÃ i khoáº£n <input value={bankInfo.accountName} onChange={e => setBankInfo({...bankInfo, accountName: e.target.value})} /></label>
-          </div>
-        </section>
-      </div>
-
-      <div className="widget liquid-glass" style={{ maxWidth: '800px' }}>
-        <section>
-          <h2 style={{ marginBottom: '16px' }}>âš¡ Cáº­p nháº­t chá»‰ sá»‘ Ä‘áº§u ká»³ (Chá»‰ sá»‘ cÅ©)</h2>
-          <p className="muted small" style={{ marginBottom: '16px' }}>DÃ¹ng Ä‘á»ƒ khá»Ÿi táº¡o chá»‰ sá»‘ cho phiáº¿u thÃ¡ng Ä‘áº§u tiÃªn náº¿u chÆ°a cÃ³ lá»‹ch sá»­.</p>
-          <div className="table-wrap" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>PhÃ²ng</th>
-                  <th>Äiá»‡n cÅ© (Ä‘áº§u ká»³)</th>
-                  <th>NÆ°á»›c cÅ© (Ä‘áº§u ká»³)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tempIndices.map((ti, idx) => (
-                  <tr key={ti.id}>
-                    <td><b>P{ti.id}</b></td>
-                    <td>
-                      <DecimalInput 
-                        value={ti.electric} 
-                        onChange={val => {
-                          const newIndices = [...tempIndices];
-                          newIndices[idx].electric = val;
-                          setTempIndices(newIndices);
-                        }} 
-                        style={{ height: '36px', width: '100%' }}
-                      />
-                    </td>
-                    <td>
-                      <DecimalInput 
-                        value={ti.water} 
-                        onChange={val => {
-                          const newIndices = [...tempIndices];
-                          newIndices[idx].water = val;
-                          setTempIndices(newIndices);
-                        }} 
-                        style={{ height: '36px', width: '100%' }}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <button className="primary-btn wide" style={{ marginTop: '20px' }} onClick={handleUpdateIndices}>LÆ°u chá»‰ sá»‘ Ä‘áº§u ká»³</button>
-          {savedMessage && <p className="small" style={{ marginTop: '10px', color: 'var(--success)', fontWeight: 700 }}>{savedMessage}</p>}
-        </section>
-      </div>
-
-      <div className="widget liquid-glass" style={{ maxWidth: '800px' }}>
-        <section>
-          <h2 style={{ marginBottom: '16px' }}>âš™ï¸ Há»‡ thá»‘ng</h2>
-          <button className="secondary-btn danger" onClick={onReset}>âš ï¸ KhÃ´i phá»¥c dá»¯ liá»‡u gá»‘c</button>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function RoomDetailModal({ room, data, onClose, onAction, onAddRoommate }) {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [historyFilter, setHistoryFilter] = useState('all');
-  const [showMoreActions, setShowMoreActions] = useState(false);
-  const [showRoommateForm, setShowRoommateForm] = useState(false);
-  const currentMonth = getCurrentMonthLabel();
-  const { label, color, contract, ownerOccupied } = getRoomStatusInfo(data, room.id);
-  const roomActiveMembers = (data.memberships || []).filter(m => m.roomId === room.id && m.status === 'active');
-  const roomPrimaryMember = roomActiveMembers.find(m => m.role === 'primary') || roomActiveMembers[0];
-  const primaryTenant = contract
-    ? (getPrimaryTenantByContract(data, contract.id) || (roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null))
-    : roomPrimaryMember ? (data.tenants || []).find(t => t.id === roomPrimaryMember.tenantId) : null;
-  const currentReceipt = contract ? (data.receipts || []).find(r => r.roomId === room.id && r.contractId === contract.id && r.month === currentMonth && r.type === 'monthly') : null;
-  const allMembers = contract
-    ? (data.memberships || []).filter(m => m.contractId === contract.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }))
-    : (data.memberships || []).filter(m => m.roomId === room.id).map(m => ({ ...m, tenant: data.tenants.find(t => t.id === m.tenantId) }));
-  const activeMembers = allMembers.filter(m => m.status === 'active');
-  const roomReceipts = (data.receipts || []).filter(r => r.roomId === room.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const roomTransfers = (data.roomTransfers || []).filter(t => t.oldRoomId === room.id || t.newRoomId === room.id);
-  const roomMoveOuts = (data.moveOutReports || []).filter(r => r.roomId === room.id);
-  const contractRenewals = contract ? (data.contractRenewals || []).filter(r => r.contractId === contract.id) : [];
-  const roomAssets = room.assets || [];
-  const maintenanceItems = room.maintenanceTickets || [];
-  const attachments = room.attachments || contract?.attachments || [];
-  const paymentDay = Number(contract?.paymentCycleDay || 5);
-  const dueDate = new Date();
-  dueDate.setDate(paymentDay);
-  dueDate.setHours(0, 0, 0, 0);
-  const receiptPaid = Number(currentReceipt?.paidAmount || 0);
-  const receiptTotal = Number(currentReceipt?.total || 0);
-  const receiptDebt = Math.max(0, receiptTotal - receiptPaid);
-  const isReceiptOverdue = currentReceipt && receiptDebt > 0 && new Date() > dueDate;
-  const latestReceipt = contract ? getLatestMonthlyReceiptForContract(data, room.id, contract.id) : roomReceipts.find(r => r.type === 'monthly') || null;
-  const electricOld = latestReceipt ? getElectricOld(latestReceipt) : getMonthlyStartMeter(room, contract, null, 'electricOld');
-  const electricNew = latestReceipt ? getElectricNew(latestReceipt) : electricOld;
-  const waterOld = latestReceipt ? getWaterOld(latestReceipt) : getMonthlyStartMeter(room, contract, null, 'waterOld');
-  const waterNew = latestReceipt ? getWaterNew(latestReceipt) : waterOld;
-  const tenantInitial = primaryTenant?.name ? primaryTenant.name.trim().charAt(0).toUpperCase() : 'P';
-  const formatDate = formatContractDate;
-  const dateDiffDays = (value) => {
-    if (isInvalidContractDate(value)) return null;
-    const date = parseDateFlexible(value);
-    if (!date) return null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return Math.ceil((date.getTime() - today.getTime()) / 86400000);
-  };
-  const contractStartValid = !contract || ownerOccupied || !isInvalidContractDate(contract.startDate);
-  const contractEndValid = !contract || ownerOccupied || !isInvalidContractDate(contract.endDate);
-  const contractSignedValid = !contract || ownerOccupied || !isInvalidContractDate(contract.signedDate);
-  const contractDateValid = !contract || ownerOccupied || isValidContractRange(contract.startDate, contract.endDate);
-  const contractRequiredDatesValid = ownerOccupied || !contract || (contractSignedValid && contractDateValid);
-  const contractDuration = contract ? calculateRentalDuration(contract.startDate, contract.endDate) : 'â€”';
-  const contractDaysLeft = dateDiffDays(contract?.endDate);
-  const contractStatus = ownerOccupied ? 'Chá»§ nhÃ  á»Ÿ - khÃ´ng cáº§n há»£p Ä‘á»“ng' : !contract ? 'ChÆ°a cÃ³ há»£p Ä‘á»“ng' : !contractRequiredDatesValid ? 'Thiáº¿u ngÃ y há»£p lá»‡' : contractDaysLeft < 0 ? 'ÄÃ£ háº¿t háº¡n' : contractDaysLeft <= 30 ? `Sáº¯p háº¿t háº¡n (${contractDaysLeft} ngÃ y)` : 'CÃ²n háº¡n';
-  const contractStatusClass = ownerOccupied ? 'active' : !contract ? 'vacant' : !contractRequiredDatesValid ? 'notice' : contractDaysLeft !== null && contractDaysLeft < 0 ? 'debt' : contractDaysLeft !== null && contractDaysLeft <= 30 ? 'notice' : 'active';
-  const receiptStatus = !currentReceipt ? 'ChÆ°a cÃ³ phiáº¿u' : isReceiptOverdue ? 'QuÃ¡ háº¡n' : currentReceipt.status;
-  const receiptStatusClass = receiptStatus === 'ÄÃ£ thanh toÃ¡n' ? 'active' : receiptStatus === 'Ná»£ má»™t pháº§n' ? 'notice' : receiptStatus === 'QuÃ¡ háº¡n' ? 'debt' : 'debt';
-  const occupantLimit = room.maxPeople || room.capacity || 'â€”';
-  const formatRenewalRange = (renewal) => {
-    if (isInvalidContractDate(renewal.oldEndDate)) return `Gia háº¡n Ä‘áº¿n ${formatDate(renewal.newEndDate)}`;
-    return `${formatDate(renewal.oldEndDate)} -> ${formatDate(renewal.newEndDate)}`;
-  };
-  const activityItems = [
-    ...roomReceipts.slice(0, 5).map(r => ({ id: r.id, type: 'receipt', date: r.savedAt || r.createdAt, actor: 'Há»‡ thá»‘ng', title: `Phiáº¿u ${r.month}`, detail: `${formatMoney(r.total)} - ${r.status}` })),
-    ...roomReceipts.filter(r => Number(r.paidAmount || 0) > 0).slice(0, 5).map(r => ({ id: `pay-${r.id}`, type: 'payment', date: r.paidAt || r.savedAt || r.createdAt, actor: r.collector || 'Admin', title: 'Ghi nháº­n thanh toÃ¡n', detail: `ÄÃ£ thu ${formatMoney(r.paidAmount || 0)} cho phiáº¿u ${r.month}` })),
-    ...contractRenewals.map(r => ({ id: r.id, type: 'contract', date: r.createdAt, actor: 'Admin', title: 'Gia háº¡n há»£p Ä‘á»“ng', detail: formatRenewalRange(r) })),
-    ...roomTransfers.map(t => ({ id: t.id, type: 'room', date: t.createdAt, actor: 'Admin', title: 'Äá»•i phÃ²ng', detail: `P${t.oldRoomId} -> P${t.newRoomId}` })),
-    ...roomMoveOuts.map(r => ({ id: r.id, type: 'room', date: r.createdAt, actor: 'Admin', title: 'Táº¥t toÃ¡n', detail: formatDisplayDate(r.actualEndDate) })),
-    ...roomAssets.map(a => ({ id: a.id || a.name, type: 'asset', date: a.createdAt || a.handoverDate, actor: 'Admin', title: 'TÃ i sáº£n phÃ²ng', detail: `${a.name} - ${a.currentStatus || a.status || 'Äang dÃ¹ng'}` })),
-    ...maintenanceItems.map(m => ({ id: m.id || m.title, type: 'maintenance', date: m.createdAt || m.createdDate, actor: m.assignee || 'Admin', title: 'Báº£o trÃ¬', detail: `${m.title} - ${m.status || 'Má»›i táº¡o'}` })),
-    ...attachments.map(f => ({ id: f.id || f.name, type: 'file', date: f.createdAt || f.uploadedAt, actor: f.uploader || 'Admin', title: 'Tá»‡p Ä‘Ã­nh kÃ¨m', detail: `${f.group || f.type || 'KhÃ¡c'} - ${f.name}` }))
-  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
-  const filteredActivityItems = historyFilter === 'all' ? activityItems : activityItems.filter(item => item.type === historyFilter);
-  const electricUsage = Math.max(0, electricNew - electricOld);
-  const waterUsage = Math.max(0, waterNew - waterOld);
-  const electricValue = electricUsage === 0 ? 'ChÆ°a ghi chá»‰ sá»‘ má»›i' : `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`;
-  const waterValue = waterUsage === 0 ? 'ChÆ°a ghi chá»‰ sá»‘ má»›i' : `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`;
-  const electricNote = electricUsage === 0 ? `Chá»‰ sá»‘ gáº§n nháº¥t: ${formatLocaleNumber(electricNew)}` : `DÃ¹ng ${formatLocaleNumber(electricUsage)} kWh`;
-  const waterNote = waterUsage === 0 ? `Chá»‰ sá»‘ gáº§n nháº¥t: ${formatLocaleNumber(waterNew)}` : `DÃ¹ng ${formatLocaleNumber(waterUsage)} m3`;
-  const electricMeterNote = electricUsage === 0 ? 'ChÆ°a ghi chá»‰ sá»‘ má»›i' : `TiÃªu thá»¥ ${formatLocaleNumber(electricUsage)} kWh`;
-  const waterMeterNote = waterUsage === 0 ? 'ChÆ°a ghi chá»‰ sá»‘ má»›i' : `TiÃªu thá»¥ ${formatLocaleNumber(waterUsage)} m3`;
-  const tabs = [
-    ['overview', 'Tá»•ng quan', ''],
-    ['contract', 'Há»£p Ä‘á»“ng', !contractRequiredDatesValid ? '!' : ''],
-    ['residents', 'NgÆ°á»i á»Ÿ', activeMembers.length || ''],
-    ['payments', 'Thanh toÃ¡n', receiptDebt > 0 ? 'Ná»£' : ''],
-    ['meters', 'Äiá»‡n nÆ°á»›c', ''],
-    ['assets', 'TÃ i sáº£n', roomAssets.length || ''],
-    ['maintenance', 'Báº£o trÃ¬', maintenanceItems.length || ''],
-    ['history', 'Lá»‹ch sá»­', activityItems.length || ''],
-    ['files', 'Tá»‡p', attachments.length || '']
-  ];
-
-  const renderMetric = (labelText, value, note) => (
-    <div className="op-item">
-      <span className="op-label">{labelText}</span>
-      <span className="op-value">{value}</span>
-      {note && <span className="small muted">{note}</span>}
-    </div>
-  );
-
-  const renderOverview = () => (
-    <div className="stack" style={{ gap: '16px' }}>
-      <div className="op-grid">
-        <div className="op-card" style={{ gridColumn: 'span 2', background: '#f8fafc' }}>
-          <h3 className="op-card-title">Tá»•ng quan nhanh</h3>
-          <div className="op-grid">
-            {renderMetric('Tiá»n pháº£i thu', currentReceipt ? formatMoney(receiptTotal) : 'ChÆ°a cÃ³ phiáº¿u', null)}
-            {renderMetric('ÄÃ£ thu', currentReceipt ? formatMoney(receiptPaid) : formatMoney(0), currentReceipt ? receiptStatus : 'ChÆ°a ghi nháº­n')}
-            {renderMetric('CÃ²n ná»£', formatMoney(receiptDebt), receiptDebt > 0 ? `Háº¡n thu ngÃ y ${paymentDay}` : 'KhÃ´ng cÃ²n ná»£')}
-            {renderMetric('Há»£p Ä‘á»“ng Ä‘áº¿n', contract ? formatDate(contract.endDate) : 'â€”', contractStatus)}
-            {renderMetric('Sá»‘ ngÆ°á»i á»Ÿ', `${activeMembers.length}/${occupantLimit}`, 'Äang cÆ° trÃº')}
-            {renderMetric('Tráº¡ng thÃ¡i cÆ° trÃº', label, primaryTenant ? primaryTenant.name : 'PhÃ²ng trá»‘ng')}
-          </div>
-        </div>
-      </div>
-      <div className="op-grid">
-      <div className="op-card">
-        <h3 className="op-card-title">NgÆ°á»i Ä‘áº¡i diá»‡n</h3>
-        {primaryTenant ? (
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#dbeafe', color: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>{tenantInitial}</div>
-            <div className="stack" style={{ gap: '4px' }}>
-              <p className="op-value">{primaryTenant.name}</p>
-              <a className="op-label" href={`tel:${primaryTenant.phone || ''}`}>{primaryTenant.phone || 'ChÆ°a cÃ³ SÄT'}</a>
-              <p className="op-label">CCCD: {primaryTenant.cccd || 'â€”'}</p>
-            </div>
-          </div>
-        ) : <p className="muted small">PhÃ²ng Ä‘ang trá»‘ng</p>}
-      </div>
-
-      <div className="op-card">
-        <h3 className="op-card-title">Há»£p Ä‘á»“ng</h3>
-        {contract ? (
-          <div className="stack" style={{ gap: '8px' }}>
-            <span className={`status-badge-liquid ${contractStatusClass}`} style={{ alignSelf: 'flex-start' }}>{contractStatus}</span>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Báº¯t Ä‘áº§u</span><span className="op-value" style={{ fontSize: '13px' }}>{formatDate(contract.startDate)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Háº¿t háº¡n</span><span className="op-value" style={{ fontSize: '13px' }}>{formatDate(contract.endDate)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Tiá»n thuÃª</span><span className="op-value" style={{ fontSize: '13px' }}>{formatMoney(contract.rent)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="op-label">Chu ká»³ thu</span><span className="op-value" style={{ fontSize: '13px' }}>NgÃ y {paymentDay}</span></div>
-          </div>
-        ) : <p className="muted small">ChÆ°a cÃ³ há»£p Ä‘á»“ng</p>}
-      </div>
-
-      <div className="op-card" style={{ gridColumn: 'span 2' }}>
-        <h3 className="op-card-title">CÃ´ng ná»£ thÃ¡ng {currentMonth}</h3>
-        {currentReceipt ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <p className="op-value">{formatMoney(currentReceipt.total)}</p>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-                <span className={`status-badge-liquid ${receiptStatusClass}`}>{receiptStatus}</span>
-                <span className="small muted">CÃ²n ná»£ {formatMoney(receiptDebt)}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="primary-btn sm" onClick={() => onAction('pay_receipt', currentReceipt)}>Ghi nháº­n</button>
-              <button className="secondary-btn sm" onClick={() => onAction('view_qr', currentReceipt)}>Xem QR</button>
-            </div>
-          </div>
-        ) : <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <p className="muted small">ChÆ°a cÃ³ phiáº¿u thÃ¡ng nÃ y</p>
-              {contract && <button className="primary-btn sm" onClick={() => onAction('create_receipt')}>Táº¡o ngay</button>}
-            </div>}
-      </div>
-
-      <div className="op-card" style={{ gridColumn: 'span 2' }}>
-        <h3 className="op-card-title">Äiá»‡n nÆ°á»›c gáº§n nháº¥t</h3>
-        <div className="op-grid">
-          {renderMetric('Äiá»‡n', electricValue, electricNote)}
-          {renderMetric('NÆ°á»›c', waterValue, waterNote)}
-        </div>
-      </div>
-      </div>
-    </div>
-  );
-
-  const renderReceiptBreakdown = (receipt) => {
-    if (!receipt) return <p className="muted center" style={{ padding: '24px' }}>ChÆ°a cÃ³ phiáº¿u thÃ¡ng hiá»‡n táº¡i.</p>;
-    const rows = [
-      ['Tiá»n phÃ²ng', '1 thÃ¡ng', contract?.rent || room.rent || 0, receipt.rent || 0],
-      ['Dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh', '1', 'Theo sá»‘ ngÆ°á»i', receipt.fixedServices || 0],
-      ['Tiá»n Ä‘iá»‡n', `${formatLocaleNumber(receipt.electricUsed || 0)} sá»‘`, room.electricPrice || 0, receipt.electricAmount || 0],
-      ['Tiá»n nÆ°á»›c', `${formatLocaleNumber(receipt.waterUsed || 0)} sá»‘`, room.waterPrice || 0, receipt.waterAmount || 0],
-      ['PhÃ­ phÃ¡t sinh', '1', 'KhÃ¡c', receipt.other || 0]
-    ];
-    return (
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Khoáº£n thu</th><th>Sá»‘ lÆ°á»£ng</th><th>ÄÆ¡n giÃ¡</th><th>ThÃ nh tiá»n</th></tr></thead>
-          <tbody>
-            {rows.map((row, idx) => (
-              <tr key={idx}><td>{row[0]}</td><td>{row[1]}</td><td>{typeof row[2] === 'number' ? formatMoney(row[2]) : row[2]}</td><td style={{ fontWeight: 700 }}>{formatMoney(row[3])}</td></tr>
-            ))}
-            <tr><td colSpan="3" style={{ textAlign: 'right', fontWeight: 800 }}>Tá»•ng pháº£i thu</td><td style={{ fontWeight: 800, color: 'var(--primary)' }}>{formatMoney(receipt.total || 0)}</td></tr>
-          </tbody>
-        </table>
-      </div>
-    );
-  };
-
-  const renderEmptyOps = (title, detail, actionLabel, actionHandler) => (
-    <div className="op-card" style={{ alignItems: 'center', textAlign: 'center', padding: '32px' }}>
-      <p className="op-value">{title}</p>
-      <p className="op-label">{detail}</p>
-      {actionLabel && <button className="primary-btn sm" onClick={actionHandler}>{actionLabel}</button>}
-    </div>
-  );
-
-  const renderTabContent = () => {
-    if (activeTab === 'overview') return renderOverview();
-    if (activeTab === 'contract') return (
-      <div className="stack" style={{ gap: '16px' }}>
-        {ownerOccupied ? (
-          <>
-            <div className="op-card">
-              <h3 className="op-card-title">ThÃ´ng tin cÆ° trÃº</h3>
-              <div className="op-grid">
-                {renderMetric('Loáº¡i phÃ²ng', 'Chá»§ nhÃ  á»Ÿ')}
-                {renderMetric('Tráº¡ng thÃ¡i', 'Äang á»Ÿ')}
-                {renderMetric('Há»£p Ä‘á»“ng', 'KhÃ´ng Ã¡p dá»¥ng')}
-                {renderMetric('Sá»‘ ngÆ°á»i á»Ÿ', `${activeMembers.length}/${occupantLimit}`)}
-                {renderMetric('Ghi chÃº', room.note || 'Chá»§ nhÃ  á»Ÿ, khÃ´ng cáº§n há»£p Ä‘á»“ng thuÃª')}
-              </div>
-            </div>
-            <div className="warning-box" style={{ background: '#ecfdf5', borderColor: '#10b981', color: '#065f46' }}>
-              PhÃ²ng {room.id} lÃ  phÃ²ng chá»§ nhÃ  á»Ÿ nÃªn khÃ´ng yÃªu cáº§u ngÃ y kÃ½, ngÃ y báº¯t Ä‘áº§u, ngÃ y háº¿t háº¡n hoáº·c phá»¥ lá»¥c há»£p Ä‘á»“ng.
-            </div>
-          </>
-        ) : contract ? (
-          <>
-            <div className="op-card">
-              <h3 className="op-card-title">ThÃ´ng tin há»£p Ä‘á»“ng</h3>
-              <div className="op-grid">
-                {renderMetric('Sá»‘ há»£p Ä‘á»“ng', contract.contractNo || contract.id)}
-                {renderMetric('Tráº¡ng thÃ¡i', contractStatus)}
-                {renderMetric('NgÃ y kÃ½', formatDate(contract.signedDate), 'NgÃ y cá»‘ Ä‘á»‹nh dÃ¹ng Ä‘á»ƒ in há»£p Ä‘á»“ng')}
-                {renderMetric('NgÃ y báº¯t Ä‘áº§u', formatDate(contract.startDate))}
-                {renderMetric('NgÃ y háº¿t háº¡n', formatDate(contract.endDate))}
-                {renderMetric('Thá»i háº¡n thuÃª', contractDuration)}
-                {renderMetric('Chu ká»³ thanh toÃ¡n', `NgÃ y ${paymentDay} háº±ng thÃ¡ng`)}
-                {renderMetric('Tiá»n thuÃª', formatMoney(contract.rent))}
-                {renderMetric('Tiá»n cá»c', formatMoney(contract.deposit))}
-              </div>
-            </div>
-            {!contractRequiredDatesValid && (
-              <div className="warning-box">Há»£p Ä‘á»“ng thiáº¿u ngÃ y kÃ½ / ngÃ y báº¯t Ä‘áº§u / ngÃ y háº¿t háº¡n há»£p lá»‡. Vui lÃ²ng cáº­p nháº­t Ä‘á»ƒ in há»£p Ä‘á»“ng, tÃ­nh Ä‘Ãºng thá»i háº¡n thuÃª vÃ  phá»¥ lá»¥c gia háº¡n.</div>
-            )}
-            <div className="op-card">
-              <h3 className="op-card-title">Lá»‹ch sá»­ gia háº¡n</h3>
-              {contractRenewals.length ? contractRenewals.map(r => (
-                <div key={r.id} className="op-item"><span className="op-value">{formatRenewalRange(r)}</span><span className="op-label">{r.note || 'KhÃ´ng cÃ³ ghi chÃº'}</span></div>
-              )) : <p className="muted small">ChÆ°a cÃ³ lá»‹ch sá»­ gia háº¡n.</p>}
-            </div>
-            <div className="op-action-footer" style={{ marginTop: 0 }}>
-              <button className="secondary-btn" onClick={() => onAction('edit_contract')}>Sá»­a há»£p Ä‘á»“ng</button>
-              <button className="secondary-btn" onClick={() => onAction('renew_contract')}>Gia háº¡n</button>
-              <button className="secondary-btn" onClick={() => onAction('view_contract')}>In há»£p Ä‘á»“ng</button>
-              {contractRenewals.length > 0 && <button className="secondary-btn" onClick={() => onAction('print_appendix')}>In phá»¥ lá»¥c</button>}
-              <button className="secondary-btn danger" onClick={() => onAction('moving_out')}>Káº¿t thÃºc thuÃª</button>
-            </div>
-          </>
-        ) : renderEmptyOps('ChÆ°a cÃ³ há»£p Ä‘á»“ng', 'PhÃ²ng trá»‘ng hoáº·c chÆ°a táº¡o há»£p Ä‘á»“ng.', '+ Táº¡o há»£p Ä‘á»“ng', () => onAction('add_tenant'))}
-      </div>
-    );
-    if (activeTab === 'residents') return (
-      <div className="stack" style={{ gap: '12px' }}>
-        {['primary', 'member'].map(group => {
-          const rows = allMembers.filter(m => group === 'primary' ? m.role === 'primary' : m.role !== 'primary');
-          if (!rows.length) return null;
-          return (
-            <div key={group} className="op-card">
-              <h3 className="op-card-title">{group === 'primary' ? 'NgÆ°á»i Ä‘á»©ng tÃªn' : 'NgÆ°á»i á»Ÿ cÃ¹ng'}</h3>
-              {rows.map(m => (
-                <div key={m.id} className="op-row">
-                  <div>
-                    <p className="op-value">{m.tenant?.name || 'N/A'}</p>
-                    <p className="op-label">{m.tenant?.phone || 'â€”'} â€¢ CCCD {m.tenant?.cccd || 'â€”'} â€¢ VÃ o {formatDate(m.joinedDate || contract?.startDate)}{m.leftDate ? ` â€¢ Ra ${formatDisplayDate(m.leftDate)}` : ''}</p>
-                    <p className="op-label">Xe mÃ¡y: <b>{m.tenant?.licensePlate || m.tenant?.vehicle || 'ChÆ°a cáº­p nháº­t'}</b> â€¢ VÃ¢n tay: <b>{m.tenant?.fingerprintCode || 'ChÆ°a Ä‘Äƒng kÃ½'}</b> â€¢ {m.tenant?.fingerprintStatus || 'ChÆ°a Ä‘Äƒng kÃ½'}</p>
-                  </div>
-                  <div className="row-actions">
-                    {m.tenant?.fingerprintStatus === 'Cáº§n xÃ³a' && <span className="status-badge-liquid debt">Cáº§n xÃ³a vÃ¢n tay</span>}
-                    <span className={`status-badge-liquid ${m.status === 'active' ? 'active' : 'vacant'}`}>{m.status === 'active' ? 'Äang á»Ÿ' : 'ÄÃ£ rá»i Ä‘i'}</span>
-                    {m.tenant && <button className="secondary-btn sm" onClick={() => onAction('edit_tenant', { ...m.tenant, membershipId: m.id, contractId: m.contractId, roomId: m.roomId, role: m.role })}>Sá»­a</button>}
-                    {m.tenant && m.role !== 'primary' && m.status === 'active' && (
-                      <button className="secondary-btn sm danger" onClick={() => onAction('leave_roommate', { ...m.tenant, membershipId: m.id, contractId: m.contractId, roomId: m.roomId, role: m.role })}>Chuyá»ƒn Ä‘i</button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-        {contract && (
-          <button
-            type="button"
-            className="secondary-btn wide"
-            style={{ borderStyle: 'dashed' }}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setShowRoommateForm(true);
-            }}
-          >
-            + ThÃªm ngÆ°á»i á»Ÿ
-          </button>
-        )}
-        {!allMembers.length && renderEmptyOps('ChÆ°a cÃ³ ngÆ°á»i á»Ÿ', 'PhÃ²ng Ä‘ang trá»‘ng.', '+ ThuÃª má»›i', () => onAction('add_tenant'))}
-      </div>
-    );
-    if (activeTab === 'payments') return (
-      <div className="stack" style={{ gap: '16px' }}>
-        <div className="op-card">
-          <h3 className="op-card-title">Chi tiáº¿t phiáº¿u thÃ¡ng {currentMonth}</h3>
-          {renderReceiptBreakdown(currentReceipt)}
-        </div>
-        <div className="op-card" style={{ padding: 0 }}>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Phiáº¿u</th><th>Tá»•ng tiá»n</th><th>ÄÃ£ thu</th><th>CÃ²n ná»£</th><th>Háº¡n thanh toÃ¡n</th><th>Tráº¡ng thÃ¡i</th><th>Thao tÃ¡c</th></tr></thead>
-              <tbody>
-                {roomReceipts.map(r => {
-                  const paymentState = getReceiptPaymentState(r);
-                  const debt = paymentState.debt;
-                  const status = paymentState.status === 'Ná»£ má»™t pháº§n' ? 'Thanh toÃ¡n má»™t pháº§n' : paymentState.status;
-                  const dueText = `${String(paymentDay).padStart(2, '0')}/${String(r.month || getCurrentMonthLabel()).padStart(7, '0')}`;
-                  return (
-                    <tr key={r.id}>
-                      <td>Phiáº¿u {r.month}</td>
-                      <td>{formatMoney(r.total || 0)}</td>
-                      <td>{formatMoney(paymentState.paidAmount || 0)}</td>
-                      <td style={{ color: debt > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>{formatMoney(debt)}</td>
-                      <td>{dueText}</td>
-                      <td><span className={`status-badge-liquid ${status === 'ÄÃ£ thanh toÃ¡n' ? 'active' : status === 'Thanh toÃ¡n má»™t pháº§n' ? 'notice' : 'debt'}`}>{status}</span></td>
-                      <td><div className="row-actions"><button className="primary-btn sm" onClick={() => onAction('pay_receipt', r)}>Ghi nháº­n</button><button className="secondary-btn sm" onClick={() => onAction('view_qr', r)}>QR</button><button className="secondary-btn sm" onClick={() => onAction('view_qr', r)}>Chi tiáº¿t</button><button className="secondary-btn sm" onClick={() => window.print()}>BiÃªn nháº­n</button></div></td>
-                    </tr>
-                  );
-                })}
-                {!roomReceipts.length && <tr><td colSpan="7" className="center muted" style={{ padding: '20px' }}>ChÆ°a cÃ³ dá»¯ liá»‡u thanh toÃ¡n.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-    if (activeTab === 'meters') return (
-      <div className="stack" style={{ gap: '16px' }}>
-        <div className="op-card">
-          <h3 className="op-card-title">Chá»‰ sá»‘ hiá»‡n táº¡i</h3>
-          <div className="op-grid">
-            {renderMetric('Äiá»‡n', `${formatLocaleNumber(electricOld)} -> ${formatLocaleNumber(electricNew)}`, electricMeterNote)}
-            {renderMetric('NÆ°á»›c', `${formatLocaleNumber(waterOld)} -> ${formatLocaleNumber(waterNew)}`, waterMeterNote)}
-            {renderMetric('ÄÆ¡n giÃ¡ Ä‘iá»‡n', formatMoney(room.electricPrice || 0))}
-            {renderMetric('ÄÆ¡n giÃ¡ nÆ°á»›c', formatMoney(room.waterPrice || 0))}
-          </div>
-          <button className="primary-btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onAction('record_meter')}>+ Ghi chá»‰ sá»‘ Ä‘iá»‡n nÆ°á»›c</button>
-        </div>
-        <div className="op-card" style={{ padding: 0 }}>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>ThÃ¡ng</th><th>Chá»‰ sá»‘ cÅ©</th><th>Chá»‰ sá»‘ má»›i</th><th>TiÃªu thá»¥</th><th>ÄÆ¡n giÃ¡</th><th>ThÃ nh tiá»n</th><th>NgÃ y ghi</th><th>NgÆ°á»i ghi</th></tr></thead>
-              <tbody>
-                {roomReceipts.filter(r => r.type === 'monthly').map(r => (
-                  <React.Fragment key={r.id}>
-                    <tr><td>Äiá»‡n {r.month}</td><td>{formatLocaleNumber(getElectricOld(r))}</td><td>{formatLocaleNumber(getElectricNew(r))}</td><td>{formatLocaleNumber(r.electricUsed || 0)}</td><td>{formatMoney(room.electricPrice || 0)}</td><td>{formatMoney(r.electricAmount || 0)}</td><td>{formatDisplayDate((r.savedAt || r.createdAt || '').slice(0, 10))}</td><td>{r.reader || 'Admin'}</td></tr>
-                    <tr><td>NÆ°á»›c {r.month}</td><td>{formatLocaleNumber(getWaterOld(r))}</td><td>{formatLocaleNumber(getWaterNew(r))}</td><td>{formatLocaleNumber(r.waterUsed || 0)}</td><td>{formatMoney(room.waterPrice || 0)}</td><td>{formatMoney(r.waterAmount || 0)}</td><td>{formatDisplayDate((r.savedAt || r.createdAt || '').slice(0, 10))}</td><td>{r.reader || 'Admin'}</td></tr>
-                  </React.Fragment>
-                ))}
-                {!roomReceipts.length && <tr><td colSpan="8" className="center muted" style={{ padding: '20px' }}>ChÆ°a cÃ³ lá»‹ch sá»­ chá»‰ sá»‘.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-    if (activeTab === 'assets') return roomAssets.length ? (
-      <div className="stack" style={{ gap: '12px' }}>
-        <div className="op-action-footer" style={{ marginTop: 0 }}><button className="primary-btn sm" onClick={() => onAction('add_asset')}>+ ThÃªm tÃ i sáº£n</button><button className="secondary-btn sm">Nháº­p tá»« máº«u</button><button className="secondary-btn sm" onClick={() => window.print()}>In bÃ n giao</button></div>
-        <div className="table-wrap"><table><thead><tr><th>TÃ i sáº£n</th><th>Loáº¡i</th><th>SL</th><th>BÃ n giao</th><th>Hiá»‡n táº¡i</th><th>GiÃ¡ trá»‹</th><th>Ghi chÃº</th><th>Thao tÃ¡c</th></tr></thead><tbody>{roomAssets.map((asset, idx) => <tr key={asset.id || idx}><td>{asset.name}</td><td>{asset.category || asset.type || 'â€”'}</td><td>{asset.quantity || 1}</td><td>{asset.handoverStatus || asset.status || 'Tá»‘t'}</td><td>{asset.currentStatus || asset.status || 'Äang dÃ¹ng'}</td><td>{formatMoney(asset.value || 0)}</td><td>{asset.note || 'â€”'}</td><td><div className="row-actions"><button className="secondary-btn sm">Sá»­a</button><button className="secondary-btn sm">ThÃªm áº£nh</button></div></td></tr>)}</tbody></table></div>
-      </div>
-    ) : renderEmptyOps('ChÆ°a cÃ³ danh sÃ¡ch tÃ i sáº£n', 'ThÃªm giÆ°á»ng, tá»§, mÃ¡y láº¡nh, Ä‘á»“ng há»“ Ä‘iá»‡n/nÆ°á»›c hoáº·c áº£nh bÃ n giao phÃ²ng.', '+ ThÃªm tÃ i sáº£n', () => onAction('add_asset'));
-    if (activeTab === 'maintenance') return maintenanceItems.length ? (
-      <div className="stack" style={{ gap: '12px' }}>
-        <button className="primary-btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onAction('add_maintenance')}>+ Táº¡o yÃªu cáº§u báº£o trÃ¬</button>
-        {maintenanceItems.map((item, idx) => <div key={item.id || idx} className="op-card"><div className="op-row"><div><p className="op-value">{item.title}</p><p className="op-label">{item.category || 'KhÃ¡c'} â€¢ {item.priority || 'Trung bÃ¬nh'} â€¢ {item.reporter || 'KhÃ¡ch thuÃª'} bÃ¡o â€¢ {item.assignee || 'ChÆ°a phÃ¢n cÃ´ng'}</p><p className="op-label">Chi phÃ­ {formatMoney(item.cost || 0)} â€¢ {item.costOwner || 'ChÆ°a rÃµ'} chá»‹u phÃ­ â€¢ {item.note || 'KhÃ´ng cÃ³ ghi chÃº'}</p></div><span className={`status-badge-liquid ${item.status === 'HoÃ n táº¥t' ? 'active' : item.status === 'ÄÃ£ há»§y' ? 'vacant' : 'notice'}`}>{item.status || 'Má»›i táº¡o'}</span></div></div>)}
-      </div>
-    ) : renderEmptyOps('ChÆ°a cÃ³ sá»± cá»‘ báº£o trÃ¬', 'CÃ¡c sá»± cá»‘ Ä‘iá»‡n, nÆ°á»›c, khÃ³a cá»­a vÃ  thiáº¿t bá»‹ sáº½ Ä‘Æ°á»£c ghi táº¡i Ä‘Ã¢y.', '+ Táº¡o yÃªu cáº§u báº£o trÃ¬', () => onAction('add_maintenance'));
-    if (activeTab === 'history') return activityItems.length ? (
-      <div className="stack" style={{ gap: '12px' }}>
-        <div className="btn-group" style={{ margin: 0, flexWrap: 'wrap' }}>
-          {[
-            ['all', 'Táº¥t cáº£'],
-            ['receipt', 'Phiáº¿u thÃ¡ng'],
-            ['payment', 'Thanh toÃ¡n'],
-            ['contract', 'Há»£p Ä‘á»“ng'],
-            ['room', 'PhÃ²ng'],
-            ['resident', 'NgÆ°á»i á»Ÿ'],
-            ['meter', 'Äiá»‡n nÆ°á»›c'],
-            ['asset', 'TÃ i sáº£n'],
-            ['maintenance', 'Báº£o trÃ¬'],
-            ['file', 'Tá»‡p']
-          ].map(([id, text]) => <button key={id} className={`secondary-btn sm ${historyFilter === id ? 'active-tab' : ''}`} onClick={() => setHistoryFilter(id)}>{text}</button>)}
-        </div>
-        {filteredActivityItems.map(item => <div key={`${item.title}-${item.id}`} className="op-card"><p className="op-value">{item.title}</p><p className="op-label">{formatDisplayDate(String(item.date || '').slice(0, 10))} â€¢ {item.actor} â€¢ {item.detail}</p></div>)}
-        {!filteredActivityItems.length && renderEmptyOps('ChÆ°a cÃ³ lá»‹ch sá»­ phÃ¹ há»£p', 'Thá»­ chá»n bá»™ lá»c khÃ¡c Ä‘á»ƒ xem thÃªm hoáº¡t Ä‘á»™ng.')}
-      </div>
-    ) : renderEmptyOps('ChÆ°a cÃ³ lá»‹ch sá»­ hoáº¡t Ä‘á»™ng', 'CÃ¡c láº§n láº­p phiáº¿u, Ä‘á»•i phÃ²ng, gia háº¡n vÃ  táº¥t toÃ¡n sáº½ hiá»ƒn thá»‹ táº¡i Ä‘Ã¢y.');
-    if (activeTab === 'files') return attachments.length ? (
-      <div className="stack" style={{ gap: '12px' }}><button className="primary-btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onAction('add_file')}>+ Táº£i tá»‡p lÃªn</button>{attachments.map((file, idx) => <div key={file.id || idx} className="op-card"><div className="op-row"><div><p className="op-value">{file.name || `Tá»‡p ${idx + 1}`}</p><p className="op-label">{file.group || file.type || 'KhÃ¡c'} â€¢ {file.size || 'â€”'} â€¢ {file.uploader || 'Admin'} â€¢ {formatDisplayDate(file.uploadedAt || String(file.createdAt || '').slice(0, 10))}</p></div><div className="row-actions"><button className="secondary-btn sm">Xem</button><button className="secondary-btn sm">Táº£i xuá»‘ng</button><button className="secondary-btn sm danger">XÃ³a</button></div></div></div>)}</div>
-    ) : renderEmptyOps('ChÆ°a cÃ³ tá»‡p Ä‘Ã­nh kÃ¨m', 'CÃ³ thá»ƒ táº£i há»£p Ä‘á»“ng, CCCD, áº£nh Ä‘á»“ng há»“ vÃ  áº£nh bÃ n giao phÃ²ng.', '+ Táº£i tá»‡p lÃªn', () => onAction('add_file'));
-    return null;
-  };
-
-  return (
-    <>
-      <div className="modal" onClick={onClose}>
-        <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '980px' }} onClick={e => e.stopPropagation()}>
-          <div className="modal-header">
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <h2 style={{ fontSize: '28px' }}>PhÃ²ng {room.id}</h2>
-                <span className={`status-badge-liquid ${color === 'green' ? 'active' : color === 'gray' ? 'vacant' : color}`}>{label}</span>
-                {receiptDebt > 0 && <span className="status-badge-liquid debt">Ná»£ {formatMoney(receiptDebt)}</span>}
-              </div>
-              <p className="muted">{primaryTenant ? `${primaryTenant.name} â€¢ ${primaryTenant.phone}` : ownerOccupied ? 'Chá»§ nhÃ  á»Ÿ, khÃ´ng cáº§n há»£p Ä‘á»“ng' : 'ChÆ°a cÃ³ há»£p Ä‘á»“ng hiá»‡n táº¡i'}</p>
-            </div>
-            <button className="secondary-btn" onClick={onClose}>âœ•</button>
-          </div>
-
-        <div className="detail-body-v2">
-          <nav className="room-op-tabs">
-            {tabs.map(([id, text, badge]) => (
-              <button key={id} className={`tab-link ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>
-                {text}{badge !== '' && <span className={`tab-badge ${badge === '!' || badge === 'Ná»£' ? 'warn' : ''}`}>{badge}</span>}
-              </button>
-            ))}
-          </nav>
-
-          <div className="tab-content" style={{ minHeight: '300px' }}>
-            {renderTabContent()}
-          </div>
-
-          <div className="op-action-footer">
-            {label === 'Trá»‘ng' ? (
-              <><button className="primary-btn" style={{ flex: 1 }} onClick={() => onAction('add_tenant')}>+ ThuÃª má»›i</button><button className="secondary-btn" style={{ flex: 1 }} onClick={() => onAction('view_history')}>ğŸ“œ Xem lá»‹ch sá»­ thuÃª</button></>
-            ) : (
-              <>
-                {!ownerOccupied && <button className="primary-btn" onClick={() => onAction('create_receipt')}>âš¡ Láº­p phiáº¿u thÃ¡ng</button>}
-                {currentReceipt && <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => onAction('pay_receipt', currentReceipt)}>Ghi nháº­n thanh toÃ¡n</button>}
-                {currentReceipt && <button className="secondary-btn" onClick={() => onAction('view_qr', currentReceipt)}>Xem QR</button>}
-                <div style={{ position: 'relative' }}>
-                  <button className="secondary-btn" onClick={() => setShowMoreActions(!showMoreActions)}>â‹¯ Thao tÃ¡c khÃ¡c</button>
-                  {showMoreActions && (
-                    <div className="more-actions-menu">
-                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('edit_contract'); }}>Sá»­a há»£p Ä‘á»“ng</button>}
-                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('renew_contract'); }}>Gia háº¡n há»£p Ä‘á»“ng</button>}
-                      {!ownerOccupied && <button className="warning" onClick={() => { setShowMoreActions(false); onAction('transfer_room'); }}>Äá»•i phÃ²ng</button>}
-                      {!ownerOccupied && <button className="warning" onClick={() => { setShowMoreActions(false); onAction(label === 'BÃ¡o chuyá»ƒn' ? 'cancel_notice' : 'notice'); }}>{label === 'BÃ¡o chuyá»ƒn' ? 'Há»§y bÃ¡o chuyá»ƒn' : 'BÃ¡o chuyá»ƒn'}</button>}
-                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>Xuáº¥t PDF</button>}
-                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('view_contract'); }}>In há»£p Ä‘á»“ng</button>}
-                      {!ownerOccupied && <button onClick={() => { setShowMoreActions(false); onAction('print_appendix'); }}>In phá»¥ lá»¥c</button>}
-                      {!ownerOccupied && <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Táº¥t toÃ¡n</button>}
-                      {!ownerOccupied && <button className="danger" onClick={() => { setShowMoreActions(false); onAction('moving_out'); }}>Káº¿t thÃºc thuÃª</button>}
-                      {ownerOccupied && <button onClick={() => { setShowMoreActions(false); setActiveTab('residents'); }}>Quáº£n lÃ½ ngÆ°á»i á»Ÿ</button>}
-                      {ownerOccupied && <button onClick={() => { setShowMoreActions(false); setActiveTab('history'); }}>Xem lá»‹ch sá»­</button>}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-      {showRoommateForm && contract && (
-        <RoommateModal
-          room={room}
-          contract={contract}
-          onClose={() => setShowRoommateForm(false)}
-          onSave={(result) => {
-            const saved = onAddRoommate ? onAddRoommate(result) : false;
-            if (saved !== false) {
-              setShowRoommateForm(false);
-              setActiveTab('residents');
-            }
-            return saved;
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-function EditContractModal({ contract, data, onClose, onSave }) {
-  const initialMeterStarts = getContractMeterStarts(contract);
-  const [form, setForm] = useState({
-    ...contract,
-    signedDate: formatDateForInput(contract.signedDate),
-    startDate: formatDateForInput(contract.startDate),
-    endDate: formatDateForInput(contract.endDate),
-    meterElectricOld: hasMeterStartValue(initialMeterStarts.electricOld) ? initialMeterStarts.electricOld : '',
-    meterWaterOld: hasMeterStartValue(initialMeterStarts.waterOld) ? initialMeterStarts.waterOld : ''
-  });
-  const errors = {};
-  if (!form.signedDate) errors.signedDate = 'Vui lÃ²ng nháº­p ngÃ y kÃ½ há»£p Ä‘á»“ng';
-  if (!form.startDate) errors.startDate = 'Vui lÃ²ng nháº­p ngÃ y báº¯t Ä‘áº§u há»£p Ä‘á»“ng';
-  if (!form.endDate) errors.endDate = 'Vui lÃ²ng nháº­p ngÃ y háº¿t háº¡n há»£p Ä‘á»“ng';
-  if (form.startDate && form.endDate && form.endDate <= form.startDate) errors.endDate = 'NgÃ y háº¿t háº¡n pháº£i sau ngÃ y báº¯t Ä‘áº§u';
-  const dateWarning = Object.keys(errors).length > 0;
-  const handleSave = () => {
-    if (dateWarning) {
-      alert(Object.values(errors).join('\n'));
-      return;
-    }
-    const meterStart = {};
-    if (hasMeterStartValue(form.meterElectricOld)) meterStart.electricOld = Number(form.meterElectricOld);
-    if (hasMeterStartValue(form.meterWaterOld)) meterStart.waterOld = Number(form.meterWaterOld);
-    const terms = { ...(form.terms || {}) };
-    if (Object.keys(meterStart).length > 0) {
-      terms.meterStart = meterStart;
-    } else {
-      delete terms.meterStart;
-      delete terms.meterReset;
-    }
-    const { meterElectricOld, meterWaterOld, ...updatedContract } = form;
-    onSave({ ...updatedContract, terms });
-  };
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Sá»­a há»£p Ä‘á»“ng: {contract.contractNo || contract.id}</h2>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2">
-          <div className="form-grid-v2">
-            <label>Sá»‘ há»£p Ä‘á»“ng <input value={form.contractNo || ''} onChange={e => setForm({...form, contractNo: e.target.value})} /></label>
-            <label>NgÃ y kÃ½ <input type="date" value={form.signedDate || ''} onChange={e => setForm({...form, signedDate: e.target.value})} /><span className="small muted">NgÃ y kÃ½ cá»‘ Ä‘á»‹nh, khÃ´ng tá»± cáº­p nháº­t theo hÃ´m nay.</span></label>
-            <label>NgÃ y báº¯t Ä‘áº§u <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></label>
-            <label>NgÃ y háº¿t háº¡n <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} /></label>
-            <label>GiÃ¡ thuÃª <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} /></label>
-            <label>Tiá»n Ä‘áº·t cá»c <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} /></label>
-            <label>Chá»‰ sá»‘ Ä‘iá»‡n Ä‘áº§u HÄ <input type="number" value={form.meterElectricOld} onChange={e => setForm({...form, meterElectricOld: e.target.value})} placeholder="Äá»ƒ trá»‘ng náº¿u dÃ¹ng chá»‰ sá»‘ phÃ²ng" /><span className="small muted">DÃ¹ng khi thay cÃ´ng tÆ¡ hoáº·c há»£p Ä‘á»“ng má»›i cáº§n reset chá»‰ sá»‘.</span></label>
-            <label>Chá»‰ sá»‘ nÆ°á»›c Ä‘áº§u HÄ <input type="number" value={form.meterWaterOld} onChange={e => setForm({...form, meterWaterOld: e.target.value})} placeholder="Äá»ƒ trá»‘ng náº¿u dÃ¹ng chá»‰ sá»‘ phÃ²ng" /></label>
-            <label style={{ gridColumn: 'span 2' }}>Ghi chÃº <textarea value={form.note || ''} onChange={e => setForm({...form, note: e.target.value})} /></label>
-          </div>
-          {dateWarning && <div className="warning-box" style={{ marginTop: '16px' }}>Há»£p Ä‘á»“ng thiáº¿u ngÃ y kÃ½ / ngÃ y báº¯t Ä‘áº§u / ngÃ y háº¿t háº¡n há»£p lá»‡. Vui lÃ²ng cáº­p nháº­t Ä‘á»ƒ in há»£p Ä‘á»“ng, tÃ­nh Ä‘Ãºng thá»i háº¡n thuÃª vÃ  phá»¥ lá»¥c gia háº¡n.</div>}
-          <button className="primary-btn wide" style={{ marginTop: '24px' }} onClick={handleSave}>Cáº­p nháº­t há»£p Ä‘á»“ng</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RentalFlowModal({ room, onClose, onSave }) {
-  const [step, setStep] = useState('form'); // 'form' | 'preview'
-  const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({
-    // Tenant Info
-    tenantName: '',
-    tenantPhone: '',
-    tenantCCCD: '',
-    tenantCCCDDate: '',
-    tenantCCCDPlace: '',
-    tenantAddress: '',
-    tenantVehicle: '',
-    tenantFingerprintCode: '',
-    tenantFingerprintStatus: 'ChÆ°a Ä‘Äƒng kÃ½',
-    tenantBirthday: '',
-    tenantNote: '',
-    tenantIdPaste: '',
-    // Contract Info
-    contractNo: `HÄ-${room.id}-${new Date().getFullYear()}${(new Date().getMonth()+1).toString().padStart(2,'0')}`,
-    signedDate: new Date().toISOString().slice(0, 10),
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: '',
-    rent: room.rent,
-    deposit: room.rent,
-    paymentCycleDay: 10,
-    meterElectricOld: '',
-    meterWaterOld: '',
-    // Terms
-    electricPrice: room.electricPrice || 3800,
-    waterPrice: room.waterPrice || 32000,
-    services: {
-      cleaning: room.cleaning || 0,
-      elevator: room.elevator || 0,
-      laundry: room.laundry || 0,
-      internet: room.internet || 0
-    },
-    note: ''
-  });
-  const previewBaseFixedServiceTotal = Number(form.services.cleaning || 0) + Number(form.services.elevator || 0) + Number(form.services.laundry || 0) + Number(form.services.internet || 0);
-  const previewAppliedFixedServiceTotal = fixedServiceTotal(room, 1);
-  const previewFixedServiceDiscount = Math.max(0, previewBaseFixedServiceTotal - previewAppliedFixedServiceTotal);
-
-  const applyPastedIdInfo = (text) => {
-    const parsed = parseVietnameseIdCard(text);
-
-    setForm(prev => ({
-      ...prev,
-      tenantIdPaste: text,
-      tenantCCCD: parsed.cccd || prev.tenantCCCD,
-      tenantName: parsed.name || prev.tenantName,
-      tenantBirthday: parsed.birthday || prev.tenantBirthday,
-      tenantAddress: parsed.address || prev.tenantAddress,
-      tenantCCCDDate: parsed.issueDate || prev.tenantCCCDDate,
-      tenantCCCDPlace: parsed.issuePlace || prev.tenantCCCDPlace,
-      tenantNote: parsed.note || prev.tenantNote
-    }));
-  };
-
-  const handleNext = () => {
-    if (!form.tenantName || !form.signedDate || !form.startDate || !form.endDate) {
-      alert('Vui lÃ²ng nháº­p Ä‘áº§y Ä‘á»§ tÃªn khÃ¡ch, ngÃ y kÃ½, ngÃ y báº¯t Ä‘áº§u vÃ  ngÃ y káº¿t thÃºc!');
-      return;
-    }
-    if (form.endDate <= form.startDate) {
-      alert('NgÃ y háº¿t háº¡n pháº£i sau ngÃ y báº¯t Ä‘áº§u há»£p Ä‘á»“ng!');
-      return;
-    }
-    setStep('preview');
-  };
-
-  const handleSave = (shouldPrint = false) => {
-    if (isSaving) return;
-    const tenantId = uid('tenant');
-    const contractId = uid('contract');
-    setIsSaving(true);
-    
-    const newTenant = {
-      id: tenantId,
-      name: form.tenantName,
-      phone: form.tenantPhone,
-      cccd: form.tenantCCCD,
-      cccdDate: form.tenantCCCDDate,
-      cccdPlace: form.tenantCCCDPlace,
-      address: form.tenantAddress,
-      licensePlate: form.tenantVehicle,
-      fingerprintCode: form.tenantFingerprintCode,
-      fingerprintStatus: form.tenantFingerprintStatus,
-      birthday: form.tenantBirthday,
-      note: form.tenantNote,
-      role: 'primary',
-      status: 'active',
-      createdAt: new Date().toISOString()
-    };
-
-    const newContract = {
-      id: contractId,
-      roomId: room.id,
-      status: 'active',
-      contractNo: form.contractNo,
-      signedDate: form.signedDate,
-      startDate: form.startDate,
-      endDate: form.endDate,
-      rent: Number(form.rent),
-      deposit: Number(form.deposit),
-      paymentCycleDay: Number(form.paymentCycleDay),
-      note: form.note,
-      terms: {
-        electricPrice: form.electricPrice,
-        waterPrice: form.waterPrice,
-        services: form.services,
-        meterStart: {
-          ...(hasMeterStartValue(form.meterElectricOld) ? { electricOld: Number(form.meterElectricOld) } : {}),
-          ...(hasMeterStartValue(form.meterWaterOld) ? { waterOld: Number(form.meterWaterOld) } : {})
-        }
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    const memberships = [{
-      id: uid('membership'),
-      contractId,
-      tenantId,
-      roomId: room.id,
-      role: 'primary',
-      status: 'active',
-      joinedDate: form.startDate,
-      leftDate: '',
-      createdAt: new Date().toISOString()
-    }];
-
-    try {
-      const saved = onSave({ tenant: newTenant, contract: newContract, memberships });
-      if (saved === false) {
-        setIsSaving(false);
-        return;
-      }
-      if (shouldPrint) {
-        setTimeout(() => window.print(), 500);
-      }
-    } catch (error) {
-      console.error(error);
-      setIsSaving(false);
-      alert('KhÃ´ng lÆ°u Ä‘Æ°á»£c há»£p Ä‘á»“ng. Vui lÃ²ng thá»­ láº¡i hoáº·c kiá»ƒm tra console.');
-    }
-  };
-
-  if (step === 'preview') {
-    return (
-      <div className="modal">
-        <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '1000px' }}>
-          <div className="modal-header no-print">
-            <div>
-              <h2>Xem trÆ°á»›c há»£p Ä‘á»“ng P{room.id}</h2>
-              <p className="muted">Vui lÃ²ng kiá»ƒm tra ká»¹ thÃ´ng tin trÆ°á»›c khi lÆ°u</p>
-            </div>
-            <div className="btn-group">
-              <button className="secondary-btn" onClick={() => setStep('form')}>â¬…ï¸ Quay láº¡i sá»­a</button>
-              <button className="primary-btn" onClick={() => handleSave(false)} disabled={isSaving}>{isSaving ? 'Äang lÆ°u...' : 'ğŸ’¾ LÆ°u há»£p Ä‘á»“ng'}</button>
-              <button className="primary-btn" style={{ background: 'var(--success)' }} onClick={() => handleSave(true)} disabled={isSaving}>{isSaving ? 'Äang lÆ°u...' : 'ğŸ–¨ï¸ LÆ°u & In'}</button>
-            </div>
-          </div>
-          <div className="detail-body-v2" style={{ padding: 0 }}>
-             {/* Reuse ContractPreview internal logic or just render the paper here */}
-             <div className="contract-paper" style={{ boxShadow: 'none', border: '1px solid #eee' }}>
-                <div className="contract-header-text">
-                  <h1>Cá»˜NG HÃ’A XÃƒ Há»˜I CHá»¦ NGHÄ¨A VIá»†T NAM</h1>
-                  <h2>Äá»™c láº­p â€“ Tá»± do â€“ Háº¡nh phÃºc</h2>
-                </div>
-                <h1 style={{ textAlign: 'center', margin: '30px 0 20px' }}>Há»¢P Äá»’NG THUÃŠ PHÃ’NG</h1>
-                <div className="contract-section">
-                  <p>HÃ´m nay, ngÃ y {form.signedDate.split('-').reverse().join('/')}, chÃºng tÃ´i gá»“m:</p>
-                  <h3>BÃŠN CHO THUÃŠ (BÃªn A)</h3>
-                  <p>BÃ : <b>DIá»†M THá»Š BÃŒNH</b></p>
-                  <p>CCCD Sá»‘: <b>019169000011</b></p>
-                  <h3>BÃŠN THUÃŠ (BÃªn B)</h3>
-                  <p>Ã”ng/BÃ : <b>{form.tenantName}</b></p>
-                  <p>CCCD sá»‘: <b>{form.tenantCCCD || '................'}</b> &nbsp;&nbsp;&nbsp; NgÃ y cáº¥p: <b>{form.tenantCCCDDate || '................'}</b></p>
-                  <p>NÆ¡i ÄKTT: <b>{form.tenantAddress || '................'}</b></p>
-                  <p>SÄT/Zalo: <b>{form.tenantPhone || '................'}</b></p>
-                </div>
-                <div className="main-articles">
-                  <p>1. BÃªn A cho BÃªn B thuÃª phÃ²ng sá»‘ <b>{room.id}</b>.</p>
-                  <p>2. Thá»i háº¡n thuÃª: Tá»« ngÃ y <b>{form.startDate.split('-').reverse().join('/')}</b> Äáº¿n háº¿t ngÃ y <b>{form.endDate.split('-').reverse().join('/')}</b></p>
-                  <p>3. Tiá»n thuÃª: <b>{formatMoney(form.rent)}</b>/thÃ¡ng.</p>
-                  <p>4. Tiá»n Ä‘áº·t cá»c: <b>{formatMoney(form.deposit)}</b>.</p>
-                  <p>5. Äiá»‡n: {form.electricPrice}Ä‘/kWh; NÆ°á»›c: {form.waterPrice}Ä‘/mÂ³.</p>
-                  <p>6. Dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh gá»‘c: <b>{formatMoney(previewBaseFixedServiceTotal)}</b>/thÃ¡ng. KhÃ¡ch á»Ÿ má»™t mÃ¬nh Ä‘Æ°á»£c giáº£m 50% phÃ­ dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh, má»©c Ã¡p dá»¥ng hiá»‡n táº¡i: <b>{formatMoney(previewAppliedFixedServiceTotal)}</b>/thÃ¡ng{previewFixedServiceDiscount > 0 ? <>, giáº£m <b>{formatMoney(previewFixedServiceDiscount)}</b>/thÃ¡ng.</> : <>.</>}</p>
-                  <p>7. Chi tiáº¿t dá»‹ch vá»¥: Vá»‡ sinh ({formatMoney(form.services.cleaning)}), Thang mÃ¡y ({formatMoney(form.services.elevator)}), Giáº·t ({formatMoney(form.services.laundry)}), Internet ({formatMoney(form.services.internet)}).</p>
-                </div>
-                <div className="signature-row">
-                  <div><p><b>BÃŠN CHO THUÃŠ</b></p><div className="signature-space"></div><p>DIá»†M THá»Š BÃŒNH</p></div>
-                  <div><p><b>BÃŠN THUÃŠ</b></p><div className="signature-space"></div><p>{form.tenantName}</p></div>
-                </div>
-             </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass rental-contract-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Táº¡o há»£p Ä‘á»“ng má»›i â€¢ PhÃ²ng {room.id}</h2>
-            <p className="muted">BÆ°á»›c 1: Nháº­p thÃ´ng tin ngÆ°á»i thuÃª vÃ  há»£p Ä‘á»“ng</p>
-          </div>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 rental-contract-body">
-          <div className="rental-contract-layout">
-            <div className="rental-column">
-              <section className="rental-form-section">
-                <h3 className="form-section-title">ğŸ‘¤ ThÃ´ng tin ngÆ°á»i thuÃª</h3>
-                <div className="paste-id-card">
-                  <label>DÃ¡n nhanh thÃ´ng tin CCCD
-                    <textarea
-                      value={form.tenantIdPaste}
-                      onChange={e => applyPastedIdInfo(e.target.value)}
-                      placeholder={'DÃ¡n nguyÃªn ná»™i dung CCCD á»Ÿ Ä‘Ã¢y, há»‡ thá»‘ng tá»± Ä‘iá»n: há» tÃªn, sá»‘ CCCD, ngÃ y sinh, thÆ°á»ng trÃº, ngÃ y cáº¥p...'}
-                    />
-                  </label>
-                </div>
-                <div className="rental-subsection-title">CCCD máº·t trÆ°á»›c</div>
-                <div className="rental-form-grid tenant-id-grid">
-                  <label className="span-2">Há» vÃ  tÃªn <input value={form.tenantName} onChange={e => setForm({...form, tenantName: e.target.value})} placeholder="Nguyá»…n VÄƒn A" /></label>
-                  <label>Sá»‘ CCCD <input value={form.tenantCCCD} onChange={e => setForm({...form, tenantCCCD: e.target.value})} /></label>
-                  <label>NgÃ y sinh <input type="date" value={form.tenantBirthday} onChange={e => setForm({...form, tenantBirthday: e.target.value})} /></label>
-                  <label className="span-2">Äá»‹a chá»‰ thÆ°á»ng trÃº <input value={form.tenantAddress} onChange={e => setForm({...form, tenantAddress: e.target.value})} /></label>
-                </div>
-                <div className="rental-subsection-title">CCCD máº·t sau</div>
-                <div className="rental-form-grid tenant-id-grid">
-                  <label>NgÃ y cáº¥p CCCD <input type="date" value={form.tenantCCCDDate} onChange={e => setForm({...form, tenantCCCDDate: e.target.value})} /></label>
-                  <label>NÆ¡i cáº¥p <input value={form.tenantCCCDPlace} onChange={e => setForm({...form, tenantCCCDPlace: e.target.value})} /></label>
-                  <label className="span-2">Ghi chÃº CCCD / MRZ <textarea value={form.tenantNote} onChange={e => setForm({...form, tenantNote: e.target.value})} placeholder="Giá»›i tÃ­nh, quá»‘c tá»‹ch, quÃª quÃ¡n, háº¡n CCCD, Ä‘áº·c Ä‘iá»ƒm nháº­n dáº¡ng, MRZ..." /></label>
-                </div>
-                <div className="rental-subsection-title">LiÃªn há»‡ & quáº£n lÃ½ ra vÃ o</div>
-                <div className="rental-form-grid tenant-ops-grid">
-                  <label>Sá»‘ Ä‘iá»‡n thoáº¡i <input value={form.tenantPhone} onChange={e => setForm({...form, tenantPhone: e.target.value})} placeholder="09xx..." /></label>
-                  <label>Biá»ƒn sá»‘ xe <input value={form.tenantVehicle} onChange={e => setForm({...form, tenantVehicle: e.target.value})} /></label>
-                  <label>MÃ£ vÃ¢n tay <input value={form.tenantFingerprintCode} onChange={e => setForm({...form, tenantFingerprintCode: e.target.value})} placeholder="VD: F502-01" /></label>
-                  <label>Tráº¡ng thÃ¡i vÃ¢n tay
-                    <select value={form.tenantFingerprintStatus} onChange={e => setForm({...form, tenantFingerprintStatus: e.target.value})}>
-                      <option>ChÆ°a Ä‘Äƒng kÃ½</option>
-                      <option>ÄÃ£ Ä‘Äƒng kÃ½</option>
-                      <option>Cáº§n xÃ³a</option>
-                      <option>ÄÃ£ xÃ³a</option>
-                    </select>
-                  </label>
-                </div>
-              </section>
-            </div>
-
-            <div className="rental-column">
-              <section className="rental-form-section">
-                <h3 className="form-section-title">ğŸ“„ Chi tiáº¿t há»£p Ä‘á»“ng</h3>
-                <div className="rental-form-grid contract-info">
-                  <label>Sá»‘ há»£p Ä‘á»“ng <input value={form.contractNo} onChange={e => setForm({...form, contractNo: e.target.value})} /></label>
-                  <label>NgÃ y kÃ½ <input type="date" value={form.signedDate} onChange={e => setForm({...form, signedDate: e.target.value})} /><span className="small muted">NgÃ y kÃ½ cá»‘ Ä‘á»‹nh, khÃ´ng tá»± cáº­p nháº­t theo hÃ´m nay.</span></label>
-                  <label>NgÃ y báº¯t Ä‘áº§u <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></label>
-                  <label>NgÃ y háº¿t háº¡n <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} /></label>
-                  <label>GiÃ¡ thuÃª <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} /></label>
-                  <label>Tiá»n Ä‘áº·t cá»c <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} /></label>
-                  <label>NgÃ y thu tiá»n <input type="number" value={form.paymentCycleDay} onChange={e => setForm({...form, paymentCycleDay: e.target.value})} /></label>
-                  <label>Chá»‰ sá»‘ Ä‘iá»‡n Ä‘áº§u HÄ <input type="number" value={form.meterElectricOld} onChange={e => setForm({...form, meterElectricOld: e.target.value})} placeholder="VD: 0 náº¿u thay cÃ´ng tÆ¡" /></label>
-                  <label>Chá»‰ sá»‘ nÆ°á»›c Ä‘áº§u HÄ <input type="number" value={form.meterWaterOld} onChange={e => setForm({...form, meterWaterOld: e.target.value})} placeholder="Äá»ƒ trá»‘ng náº¿u dÃ¹ng chá»‰ sá»‘ phÃ²ng" /></label>
-                </div>
-              </section>
-
-              <section className="rental-form-section">
-                <h3 className="form-section-title">ğŸ’¡ Dá»‹ch vá»¥ & Äiá»u khoáº£n</h3>
-                <div className="rental-form-grid service-info">
-                  <label>GiÃ¡ Ä‘iá»‡n <input type="number" value={form.electricPrice} onChange={e => setForm({...form, electricPrice: e.target.value})} /></label>
-                  <label>GiÃ¡ nÆ°á»›c <input type="number" value={form.waterPrice} onChange={e => setForm({...form, waterPrice: e.target.value})} /></label>
-                  <label className="span-2">Ghi chÃº thÃªm <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} style={{ minHeight: '82px' }} /></label>
-                </div>
-              </section>
-            </div>
-          </div>
-          <div className="rental-contract-footer">
-            <button className="secondary-btn" onClick={onClose} style={{ flex: 1 }}>Há»§y bá»</button>
-            <button className="primary-btn" onClick={handleNext} style={{ flex: 2 }}>Tiáº¿p theo: Xem trÆ°á»›c há»£p Ä‘á»“ng â¡ï¸</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TransferRoomModal({ contract, data, onClose, onSave }) {
-  const oldRoom = data.rooms.find(r => r.id === contract.roomId);
-  const tenant = getPrimaryTenantByContract(data, contract.id) || { name: 'N/A', phone: '' };
-  const vacantRooms = (data.rooms || []).filter(r => r.id !== contract.roomId && getRoomStatusInfo(data, r.id).label === 'Trá»‘ng');
-  const firstRoom = vacantRooms[0] || null;
-  const [form, setForm] = useState({
-    newRoomId: firstRoom?.id || '',
-    transferDate: new Date().toISOString().slice(0, 10),
-    oldRoomStayFrom: formatDateForInput(contract.startDate) || new Date().toISOString().slice(0, 10),
-    oldRoomStayTo: formatDateInputValue(addDays(new Date().toISOString().slice(0, 10), -1)) || new Date().toISOString().slice(0, 10),
-    oldRoomServiceMode: 'included_in_transfer_receipt',
-    endDate: contract.endDate || addMonthsToDate(new Date().toISOString().slice(0, 10), 12),
-    rent: firstRoom?.rent ?? contract.rent,
-    deposit: contract.deposit,
-    contractNo: `HÄ-${firstRoom?.id || 'ROOM'}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`,
-    note: `Chuyá»ƒn tá»« phÃ²ng ${contract.roomId}`
-  });
-
-  const selectedRoom = data.rooms.find(r => r.id === form.newRoomId);
-  const oldRoomDaysPreview = inclusiveDaysBetween(form.oldRoomStayFrom, form.oldRoomStayTo);
-  const oldRoomMonth = monthFromDate(form.oldRoomStayTo || form.transferDate);
-  const oldRoomMonthDays = daysInBillingMonth(oldRoomMonth);
-  const oldRoomRentPreview = Math.round((Number(contract.rent || oldRoom?.rent || 0) / oldRoomMonthDays) * oldRoomDaysPreview);
-  const oldRoomServiceMonthlyPreview = fixedServiceTotal(oldRoom, getContractOccupantCount(data, contract) || 1);
-  const oldRoomServicePreview = form.oldRoomServiceMode === 'monthly'
-    ? oldRoomServiceMonthlyPreview
-    : form.oldRoomServiceMode === 'daily'
-      ? Math.round((oldRoomServiceMonthlyPreview / oldRoomMonthDays) * oldRoomDaysPreview)
-      : 0;
-
-  const handleRoomChange = (roomId) => {
-    const room = data.rooms.find(r => r.id === roomId);
-    setForm(prev => ({
-      ...prev,
-      newRoomId: roomId,
-      rent: room?.rent ?? prev.rent,
-      contractNo: `HÄ-${roomId}-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`
-    }));
-  };
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '720px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Äá»•i phÃ²ng â€¢ {tenant.name}</h2>
-            <p className="muted">Káº¿t thÃºc há»£p Ä‘á»“ng phÃ²ng cÅ© vÃ  táº¡o há»£p Ä‘á»“ng má»›i cho phÃ²ng trá»‘ng.</p>
-          </div>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack" style={{ gap: '20px' }}>
-          <div className="op-card">
-            <div className="op-grid">
-              <div className="op-item"><span className="op-label">PhÃ²ng hiá»‡n táº¡i</span><span className="op-value">P{oldRoom?.id}</span></div>
-              <div className="op-item"><span className="op-label">NgÆ°á»i Ä‘á»©ng tÃªn</span><span className="op-value">{tenant.name}</span></div>
-              <div className="op-item"><span className="op-label">GiÃ¡ thuÃª cÅ©</span><span className="op-value">{formatMoney(contract.rent)}</span></div>
-              <div className="op-item"><span className="op-label">Cá»c Ä‘ang giá»¯</span><span className="op-value">{formatMoney(contract.deposit)}</span></div>
-            </div>
-          </div>
-
-          {vacantRooms.length === 0 ? (
-            <div className="warning-box">Hiá»‡n khÃ´ng cÃ³ phÃ²ng trá»‘ng Ä‘á»ƒ chuyá»ƒn. Cáº§n táº¥t toÃ¡n hoáº·c táº¡o phÃ²ng trá»‘ng trÆ°á»›c.</div>
-          ) : (
-            <>
-              <div className="form-grid-v2">
-                <label>PhÃ²ng má»›i
-                  <select value={form.newRoomId} onChange={e => handleRoomChange(e.target.value)}>
-                    {vacantRooms.map(r => <option key={r.id} value={r.id}>P{r.id} - {formatMoney(r.rent)}</option>)}
-                  </select>
-                </label>
-                <label>NgÃ y chuyá»ƒn phÃ²ng
-                  <input type="date" value={form.transferDate} onChange={e => setForm({...form, transferDate: e.target.value, oldRoomStayTo: formatDateInputValue(addDays(e.target.value, -1)) || form.oldRoomStayTo})} />
-                </label>
-                <label>PhÃ²ng cÅ© á»Ÿ tá»« ngÃ y
-                  <input type="date" value={form.oldRoomStayFrom} onChange={e => setForm({...form, oldRoomStayFrom: e.target.value})} />
-                </label>
-                <label>PhÃ²ng cÅ© tÃ­nh Ä‘áº¿n ngÃ y
-                  <input type="date" value={form.oldRoomStayTo} onChange={e => setForm({...form, oldRoomStayTo: e.target.value})} />
-                </label>
-                <label>Sá»‘ há»£p Ä‘á»“ng má»›i
-                  <input value={form.contractNo} onChange={e => setForm({...form, contractNo: e.target.value})} />
-                </label>
-                <label>NgÃ y háº¿t háº¡n má»›i
-                  <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
-                </label>
-                <label>GiÃ¡ thuÃª má»›i
-                  <input type="number" value={form.rent} onChange={e => setForm({...form, rent: e.target.value})} />
-                </label>
-                <label>Tiá»n cá»c Ã¡p dá»¥ng
-                  <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} />
-                </label>
-                <label>CÃ¡ch tÃ­nh dá»‹ch vá»¥ phÃ²ng cÅ©
-                  <select value={form.oldRoomServiceMode} onChange={e => setForm({...form, oldRoomServiceMode: e.target.value})}>
-                    <option value="included_in_transfer_receipt">Thu chung má»™t láº§n trong phiáº¿u Ä‘á»•i phÃ²ng</option>
-                    <option value="daily">TÃ­nh theo ngÃ y á»Ÿ thá»±c táº¿</option>
-                    <option value="monthly">Thu trá»n thÃ¡ng</option>
-                  </select>
-                </label>
-              </div>
-              <div className="warning-box">
-                PhÃ²ng cÅ© P{contract.roomId}: {formatDisplayDate(form.oldRoomStayFrom)} - {formatDisplayDate(form.oldRoomStayTo)} ({oldRoomDaysPreview} ngÃ y). Dá»± kiáº¿n tiá»n phÃ²ng cÅ© {formatMoney(oldRoomRentPreview)}, dá»‹ch vá»¥ phÃ²ng cÅ© {formatMoney(oldRoomServicePreview)}. Náº¿u chá»n thu chung, phiáº¿u gá»™p sáº½ hiá»ƒn thá»‹ dá»‹ch vá»¥ thÃ¡ng má»™t láº§n theo sá»‘ ngÆ°á»i.
-              </div>
-              <label>Ghi chÃº
-                <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} />
-              </label>
-
-              <div className="warning-box">
-                Sau khi xÃ¡c nháº­n, phÃ²ng {contract.roomId} sáº½ chuyá»ƒn vá» trá»‘ng, toÃ n bá»™ ngÆ°á»i Ä‘ang á»Ÿ sáº½ sang P{selectedRoom?.id}, vÃ  phiáº¿u thÃ¡ng má»›i sáº½ dÃ¹ng chá»‰ sá»‘ Ä‘áº§u ká»³ cá»§a phÃ²ng má»›i.
-              </div>
-            </>
-          )}
-
-          <div className="op-action-footer">
-            <button className="secondary-btn" onClick={onClose}>Há»§y</button>
-            <button className="primary-btn" disabled={vacantRooms.length === 0} onClick={() => {
-              if (!form.newRoomId) return alert('Vui lÃ²ng chá»n phÃ²ng má»›i.');
-              if (!form.transferDate || !form.endDate) return alert('Vui lÃ²ng nháº­p ngÃ y chuyá»ƒn vÃ  ngÃ y háº¿t háº¡n má»›i.');
-              if (!form.oldRoomStayFrom || !form.oldRoomStayTo) return alert('Vui lÃ²ng nháº­p thá»i gian á»Ÿ phÃ²ng cÅ©.');
-              if (parseDateFlexible(form.oldRoomStayTo) < parseDateFlexible(form.oldRoomStayFrom)) return alert('NgÃ y káº¿t thÃºc á»Ÿ phÃ²ng cÅ© pháº£i sau ngÃ y báº¯t Ä‘áº§u.');
-              if (form.endDate < form.transferDate) return alert('NgÃ y háº¿t háº¡n má»›i pháº£i sau ngÃ y chuyá»ƒn phÃ²ng.');
-              if (window.confirm(`XÃ¡c nháº­n chuyá»ƒn ${tenant.name} tá»« P${contract.roomId} sang P${form.newRoomId}?`)) {
-                onSave(form);
-              }
-            }}>XÃ¡c nháº­n Ä‘á»•i phÃ²ng</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SettlementModal({ room, contract, data, bankInfo, onClose, onSave }) {
-  const latestMonthlyReceipt = getLatestMonthlyReceiptForContract(data, room.id, contract.id);
-  const meterElectricOld = latestMonthlyReceipt
-    ? getElectricNew(latestMonthlyReceipt)
-    : getMonthlyStartMeter(room, contract, null, 'electricOld');
-  const meterWaterOld = latestMonthlyReceipt
-    ? getWaterNew(latestMonthlyReceipt)
-    : getMonthlyStartMeter(room, contract, null, 'waterOld');
-  const meterSourceText = latestMonthlyReceipt
-    ? `Láº¥y tá»« phiáº¿u thÃ¡ng ${latestMonthlyReceipt.month} cá»§a P${latestMonthlyReceipt.roomId}: Ä‘iá»‡n ${formatLocaleNumber(meterElectricOld)}, nÆ°á»›c ${formatLocaleNumber(meterWaterOld)}.`
-    : (getContractMeterStart(contract, 'electricOld') !== null || getContractMeterStart(contract, 'waterOld') !== null)
-      ? `Há»£p Ä‘á»“ng cÃ³ chá»‰ sá»‘ Ä‘áº§u riÃªng: Ä‘iá»‡n ${formatLocaleNumber(meterElectricOld)}, nÆ°á»›c ${formatLocaleNumber(meterWaterOld)}.`
-      : 'ChÆ°a cÃ³ phiáº¿u thÃ¡ng trÆ°á»›c Ä‘Ã³, há»‡ thá»‘ng dÃ¹ng chá»‰ sá»‘ Ä‘ang lÆ°u trong phÃ²ng.';
-  const [form, setForm] = useState({
-    actualEndDate: new Date().toISOString().split('T')[0],
-    settlementMode: 'offset_deposit',
-    electricNew: meterElectricOld,
-    waterNew: meterWaterOld,
-    unpaidRent: 0,
-    cleaningFee: 100000,
-    damageFee: 0,
-    otherFee: 0,
-    refundBankName: '',
-    refundBankAccount: '',
-    refundBankOwner: '',
-    refundQrImageUrl: '',
-    note: ''
-  });
-
-  const primaryMembership = (data.memberships || []).find(m => m.contractId === contract.id && m.role === 'primary');
-  const tenant = primaryMembership ? (data.tenants || []).find(t => t.id === primaryMembership.tenantId) : { name: 'N/A' };
-  const settlementMembers = (data.memberships || [])
-    .filter(m => m.contractId === contract.id)
-    .map(m => ({ ...m, tenant: (data.tenants || []).find(t => t.id === m.tenantId) }))
-    .filter(m => m.tenant);
-  const fingerprintRemovalList = settlementMembers.filter(m => m.tenant.fingerprintCode);
-
-  // Logic tÃ­nh toÃ¡n realtime
-  const electricOld = Number(meterElectricOld || 0);
-  const waterOld = Number(meterWaterOld || 0);
-  
-  const electricUsed = Math.max(0, Number(form.electricNew) - electricOld);
-  const waterUsed = Math.max(0, Number(form.waterNew) - waterOld);
-  const electricAmount = electricUsed * Number(room.electricPrice || 3800);
-  const waterAmount = waterUsed * Number(room.waterPrice || 32000);
-  const endDate = new Date(form.actualEndDate);
-  const roomChargeDays = Number.isNaN(endDate.getTime()) ? 0 : endDate.getDate();
-  const billingMonthDays = Number.isNaN(endDate.getTime()) ? 30 : new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
-  const monthlyRent = Number(contract.rent || room.rent || 0);
-  const occupantCount = getContractOccupantCount(data, contract);
-  const monthlyFixedServices = fixedServiceTotal(room, occupantCount);
-  const dailyRent = monthlyRent / billingMonthDays;
-  const dailyFixedServices = monthlyFixedServices / billingMonthDays;
-  const grossProratedRent = Math.round(dailyRent * roomChargeDays);
-  const grossProratedFixedServices = Math.round(dailyFixedServices * roomChargeDays);
-
-  const deposit = Number(contract.deposit || 0);
-  const isOffsetDeposit = form.settlementMode === 'offset_deposit';
-  const isPaySeparately = form.settlementMode === 'pay_separately';
-  const isPrepaidMonth = form.settlementMode === 'prepaid_month_refund_deposit';
-  const isForfeitDeposit = form.settlementMode === 'forfeit_deposit';
-  const proratedRent = isPrepaidMonth ? 0 : grossProratedRent;
-  const proratedFixedServices = isPrepaidMonth ? 0 : grossProratedFixedServices;
-  const prepaidRentCovered = isPrepaidMonth ? grossProratedRent : 0;
-  const prepaidFixedServicesCovered = isPrepaidMonth ? grossProratedFixedServices : 0;
-  const prepaidRentPaid = isPrepaidMonth ? monthlyRent : 0;
-  const prepaidFixedServicesPaid = isPrepaidMonth ? monthlyFixedServices : 0;
-  const prepaidUnusedRentRefund = isPrepaidMonth ? Math.max(0, monthlyRent - grossProratedRent) : 0;
-  const prepaidUnusedServicesRefund = isPrepaidMonth ? Math.max(0, monthlyFixedServices - grossProratedFixedServices) : 0;
-  const prepaidUnusedRefund = prepaidUnusedRentRefund + prepaidUnusedServicesRefund;
-
-  const totalIncurred = proratedRent + proratedFixedServices + electricAmount + waterAmount + Number(form.unpaidRent) +
-                        Number(form.cleaningFee) + Number(form.damageFee) + Number(form.otherFee);
-  
-  const depositUsed = isOffsetDeposit ? Math.min(deposit, totalIncurred) : 0;
-  const depositForfeited = isForfeitDeposit ? deposit : 0;
-  const mustCollect = (isPaySeparately || isPrepaidMonth || isForfeitDeposit) ? totalIncurred : Math.max(0, totalIncurred - deposit);
-  const mustRefund = isPrepaidMonth ? deposit + prepaidUnusedRefund : isPaySeparately ? deposit : isOffsetDeposit ? Math.max(0, deposit - totalIncurred) : 0;
-  const isRefund = mustRefund > 0;
-  const isDebt = mustCollect > 0;
-  const settlementTransferContent = `P${room.id} TRA PHONG ${formatDisplayDate(form.actualEndDate, '').replace(/\//g, '')}`;
-  const settlementQrUrl = buildPaymentQrUrl(bankInfo, mustCollect, settlementTransferContent);
-  const copySettlementTransfer = () => {
-    const text = `${bankInfo?.bankName || ''}\nSTK: ${bankInfo?.accountNo || ''}\nChá»§ TK: ${bankInfo?.accountName || ''}\nSá»‘ tiá»n: ${formatMoney(mustCollect)}\nNá»™i dung: ${settlementTransferContent}`;
-    navigator.clipboard.writeText(text);
-    alert('ÄÃ£ copy thÃ´ng tin chuyá»ƒn khoáº£n táº¥t toÃ¡n.');
-  };
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '1000px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2 style={{ fontSize: '28px' }}>Táº¥t toÃ¡n / Tráº£ phÃ²ng â€¢ PhÃ²ng {room.id}</h2>
-            <p className="muted">Chá»‘t cÃ´ng ná»£, Ä‘iá»‡n nÆ°á»›c, phÃ­ phÃ¡t sinh vÃ  hoÃ n cá»c</p>
-          </div>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-
-        <div className="detail-body-v2">
-          <div className="settlement-grid">
-            <div className="settlement-form">
-              {/* NhÃ³m 1: ThÃ´ng tin cÆ¡ báº£n */}
-              <section>
-                <h3 className="form-section-title">ğŸ“… ThÃ´ng tin tráº£ phÃ²ng</h3>
-                <div className="form-grid-v2">
-                  <label>NgÃ y tráº£ phÃ²ng <input type="date" value={form.actualEndDate} onChange={e => setForm({...form, actualEndDate: e.target.value})} /></label>
-                  <label>NgÆ°á»i Ä‘á»©ng tÃªn <input value={tenant.name} readOnly style={{ background: '#f1f5f9' }} /></label>
-                  <label>Sá»‘ ngÃ y sá»­ dá»¥ng <input value={`${roomChargeDays} ngÃ y`} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
-                  <label>{isPrepaidMonth ? 'Tiá»n phÃ²ng cáº§n thu' : 'Tiá»n phÃ²ng phÃ¡t sinh'} <input value={formatMoney(proratedRent)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
-                  <label>{isPrepaidMonth ? 'Dá»‹ch vá»¥ cáº§n thu' : 'Dá»‹ch vá»¥ phÃ¡t sinh'} <input value={formatMoney(proratedFixedServices)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
-                  <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    TÃ­nh tá»« ngÃ y 01 Ä‘áº¿n ngÃ y {formatDisplayDate(form.actualEndDate)}, gá»“m cáº£ ngÃ y tráº£ phÃ²ng: {formatMoney(monthlyRent)} / {billingMonthDays} x {roomChargeDays} ngÃ y = {formatMoney(grossProratedRent)}
-                  </p>
-                  <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                    Dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh: {formatMoney(monthlyFixedServices)}/thÃ¡ng ({occupantCount} ngÆ°á»i) / {billingMonthDays} x {roomChargeDays} ngÃ y = {formatMoney(grossProratedFixedServices)}
-                  </p>
-                  {isPrepaidMonth && (
-                    <p className="small" style={{ gridColumn: 'span 2', margin: 0, color: 'var(--success)', fontWeight: 700 }}>
-                      ÄÃ£ thu trÆ°á»›c {formatMoney(prepaidRentPaid + prepaidFixedServicesPaid)}. Pháº§n Ä‘Ã£ sá»­ dá»¥ng Ä‘áº¿n ngÃ y tráº£ phÃ²ng lÃ  {formatMoney(prepaidRentCovered + prepaidFixedServicesCovered)}; hoÃ n láº¡i pháº§n chÆ°a sá»­ dá»¥ng {formatMoney(prepaidUnusedRefund)}.
-                    </p>
-                  )}
-                  <label style={{ gridColumn: 'span 2' }}>Tiá»n cá»c Ä‘ang giá»¯ <input value={formatMoney(deposit)} readOnly style={{ background: '#f1f5f9', fontWeight: 'bold' }} /></label>
-                </div>
-              </section>
-
-              <section>
-                <h3 className="form-section-title">ğŸ’³ CÃ¡ch xá»­ lÃ½ cÃ´ng ná»£ & tiá»n cá»c</h3>
-                <div className="stack" style={{ gap: '10px' }}>
-                  <label className="option-row">
-                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'offset_deposit'} onChange={() => setForm({...form, settlementMode: 'offset_deposit'})} />
-                    <span><b>Äá»‘i trá»« vÃ o cá»c</b><small>Äiá»‡n nÆ°á»›c, phÃ­ phÃ¡t sinh Ä‘Æ°á»£c trá»« vÃ o tiá»n cá»c; chá»‰ hoÃ n pháº§n cá»c cÃ²n láº¡i.</small></span>
-                  </label>
-                  <label className="option-row">
-                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'pay_separately'} onChange={() => setForm({...form, settlementMode: 'pay_separately'})} />
-                    <span><b>KhÃ¡ch thanh toÃ¡n Ä‘iá»‡n nÆ°á»›c/phÃ­ riÃªng, hoÃ n nguyÃªn cá»c</b><small>Táº¡o khoáº£n khÃ¡ch cáº§n tráº£ cho phÃ¡t sinh vÃ  hoÃ n láº¡i toÃ n bá»™ tiá»n cá»c.</small></span>
-                  </label>
-                  <label className="option-row">
-                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'prepaid_month_refund_deposit'} onChange={() => setForm({...form, settlementMode: 'prepaid_month_refund_deposit'})} />
-                    <span><b>ÄÃ£ thanh toÃ¡n tiá»n nhÃ  cáº£ thÃ¡ng, tráº£ sá»›m</b><small>HoÃ n láº¡i tiá»n phÃ²ng/dá»‹ch vá»¥ cá»§a ngÃ y chÆ°a sá»­ dá»¥ng; chá»‰ thu Ä‘iá»‡n nÆ°á»›c/phÃ­ phÃ¡t sinh vÃ  hoÃ n tráº£ cá»c.</small></span>
-                  </label>
-                  <label className="option-row danger">
-                    <input type="radio" name="settlementMode" checked={form.settlementMode === 'forfeit_deposit'} onChange={() => setForm({...form, settlementMode: 'forfeit_deposit'})} />
-                    <span><b>Tráº£ sá»›m há»£p Ä‘á»“ng, khÃ´ng hoÃ n cá»c</b><small>Cá»c Ä‘Æ°á»£c bÃ¹ cÃ´ng ná»£ trÆ°á»›c; pháº§n cá»c cÃ²n láº¡i ghi nháº­n giá»¯ láº¡i do khÃ¡ch tráº£ phÃ²ng trÆ°á»›c háº¡n.</small></span>
-                  </label>
-                </div>
-              </section>
-
-              {mustRefund > 0 && !isForfeitDeposit && (
-                <section>
-                  <h3 className="form-section-title">ğŸ¦ ThÃ´ng tin hoÃ n cá»c cho khÃ¡ch</h3>
-                  <div className="form-grid-v2">
-                    <label>NgÃ¢n hÃ ng ngÆ°á»i thuÃª
-                      <input value={form.refundBankName} onChange={e => setForm({...form, refundBankName: e.target.value})} placeholder="VD: Vietcombank, BIDV..." />
-                    </label>
-                    <label>Sá»‘ tÃ i khoáº£n
-                      <input value={form.refundBankAccount} onChange={e => setForm({...form, refundBankAccount: e.target.value})} placeholder="Nháº­p STK nháº­n hoÃ n cá»c" />
-                    </label>
-                    <label style={{ gridColumn: 'span 2' }}>Chá»§ tÃ i khoáº£n
-                      <input value={form.refundBankOwner || tenant.name || ''} onChange={e => setForm({...form, refundBankOwner: e.target.value})} placeholder={tenant.name || 'TÃªn chá»§ tÃ i khoáº£n'} />
-                    </label>
-                    <label style={{ gridColumn: 'span 2' }}>Link áº£nh QR cá»§a ngÆ°á»i thuÃª
-                      <input value={form.refundQrImageUrl} onChange={e => setForm({...form, refundQrImageUrl: e.target.value})} placeholder="DÃ¡n link áº£nh QR Ä‘á»ƒ lÆ°u vÃ o phiáº¿u chi hoÃ n cá»c" />
-                    </label>
-                    <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>
-                      Khi hoÃ n táº¥t tráº£ phÃ²ng, há»‡ thá»‘ng tá»± táº¡o phiáº¿u chi hoÃ n cá»c {formatMoney(mustRefund)} Ä‘á»ƒ xÃ¡c nháº­n chá»§ nhÃ  Ä‘Ã£ chuyá»ƒn láº¡i tiá»n cho khÃ¡ch.
-                    </p>
-                  </div>
-                </section>
-              )}
-
-              {/* NhÃ³m 2: Äiá»‡n nÆ°á»›c */}
-              <section>
-                <h3 className="form-section-title">âš¡ Chá»‰ sá»‘ Ä‘iá»‡n nÆ°á»›c</h3>
-                <div className="form-grid-v2">
-                  <p className="small muted" style={{ gridColumn: 'span 2', margin: 0 }}>{meterSourceText}</p>
-                  <label>Äiá»‡n: Chá»‰ sá»‘ cÅ© <input value={electricOld} readOnly style={{ background: '#f1f5f9' }} /></label>
-                  <label>Chá»‰ sá»‘ má»›i <input type="number" value={form.electricNew} onChange={e => setForm({...form, electricNew: e.target.value})} /></label>
-                  <label>NÆ°á»›c: Chá»‰ sá»‘ cÅ© <input value={waterOld} readOnly style={{ background: '#f1f5f9' }} /></label>
-                  <label>Chá»‰ sá»‘ má»›i <input type="number" value={form.waterNew} onChange={e => setForm({...form, waterNew: e.target.value})} /></label>
-                  <div style={{ gridColumn: 'span 2', display: 'flex', gap: '20px', fontSize: '13px', background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
-                    <span>âš¡ TiÃªu thá»¥: <b>{electricUsed} kWh</b> = <b>{formatMoney(electricAmount)}</b></span>
-                    <span>ğŸ’§ TiÃªu thá»¥: <b>{waterUsed} mÂ³</b> = <b>{formatMoney(waterAmount)}</b></span>
-                  </div>
-                </div>
-              </section>
-
-              {/* NhÃ³m 3: PhÃ­ phÃ¡t sinh */}
-              <section>
-                <h3 className="form-section-title">ğŸ’¸ PhÃ­ phÃ¡t sinh & Ghi chÃº</h3>
-                <div className="form-grid-v2">
-                  <label>Tiá»n phÃ²ng/phÃ­ cÃ²n ná»£ khÃ¡c <input type="number" value={form.unpaidRent} onChange={e => setForm({...form, unpaidRent: e.target.value})} /></label>
-                  <label>PhÃ­ vá»‡ sinh tráº£ phÃ²ng <input type="number" value={form.cleaningFee} onChange={e => setForm({...form, cleaningFee: e.target.value})} /></label>
-                  <label>Chi phÃ­ hÆ° há»ng <input type="number" value={form.damageFee} onChange={e => setForm({...form, damageFee: e.target.value})} /></label>
-                  <label>PhÃ­ khÃ¡c <input type="number" value={form.otherFee} onChange={e => setForm({...form, otherFee: e.target.value})} /></label>
-                  <label style={{ gridColumn: 'span 2' }}>Ghi chÃº táº¥t toÃ¡n <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="Nháº­p chi tiáº¿t cÃ¡c khoáº£n hÆ° há»ng hoáº·c lÃ½ do phÃ­ khÃ¡c..." /></label>
-                </div>
-              </section>
-            </div>
-
-            <div className="settlement-summary-side">
-              <div className="summary-card">
-                <h3 className="summary-label-main">Káº¿t quáº£ táº¥t toÃ¡n</h3>
-                
-                <div className="summary-row"><span>{isPrepaidMonth ? 'Tiá»n phÃ²ng cáº§n thu' : 'Tiá»n phÃ²ng phÃ¡t sinh'} ({roomChargeDays} ngÃ y)</span><b>{formatMoney(proratedRent)}</b></div>
-                <div className="summary-row"><span>{isPrepaidMonth ? 'Dá»‹ch vá»¥ cáº§n thu' : 'Dá»‹ch vá»¥ phÃ¡t sinh'} ({roomChargeDays} ngÃ y)</span><b>{formatMoney(proratedFixedServices)}</b></div>
-                {isPrepaidMonth && (
-                  <>
-                    <div className="summary-row"><span>Tiá»n phÃ²ng Ä‘Ã£ thu thÃ¡ng nÃ y</span><b>{formatMoney(prepaidRentPaid)}</b></div>
-                    <div className="summary-row"><span>Dá»‹ch vá»¥ Ä‘Ã£ thu thÃ¡ng nÃ y</span><b>{formatMoney(prepaidFixedServicesPaid)}</b></div>
-                    <div className="summary-row"><span>Tiá»n phÃ²ng Ä‘Ã£ sá»­ dá»¥ng</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(prepaidRentCovered)}</b></div>
-                    <div className="summary-row"><span>Dá»‹ch vá»¥ Ä‘Ã£ sá»­ dá»¥ng</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(prepaidFixedServicesCovered)}</b></div>
-                    <div className="summary-row"><span>HoÃ n tiá»n tráº£ trÆ°á»›c chÆ°a sá»­ dá»¥ng</span><b style={{ color: 'var(--success)' }}>{formatMoney(prepaidUnusedRefund)}</b></div>
-                  </>
-                )}
-                <div className="summary-row"><span>Tiá»n Ä‘iá»‡n</span><b>{formatMoney(electricAmount)}</b></div>
-                <div className="summary-row"><span>Tiá»n nÆ°á»›c</span><b>{formatMoney(waterAmount)}</b></div>
-                <div className="summary-row"><span>PhÃ­ khÃ¡c</span><b>{formatMoney(Number(form.unpaidRent || 0) + Number(form.cleaningFee || 0) + Number(form.damageFee || 0) + Number(form.otherFee || 0))}</b></div>
-                <div className="summary-row"><span>Tá»•ng phÃ¡t sinh</span><b>{formatMoney(totalIncurred)}</b></div>
-                {isOffsetDeposit && <div className="summary-row"><span>Tiá»n cá»c Ä‘á»‘i trá»«</span><b style={{ color: 'var(--text-muted)' }}>- {formatMoney(depositUsed)}</b></div>}
-                {isForfeitDeposit && <div className="summary-row"><span>Cá»c giá»¯ láº¡i do tráº£ sá»›m</span><b style={{ color: 'var(--danger)' }}>{formatMoney(depositForfeited)}</b></div>}
-                {isPaySeparately && <div className="summary-row"><span>HoÃ n nguyÃªn cá»c</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
-                {isPrepaidMonth && <div className="summary-row"><span>HoÃ n cá»c + tiá»n tráº£ trÆ°á»›c cÃ²n láº¡i</span><b style={{ color: 'var(--success)' }}>{formatMoney(mustRefund)}</b></div>}
-                {mustCollect > 0 && <div className="summary-row"><span>KhÃ¡ch thanh toÃ¡n phÃ¡t sinh</span><b style={{ color: 'var(--danger)' }}>{formatMoney(mustCollect)}</b></div>}
-                
-                <div className="summary-total">
-                  <span className="summary-label-main">{isForfeitDeposit ? 'KhÃ¡ch cáº§n thanh toÃ¡n' : isOffsetDeposit ? (isRefund ? 'Sá»‘ tiá»n hoÃ n khÃ¡ch' : 'KhÃ¡ch cáº§n tráº£ thÃªm') : isPrepaidMonth ? 'HoÃ n cá»c & chá»‘t phÃ¡t sinh' : 'HoÃ n cá»c & thu phÃ¡t sinh'}</span>
-                  <p className="summary-amount" style={{ color: isRefund ? 'var(--success)' : isDebt ? 'var(--danger)' : 'var(--text-main)' }}>
-                    {isForfeitDeposit ? formatMoney(mustCollect) : isOffsetDeposit ? formatMoney(isRefund ? mustRefund : mustCollect) : `${formatMoney(mustRefund)} / ${formatMoney(mustCollect)}`}
-                  </p>
-                  <p style={{ fontSize: '13px', fontWeight: '500' }}>
-                    {isForfeitDeposit
-                      ? 'âš ï¸ KhÃ¡ch tráº£ sá»›m há»£p Ä‘á»“ng: khÃ´ng hoÃ n cá»c, phÃ¡t sinh váº«n thu riÃªng'
-                      : isOffsetDeposit
-                      ? isRefund ? 'âœ¨ Cáº§n hoÃ n pháº§n cá»c cÃ²n láº¡i cho khÃ¡ch' : isDebt ? 'âš ï¸ KhÃ¡ch thuÃª cáº§n Ä‘Ã³ng thÃªm tiá»n sau khi trá»« cá»c' : 'âœ… CÃ´ng ná»£ Ä‘Ã£ Ä‘Æ°á»£c táº¥t toÃ¡n Ä‘á»§'
-                      : isPrepaidMonth
-                      ? 'âœ¨ KhÃ¡ch Ä‘Ã£ tráº£ trÆ°á»›c thÃ¡ng nÃ y: hoÃ n cá»c vÃ  hoÃ n tiá»n phÃ²ng/dá»‹ch vá»¥ chÆ°a sá»­ dá»¥ng, chá»‰ thu Ä‘iá»‡n nÆ°á»›c/phÃ­ phÃ¡t sinh'
-                      : 'âœ¨ HoÃ n toÃ n bá»™ cá»c, Ä‘á»“ng thá»i thu riÃªng Ä‘iá»‡n nÆ°á»›c/phÃ­ phÃ¡t sinh'}
-                  </p>
-                </div>
-
-                {mustCollect > 0 && (
-                  <div className="settlement-qr-card">
-                    <h4>QR khÃ¡ch chuyá»ƒn khoáº£n</h4>
-                    {settlementQrUrl ? <img src={settlementQrUrl} alt="QR táº¥t toÃ¡n" /> : <p className="small muted">ChÆ°a cáº¥u hÃ¬nh mÃ£ VietQR.</p>}
-                    <div className="payment-details-v4">
-                      <div className="row"><span className="label">Sá»‘ tiá»n</span><span className="val">{formatMoney(mustCollect)}</span></div>
-                      <div className="row"><span className="label">Ná»™i dung CK</span><span className="val" style={{ color: '#1e40af' }}>{settlementTransferContent}</span></div>
-                    </div>
-                    <button type="button" className="secondary-btn sm wide" onClick={copySettlementTransfer}>Copy ná»™i dung CK</button>
-                  </div>
-                )}
-
-                {mustRefund > 0 && !isForfeitDeposit && (
-                  <div className="settlement-qr-card">
-                    <h4>{isPrepaidMonth ? 'Phiáº¿u chi hoÃ n cá»c & tiá»n tráº£ trÆ°á»›c sáº½ táº¡o' : 'Phiáº¿u chi hoÃ n cá»c sáº½ táº¡o'}</h4>
-                    {form.refundQrImageUrl ? <img src={form.refundQrImageUrl} alt="QR ngÆ°á»i thuÃª nháº­n hoÃ n cá»c" /> : <p className="small muted">CÃ³ thá»ƒ dÃ¡n link QR ngÆ°á»i thuÃª á»Ÿ form bÃªn trÃ¡i Ä‘á»ƒ lÆ°u kÃ¨m phiáº¿u chi.</p>}
-                    <div className="payment-details-v4">
-                      <div className="row"><span className="label">NgÆ°á»i nháº­n</span><span className="val">{form.refundBankOwner || tenant.name || 'KhÃ¡ch thuÃª'}</span></div>
-                      <div className="row"><span className="label">Sá»‘ tiá»n hoÃ n</span><span className="val">{formatMoney(mustRefund)}</span></div>
-                      {form.refundBankAccount && <div className="row"><span className="label">STK</span><span className="val">{form.refundBankAccount}</span></div>}
-                    </div>
-                  </div>
-                )}
-
-                <div className="warning-box">
-                  <b>LÆ°u Ã½ sau khi hoÃ n táº¥t:</b>
-                  <ul>
-                    <li>Há»£p Ä‘á»“ng sáº½ chuyá»ƒn sang "ÄÃ£ káº¿t thÃºc"</li>
-                    <li>PhÃ²ng {room.id} sáº½ trá»Ÿ vá» tráº¡ng thÃ¡i trá»‘ng</li>
-                    <li>Lá»‹ch sá»­ táº¥t toÃ¡n sáº½ Ä‘Æ°á»£c lÆ°u láº¡i</li>
-                    {fingerprintRemovalList.length > 0 && <li>Admin cáº§n xÃ³a vÃ¢n tay: {fingerprintRemovalList.map(m => `${m.tenant.name} (${m.tenant.fingerprintCode})`).join(', ')}</li>}
-                    {isPrepaidMonth && <li>Tiá»n phÃ²ng/dá»‹ch vá»¥ thÃ¡ng hiá»‡n táº¡i Ä‘Ã£ thanh toÃ¡n trÆ°á»›c: há»‡ thá»‘ng hoÃ n láº¡i pháº§n chÆ°a sá»­ dá»¥ng {formatMoney(prepaidUnusedRefund)}</li>}
-                    {isForfeitDeposit && <li>Tiá»n cá»c cÃ²n láº¡i Ä‘Æ°á»£c ghi nháº­n giá»¯ láº¡i do khÃ¡ch tráº£ sá»›m há»£p Ä‘á»“ng</li>}
-                  </ul>
-                </div>
-
-                <div className="stack" style={{ gap: '12px', marginTop: 'auto' }}>
-                  <button className="primary-btn wide" onClick={() => {
-                    if (window.confirm('XÃ¡c nháº­n hoÃ n táº¥t má»i thá»§ tá»¥c tráº£ phÃ²ng vÃ  chá»‘t cÃ´ng ná»£?')) {
-                      onSave({
-                        ...form,
-                        id: uid('moveout'),
-                        unpaidRent: Number(form.unpaidRent || 0),
-                        monthlyRent,
-                        monthlyFixedServices,
-                        roomChargeDays,
-                        billingMonthDays,
-                        dailyRent,
-                        dailyFixedServices,
-                        proratedRent,
-                        proratedFixedServices,
-                        grossProratedRent,
-                        grossProratedFixedServices,
-                        prepaidRentPaid,
-                        prepaidFixedServicesPaid,
-                        prepaidRentCovered,
-                        prepaidFixedServicesCovered,
-                        prepaidUnusedRentRefund,
-                        prepaidUnusedServicesRefund,
-                        prepaidUnusedRefund,
-                        cleaningFee: Number(form.cleaningFee || 0),
-                        damageFee: Number(form.damageFee || 0),
-                        otherFee: Number(form.otherFee || 0),
-                        electricOld,
-                        electricNew: Number(form.electricNew || 0),
-                        electricUsed,
-                        electricAmount,
-                        waterOld,
-                        waterNew: Number(form.waterNew || 0),
-                        waterUsed,
-                        waterAmount,
-                        totalIncurred,
-                        depositUsed,
-                        depositForfeited,
-                        mustCollect,
-                        mustRefund,
-                        settlementMode: form.settlementMode,
-                        tenantId: tenant.id,
-                        tenantName: tenant.name,
-                        tenantPhone: tenant.phone,
-                        refundBankName: form.refundBankName,
-                        refundBankAccount: form.refundBankAccount,
-                        refundBankOwner: form.refundBankOwner || tenant.name,
-                        refundQrImageUrl: form.refundQrImageUrl,
-                        contractId: contract.id,
-                        roomId: room.id
-                      });
-                    }
-                  }}>HoÃ n táº¥t tráº£ phÃ²ng</button>
-                  <button className="secondary-btn wide" onClick={onClose}>Há»§y bá»</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RenewalModal({ contract, data, onClose, onSave }) {
-  const room = data.rooms.find(r => r.id === contract.roomId);
-  const tenant = getPrimaryTenantByContract(data, contract.id) || { name: 'N/A', phone: 'N/A' };
-  const [showAppendix, setShowAppendix] = useState(false);
-  const hasValidCurrentEndDate = isValidBusinessDate(contract.endDate);
-  const currentEndDateText = formatBusinessDate(contract.endDate);
-  const currentStartDateText = formatBusinessDate(contract.startDate);
-  const currentSignedDateText = formatContractDate(contract.signedDate);
-  const defaultStartDate = hasValidCurrentEndDate ? addDaysToDate(contract.endDate, 1) : new Date().toISOString().slice(0, 10);
-  
-  const [form, setForm] = useState({
-    signedDate: new Date().toISOString().slice(0, 10),
-    newStartDate: defaultStartDate,
-    newEndDate: hasValidCurrentEndDate ? addMonthsToDate(contract.endDate, 12) : '',
-    keepPricing: true,
-    newRent: contract.rent,
-    newDeposit: contract.deposit,
-    note: ''
-  });
-
-  const isValid = form.newEndDate && (!hasValidCurrentEndDate || form.newEndDate > contract.endDate);
-  const rentChanged = !form.keepPricing && Number(form.newRent) !== Number(contract.rent);
-  const depositChanged = !form.keepPricing && Number(form.newDeposit) !== Number(contract.deposit);
-  const rentDelta = form.keepPricing ? 0 : Number(form.newRent || 0) - Number(contract.rent || 0);
-  const depositDelta = form.keepPricing ? 0 : Number(form.newDeposit || 0) - Number(contract.deposit || 0);
-  const draftAppendixPrintId = `draft-renewal-appendix-${contract.id}`;
-
-  const handlePrintAppendix = () => {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-    
-    const doc = iframe.contentWindow.document;
-    doc.write(`
-      <html>
-        <head>
-          <title>Phá»¥ lá»¥c gia háº¡n - P${contract.roomId}</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
-            body { font-family: 'Times New Roman', Times, serif; line-height: 1.5; color: black; margin: 0; padding: 0; }
-            .appendix-print { width: 210mm; min-height: 297mm; padding: 20mm 25mm; margin: auto; box-sizing: border-box; background: white; }
-            @page { size: A4; margin: 0; }
-            h1, h2, h3 { text-align: center; margin: 10px 0; font-size: 16px; text-transform: uppercase; }
-            .section { margin-top: 20px; }
-            .section h4 { text-decoration: underline; margin-bottom: 5px; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; }
-            .grid div { text-align: center; }
-            .signature-space { height: 80px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            table th, table td { border: 1px solid black; padding: 8px; text-align: left; font-size: 14px; }
-            .muted { color: #555; }
-            b { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="appendix-print">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <h2 style="margin: 0;">Cá»˜NG HÃ’A XÃƒ Há»˜I CHá»¦ NGHÄ¨A VIá»†T NAM</h2>
-              <h3 style="margin: 5px 0; text-transform: none;">Äá»™c láº­p â€“ Tá»± do â€“ Háº¡nh phÃºc</h3>
-              <div style="width: 150px; border-top: 1px solid black; margin: 10px auto;"></div>
-            </div>
-
-            <h1>PHá»¤ Lá»¤C GIA Háº N Há»¢P Äá»’NG THUÃŠ PHÃ’NG</h1>
-            <p style="text-align: center;">Sá»‘ phá»¥ lá»¥c: PL-${contract.contractNo || contract.id}-${form.signedDate.split('-').reverse().join('')}</p>
-            <p style="text-align: center;">KÃ¨m theo Há»£p Ä‘á»“ng thuÃª phÃ²ng sá»‘: ${contract.contractNo || contract.id}</p>
-
-            <div class="section">
-              <p>HÃ´m nay, ngÃ y ${form.signedDate.split('-').reverse().join('/')}, táº¡i HÃ  Ná»™i, chÃºng tÃ´i gá»“m:</p>
-              
-              <h4>BÃŠN CHO THUÃŠ â€” BÃŠN A</h4>
-              <p>BÃ : <b>DIá»†M THá»Š BÃŒNH</b></p>
-              <p>Sá»‘ Ä‘iá»‡n thoáº¡i: <b>0123.456.789</b></p>
-              <p>Äá»‹a chá»‰: <b>Sá»‘ 28, ngÃ¡ch 1, ngÃµ 162 KhÆ°Æ¡ng ÄÃ¬nh, Thanh XuÃ¢n, HÃ  Ná»™i</b></p>
-              <p>Sá»‘ tÃ i khoáº£n nháº­n tiá»n: <b>8847214661</b> - NgÃ¢n hÃ ng: <b>BIDV</b></p>
-
-              <h4>BÃŠN THUÃŠ â€” BÃŠN B</h4>
-              <p>Ã”ng/BÃ : <b>${tenant.name}</b></p>
-              <p>Sá»‘ Ä‘iá»‡n thoáº¡i: <b>${tenant.phone}</b></p>
-              <p>CCCD/CMND: <b>${tenant.cccd || '................'}</b></p>
-              <p>Äang thuÃª phÃ²ng: <b>${contract.roomId}</b></p>
-
-              <p>Hai bÃªn thá»‘ng nháº¥t kÃ½ phá»¥ lá»¥c nÃ y Ä‘á»ƒ gia háº¡n thá»i háº¡n thuÃª phÃ²ng theo cÃ¡c ná»™i dung sau:</p>
-            </div>
-
-            <div class="section">
-              <h4>ÄIá»€U 1. GIA Háº N THá»œI Háº N THUÃŠ</h4>
-              <p>Hai bÃªn thá»‘ng nháº¥t gia háº¡n thá»i háº¡n thuÃª phÃ²ng ${contract.roomId} nhÆ° sau:</p>
-              <ul>
-                <li>NgÃ y báº¯t Ä‘áº§u gia háº¡n: <b>${form.newStartDate.split('-').reverse().join('/')}</b></li>
-                <li>NgÃ y háº¿t háº¡n cÅ©: <b>${currentEndDateText}</b></li>
-                <li>NgÃ y háº¿t háº¡n má»›i: <b>${form.newEndDate.split('-').reverse().join('/')}</b></li>
-              </ul>
-              <p>Sau thá»i háº¡n trÃªn, náº¿u BÃªn B tiáº¿p tá»¥c cÃ³ nhu cáº§u thuÃª, hai bÃªn sáº½ thá»a thuáº­n gia háº¡n tiáº¿p hoáº·c kÃ½ há»£p Ä‘á»“ng/phá»¥ lá»¥c má»›i.</p>
-            </div>
-
-            <div class="section">
-              <h4>ÄIá»€U 2. GIÃ THUÃŠ VÃ€ TIá»€N Cá»ŒC</h4>
-              <p>Ká»ƒ tá»« ngÃ y ${form.newStartDate.split('-').reverse().join('/')}, cÃ¡c khoáº£n tiá»n Ä‘Æ°á»£c Ã¡p dá»¥ng nhÆ° sau:</p>
-              <table>
-                <thead>
-                  <tr><th>Ná»™i dung</th><th>TrÆ°á»›c gia háº¡n</th><th>Sau gia háº¡n</th></tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>GiÃ¡ thuÃª phÃ²ng/thÃ¡ng</td>
-                    <td>${formatMoney(contract.rent)}</td>
-                    <td><b>${formatMoney(form.keepPricing ? contract.rent : form.newRent)}</b></td>
-                  </tr>
-                  <tr>
-                    <td>Tiá»n cá»c</td>
-                    <td>${formatMoney(contract.deposit)}</td>
-                    <td><b>${formatMoney(form.keepPricing ? contract.deposit : form.newDeposit)}</b></td>
-                  </tr>
-                </tbody>
-              </table>
-              <p>Tiá»n thuÃª phÃ²ng Ä‘Æ°á»£c thanh toÃ¡n theo chu ká»³ hÃ ng thÃ¡ng, vÃ o ngÃ y <b>${contract.paymentCycleDay || 5}</b> hÃ ng thÃ¡ng.</p>
-            </div>
-
-            <div class="section">
-              <h4>ÄIá»€U 3. ÄIá»†N, NÆ¯á»šC VÃ€ CÃC KHOáº¢N PHÃ Dá»ŠCH Vá»¤</h4>
-              <p>CÃ¡c khoáº£n Ä‘iá»‡n, nÆ°á»›c vÃ  phÃ­ dá»‹ch vá»¥ tiáº¿p tá»¥c Ä‘Æ°á»£c Ã¡p dá»¥ng theo há»£p Ä‘á»“ng thuÃª phÃ²ng Ä‘Ã£ kÃ½:</p>
-              <ul>
-                <li>ÄÆ¡n giÃ¡ Ä‘iá»‡n: <b>${room.electricPrice}Ä‘/kWh</b></li>
-                <li>ÄÆ¡n giÃ¡ nÆ°á»›c: <b>${formatMoney(room.waterPrice)}/mÂ³</b></li>
-                <li>PhÃ­ dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh: <b>${formatMoney((room.cleaning || 0) + (room.elevator || 0) + (room.laundry || 0) + (room.internet || 0))}</b></li>
-              </ul>
-            </div>
-
-            <div class="section">
-              <h4>ÄIá»€U 4. HIá»†U Lá»°C</h4>
-              <p>Phá»¥ lá»¥c nÃ y cÃ³ hiá»‡u lá»±c ká»ƒ tá»« ngÃ y ${form.signedDate.split('-').reverse().join('/')}. CÃ¡c ná»™i dung khÃ¡c khÃ´ng Ä‘Æ°á»£c sá»­a Ä‘á»•i trong phá»¥ lá»¥c nÃ y váº«n tiáº¿p tá»¥c thá»±c hiá»‡n theo Há»£p Ä‘á»“ng gá»‘c.</p>
-            </div>
-
-            <div class="grid">
-              <div>
-                <p><b>Äáº I DIá»†N BÃŠN A</b></p>
-                <div class="signature-space"></div>
-                <p><b>DIá»†M THá»Š BÃŒNH</b></p>
-              </div>
-              <div>
-                <p><b>Äáº I DIá»†N BÃŠN B</b></p>
-                <div class="signature-space"></div>
-                <p><b>${tenant.name}</b></p>
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    doc.close();
-    
-    iframe.contentWindow.focus();
-    setTimeout(() => {
-      iframe.contentWindow.print();
-      document.body.removeChild(iframe);
-    }, 500);
-  };
-
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '700px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2 style={{ fontSize: '24px' }}>Gia háº¡n há»£p Ä‘á»“ng â€¢ PhÃ²ng {contract.roomId}</h2>
-            <p className="muted">{tenant.name} â€¢ Háº¿t háº¡n hiá»‡n táº¡i: {currentEndDateText}</p>
-          </div>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-
-        <div className="detail-body-v2 stack" style={{ gap: '24px' }}>
-          {/* ThÃ´ng tin hiá»‡n táº¡i */}
-          <section className="op-card" style={{ background: '#f8fafc', borderStyle: 'dashed' }}>
-            <h3 className="op-card-title">ğŸ“Œ ThÃ´ng tin hiá»‡n táº¡i</h3>
-            <div className="op-grid">
-              <div className="op-item"><span className="op-label">NgÃ y báº¯t Ä‘áº§u</span><span className="op-value">{currentStartDateText}</span></div>
-              <div className="op-item"><span className="op-label">Háº¿t háº¡n hiá»‡n táº¡i</span><span className="op-value">{currentEndDateText}</span></div>
-              <div className="op-item"><span className="op-label">NgÃ y kÃ½ há»£p Ä‘á»“ng gá»‘c</span><span className="op-value">{currentSignedDateText}</span></div>
-              <div className="op-item"><span className="op-label">GiÃ¡ thuÃª</span><span className="op-value">{formatMoney(contract.rent)}</span></div>
-              <div className="op-item"><span className="op-label">Tiá»n cá»c</span><span className="op-value">{formatMoney(contract.deposit)}</span></div>
-            </div>
-            {(isInvalidContractDate(contract.signedDate) || !isValidBusinessDate(contract.startDate) || !hasValidCurrentEndDate) && (
-              <div className="warning-box" style={{ marginTop: '12px' }}>Há»£p Ä‘á»“ng thiáº¿u ngÃ y kÃ½ / ngÃ y báº¯t Ä‘áº§u / ngÃ y háº¿t háº¡n há»£p lá»‡. Vui lÃ²ng cáº­p nháº­t dá»¯ liá»‡u há»£p Ä‘á»“ng trÆ°á»›c khi gia háº¡n.</div>
-            )}
-          </section>
-
-          {/* Form gia háº¡n */}
-          <section className="stack" style={{ gap: '16px' }}>
-            <h3 className="form-section-title">âœï¸ Chi tiáº¿t gia háº¡n</h3>
-            <div className="form-grid-v2">
-              <label>NgÃ y kÃ½ phá»¥ lá»¥c <input type="date" value={form.signedDate} onChange={e => setForm({...form, signedDate: e.target.value})} /><span className="small muted">Chá»‰ dÃ¹ng cho phá»¥ lá»¥c gia háº¡n, khÃ´ng ghi Ä‘Ã¨ ngÃ y kÃ½ há»£p Ä‘á»“ng gá»‘c.</span></label>
-              <label>Báº¯t Ä‘áº§u gia háº¡n <input type="date" value={form.newStartDate} onChange={e => setForm({...form, newStartDate: e.target.value})} /></label>
-              <label style={{ gridColumn: 'span 2' }}>
-                NgÃ y háº¿t háº¡n má»›i
-                <input type="date" value={form.newEndDate} onChange={e => setForm({...form, newEndDate: e.target.value})} />
-                {!hasValidCurrentEndDate && <p className="danger small" style={{ marginTop: '4px' }}>âš  ChÆ°a cÃ³ ngÃ y háº¿t háº¡n cÅ© há»£p lá»‡. Vui lÃ²ng chá»n ngÃ y má»›i.</p>}
-                {hasValidCurrentEndDate && form.newEndDate <= contract.endDate && <p className="danger small" style={{ marginTop: '4px' }}>âš  NgÃ y háº¿t háº¡n má»›i pháº£i sau ngÃ y {currentEndDateText}</p>}
-              </label>
-            </div>
-
-            <div className="op-card">
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
-                <input type="checkbox" checked={form.keepPricing} onChange={e => setForm({...form, keepPricing: e.target.checked})} style={{ width: '18px', height: '18px' }} />
-                <b>Giá»¯ nguyÃªn giÃ¡ thuÃª vÃ  tiá»n cá»c</b>
-              </label>
-              
-              {!form.keepPricing && (
-                <div className="form-grid-v2" style={{ marginTop: '12px' }}>
-                  <label>
-                    GiÃ¡ thuÃª má»›i
-                    <input type="number" value={form.newRent} onChange={e => setForm({...form, newRent: e.target.value})} />
-                    {rentChanged && <span className="status-badge-liquid notice" style={{ fontSize: '10px' }}>Thay Ä‘á»•i giÃ¡</span>}
-                  </label>
-                  <label>
-                    Tiá»n cá»c má»›i
-                    <input type="number" value={form.newDeposit} onChange={e => setForm({...form, newDeposit: e.target.value})} />
-                    {depositChanged && <span className="status-badge-liquid notice" style={{ fontSize: '10px' }}>Thay Ä‘á»•i cá»c</span>}
-                  </label>
-                </div>
-              )}
-              {(rentDelta !== 0 || depositDelta !== 0) && (
-                <div className="warning-box" style={{ marginTop: '12px' }}>
-                  <b>Chá»©ng tá»« sáº½ tá»± Ä‘á»™ng táº¡o sau khi gia háº¡n:</b>
-                  <div className="stack" style={{ gap: '4px', marginTop: '8px' }}>
-                    {(Math.max(0, rentDelta) + Math.max(0, depositDelta)) > 0 && <span>â€¢ Phiáº¿u thu: {formatMoney(Math.max(0, rentDelta) + Math.max(0, depositDelta))}</span>}
-                    {(Math.max(0, -rentDelta) + Math.max(0, -depositDelta)) > 0 && <span>â€¢ Phiáº¿u chi hoÃ n khÃ¡ch: {formatMoney(Math.max(0, -rentDelta) + Math.max(0, -depositDelta))}</span>}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <label>
-              Ghi chÃº phá»¥ lá»¥c gia háº¡n
-              <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="VÃ­ dá»¥: Æ¯u Ä‘Ã£i giáº£m giÃ¡ 3 thÃ¡ng Ä‘áº§u, cam káº¿t khÃ´ng tÄƒng giÃ¡ trong 2 nÄƒm..." style={{ minHeight: '80px' }} />
-            </label>
-          </section>
-
-          <div className="btn-group">
-            <button className="secondary-btn" onClick={onClose}>Há»§y</button>
-            <button className="secondary-btn" onClick={() => setShowAppendix(!showAppendix)} disabled={!isValid}>
-              {!isValid ? 'ChÆ°a cÃ³ phá»¥ lá»¥c' : showAppendix ? 'áº¨n phá»¥ lá»¥c' : 'Xem phá»¥ lá»¥c'}
-            </button>
-            <button className="primary-btn" onClick={() => onSave(form)} disabled={!isValid} style={{ flex: 2 }}>
-              ğŸš€ Gia háº¡n há»£p Ä‘á»“ng
-            </button>
-          </div>
-
-          {showAppendix && (
-            <div className="appendix-preview-scroll" style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <h3 className="form-section-title" style={{ margin: 0 }}>ğŸ“„ Xem trÆ°á»›c phá»¥ lá»¥c (A4)</h3>
-                <button className="secondary-btn sm" onClick={() => printDocumentElement(draftAppendixPrintId, `Phá»¥ lá»¥c gia háº¡n P${contract.roomId}`)}>ğŸ–¨ï¸ In phá»¥ lá»¥c nÃ y</button>
-              </div>
-              <div className="appendix-container-scroll" style={{ maxHeight: '500px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '12px' }}>
-                <div className="appendix-paper-a4" style={{ transform: 'scale(0.8)', transformOrigin: 'top center', margin: '0 auto', marginBottom: '-150px' }}>
-                   <AppendixContent contract={contract} tenant={tenant} form={form} room={room} printId={draftAppendixPrintId} />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function printAppendixFromElement(elementId, title = 'Phá»¥ lá»¥c gia háº¡n') {
-  printDocumentElement(elementId, title);
-}
-
-function RenewalAppendixPreviewModal({ contract, form, data, onClose }) {
-  const room = data.rooms.find(r => r.id === contract.roomId) || {};
-  const tenant = getPrimaryTenantByContract(data, contract.id) || { name: 'N/A', phone: 'N/A' };
-  const printId = 'saved-renewal-appendix';
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '900px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2 style={{ fontSize: '24px' }}>Phá»¥ lá»¥c gia háº¡n â€¢ PhÃ²ng {contract.roomId}</h2>
-            <p className="muted">NgÃ y kÃ½ phá»¥ lá»¥c: {formatDisplayDate(form.signedDate)} â€¢ Háº¿t háº¡n má»›i: {formatDisplayDate(form.newEndDate)}</p>
-          </div>
-          <div className="btn-group">
-            <button className="primary-btn" onClick={() => printAppendixFromElement(printId, `Phá»¥ lá»¥c gia háº¡n P${contract.roomId}`)}>ğŸ–¨ï¸ In phá»¥ lá»¥c</button>
-            <button className="secondary-btn" onClick={onClose}>ÄÃ³ng</button>
-          </div>
-        </div>
-        <div className="detail-body-v2">
-          <div className="appendix-container-scroll" style={{ maxHeight: '70vh', overflowY: 'auto', background: 'rgba(0,0,0,0.06)', padding: '20px', borderRadius: '12px' }}>
-            <div className="appendix-paper-a4" style={{ transform: 'scale(0.86)', transformOrigin: 'top center', margin: '0 auto', marginBottom: '-100px' }}>
-              <AppendixContent contract={contract} tenant={tenant} form={form} room={room} printId={printId} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AppendixContent({ contract, tenant, form, room, printId }) {
-  return (
-    <div id={printId} className="appendix-content-v1" style={{
-      width: '210mm', 
-      minHeight: '297mm', 
-      padding: '20mm 25mm', 
-      background: 'white', 
-      color: 'black', 
-      fontFamily: '"Times New Roman", Times, serif',
-      lineHeight: '1.5',
-      boxSizing: 'border-box',
-      textAlign: 'left'
-    }}>
-      <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 'bold', margin: 0 }}>Cá»˜NG HÃ’A XÃƒ Há»˜I CHá»¦ NGHÄ¨A VIá»†T NAM</h2>
-        <h3 style={{ fontSize: '14px', margin: '5px 0', textTransform: 'none' }}>Äá»™c láº­p â€“ Tá»± do â€“ Háº¡nh phÃºc</h3>
-        <div style={{ width: '150px', borderTop: '1px solid black', margin: '10px auto' }}></div>
-      </div>
-
-      <h1 style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '10px' }}>PHá»¤ Lá»¤C GIA Háº N Há»¢P Äá»’NG THUÃŠ PHÃ’NG</h1>
-      <p style={{ textAlign: 'center', fontSize: '13px', margin: '2px 0' }}>Sá»‘ phá»¥ lá»¥c: PL-{contract.contractNo || contract.id}-${form.signedDate.split('-').reverse().join('')}</p>
-      <p style={{ textAlign: 'center', fontSize: '13px', marginBottom: '30px' }}>KÃ¨m theo Há»£p Ä‘á»“ng thuÃª phÃ²ng sá»‘: {contract.contractNo || contract.id}</p>
-
-      <div className="appendix-section">
-        <p>HÃ´m nay, ngÃ y {form.signedDate.split('-').reverse().join('/')}, táº¡i HÃ  Ná»™i, chÃºng tÃ´i gá»“m:</p>
-        
-        <h4 style={{ fontWeight: 'bold', textDecoration: 'underline', marginTop: '15px', marginBottom: '5px' }}>BÃŠN CHO THUÃŠ â€” BÃŠN A</h4>
-        <p>BÃ : <b>DIá»†M THá»Š BÃŒNH</b></p>
-        <p>Sá»‘ Ä‘iá»‡n thoáº¡i: <b>0123.456.789</b></p>
-        <p>Äá»‹a chá»‰: <b>Sá»‘ 28, ngÃ¡ch 1, ngÃµ 162 KhÆ°Æ¡ng ÄÃ¬nh, Thanh XuÃ¢n, HÃ  Ná»™i</b></p>
-        <p>Sá»‘ tÃ i khoáº£n nháº­n tiá»n: <b>8847214661</b> - NgÃ¢n hÃ ng: <b>BIDV</b></p>
-
-        <h4 style={{ fontWeight: 'bold', textDecoration: 'underline', marginTop: '15px', marginBottom: '5px' }}>BÃŠN THUÃŠ â€” BÃŠN B</h4>
-        <p>Ã”ng/BÃ : <b>{tenant.name}</b></p>
-        <p>Sá»‘ Ä‘iá»‡n thoáº¡i: <b>{tenant.phone}</b></p>
-        <p>CCCD/CMND: <b>{tenant.cccd || '................'}</b></p>
-        <p>Äang thuÃª phÃ²ng: <b>{contract.roomId}</b></p>
-
-        <p style={{ marginTop: '15px' }}>Hai bÃªn thá»‘ng nháº¥t kÃ½ phá»¥ lá»¥c nÃ y Ä‘á»ƒ gia háº¡n thá»i háº¡n thuÃª phÃ²ng theo cÃ¡c ná»™i dung sau:</p>
-      </div>
-
-      <div className="appendix-section" style={{ marginTop: '20px' }}>
-        <h4 style={{ fontWeight: 'bold' }}>ÄIá»€U 1. GIA Háº N THá»œI Háº N THUÃŠ</h4>
-        <p>Hai bÃªn thá»‘ng nháº¥t gia háº¡n thá»i háº¡n thuÃª phÃ²ng {contract.roomId} nhÆ° sau:</p>
-        <ul style={{ paddingLeft: '25px', margin: '10px 0' }}>
-          <li>NgÃ y báº¯t Ä‘áº§u gia háº¡n: <b>{form.newStartDate.split('-').reverse().join('/')}</b></li>
-          <li>NgÃ y háº¿t háº¡n cÅ©: <b>{formatBusinessDate(contract.endDate)}</b></li>
-          <li>NgÃ y háº¿t háº¡n má»›i: <b>{form.newEndDate.split('-').reverse().join('/')}</b></li>
-        </ul>
-        <p>Sau thá»i háº¡n trÃªn, náº¿u BÃªn B tiáº¿p tá»¥c cÃ³ nhu cáº§u thuÃª, hai bÃªn sáº½ thá»a thuáº­n gia háº¡n tiáº¿p hoáº·c kÃ½ há»£p Ä‘á»“ng/phá»¥ lá»¥c má»›i.</p>
-      </div>
-
-      <div className="appendix-section" style={{ marginTop: '20px' }}>
-        <h4 style={{ fontWeight: 'bold' }}>ÄIá»€U 2. GIÃ THUÃŠ VÃ€ TIá»€N Cá»ŒC</h4>
-        <p>Ká»ƒ tá»« ngÃ y {form.newStartDate.split('-').reverse().join('/')}, cÃ¡c khoáº£n tiá»n Ä‘Æ°á»£c Ã¡p dá»¥ng nhÆ° sau:</p>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
-          <thead>
-            <tr>
-              <th style={{ border: '1px solid black', padding: '8px', textAlign: 'left' }}>Ná»™i dung</th>
-              <th style={{ border: '1px solid black', padding: '8px', textAlign: 'left' }}>TrÆ°á»›c gia háº¡n</th>
-              <th style={{ border: '1px solid black', padding: '8px', textAlign: 'left' }}>Sau gia háº¡n</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={{ border: '1px solid black', padding: '8px' }}>GiÃ¡ thuÃª phÃ²ng/thÃ¡ng</td>
-              <td style={{ border: '1px solid black', padding: '8px' }}>{formatMoney(contract.rent)}</td>
-              <td style={{ border: '1px solid black', padding: '8px' }}><b>{formatMoney(form.keepPricing ? contract.rent : form.newRent)}</b></td>
-            </tr>
-            <tr>
-              <td style={{ border: '1px solid black', padding: '8px' }}>Tiá»n cá»c</td>
-              <td style={{ border: '1px solid black', padding: '8px' }}>{formatMoney(contract.deposit)}</td>
-              <td style={{ border: '1px solid black', padding: '8px' }}><b>{formatMoney(form.keepPricing ? contract.deposit : form.newDeposit)}</b></td>
-            </tr>
-          </tbody>
-        </table>
-        <p style={{ marginTop: '10px' }}>Tiá»n thuÃª phÃ²ng Ä‘Æ°á»£c thanh toÃ¡n theo chu ká»³ hÃ ng thÃ¡ng, vÃ o ngÃ y <b>{contract.paymentCycleDay || 5}</b> hÃ ng thÃ¡ng.</p>
-      </div>
-
-      <div className="appendix-section" style={{ marginTop: '20px' }}>
-        <h4 style={{ fontWeight: 'bold' }}>ÄIá»€U 3. ÄIá»†N, NÆ¯á»šC VÃ€ CÃC KHOáº¢N PHÃ Dá»ŠCH Vá»¤</h4>
-        <p>CÃ¡c khoáº£n Ä‘iá»‡n, nÆ°á»›c vÃ  phÃ­ dá»‹ch vá»¥ tiáº¿p tá»¥c Ä‘Æ°á»£c Ã¡p dá»¥ng theo há»£p Ä‘á»“ng thuÃª phÃ²ng Ä‘Ã£ kÃ½:</p>
-        <ul style={{ paddingLeft: '25px', margin: '10px 0' }}>
-          <li>ÄÆ¡n giÃ¡ Ä‘iá»‡n: <b>{room.electricPrice}Ä‘/kWh</b></li>
-          <li>ÄÆ¡n giÃ¡ nÆ°á»›c: <b>{formatMoney(room.waterPrice)}/mÂ³</b></li>
-          <li>PhÃ­ dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh: <b>{formatMoney((room.cleaning || 0) + (room.elevator || 0) + (room.laundry || 0) + (room.internet || 0))}</b></li>
-        </ul>
-      </div>
-
-      <div className="appendix-section" style={{ marginTop: '20px' }}>
-        <h4 style={{ fontWeight: 'bold' }}>ÄIá»€U 4. HIá»†U Lá»°C</h4>
-        <p>Phá»¥ lá»¥c nÃ y cÃ³ hiá»‡u lá»±c ká»ƒ tá»« ngÃ y {form.signedDate.split('-').reverse().join('/')}. CÃ¡c ná»™i dung khÃ¡c khÃ´ng Ä‘Æ°á»£c sá»­a Ä‘á»•i trong phá»¥ lá»¥c nÃ y váº«n tiáº¿p tá»¥c thá»±c hiá»‡n theo Há»£p Ä‘á»“ng gá»‘c.</p>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', marginTop: '40px', textAlign: 'center' }}>
-        <div>
-          <p><b>Äáº I DIá»†N BÃŠN A</b></p>
-          <div style={{ height: '70px' }}></div>
-          <p><b>DIá»†M THá»Š BÃŒNH</b></p>
-        </div>
-        <div>
-          <p><b>Äáº I DIá»†N BÃŠN B</b></p>
-          <div style={{ height: '70px' }}></div>
-          <p><b>{tenant.name}</b></p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TenantDetailModal({ tenant, data, onClose }) {
-  const memberships = (data.memberships || []).filter(m => m.tenantId === tenant.id).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  const activeMembership = memberships.find(m => m.status === 'active') || memberships[0];
-  const contract = activeMembership ? (data.contracts || []).find(c => c.id === activeMembership.contractId) : null;
-  const room = activeMembership ? (data.rooms || []).find(r => r.id === activeMembership.roomId) : null;
-  const receipts = contract ? (data.receipts || []).filter(r => r.contractId === contract.id).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : [];
-  const currentReceipt = receipts.find(r => r.month === getCurrentMonthLabel() && r.type === 'monthly');
-  const debt = currentReceipt ? getReceiptPaymentState(currentReceipt).debt : 0;
-  const timeline = [
-    { date: tenant.createdAt, title: 'Táº¡o khÃ¡ch', detail: tenant.name },
-    ...memberships.map(m => ({ date: m.joinedDate || m.createdAt, title: 'VÃ o á»Ÿ', detail: `P${m.roomId} - ${m.role === 'primary' ? 'Äáº¡i diá»‡n' : 'á» cÃ¹ng'}` })),
-    ...(contract ? [{ date: contract.signedDate || contract.createdAt, title: 'KÃ½ há»£p Ä‘á»“ng', detail: `${formatBusinessDate(contract.startDate)} â†’ ${formatBusinessDate(contract.endDate)}` }] : []),
-    ...receipts.filter(r => Number(r.paidAmount || 0) > 0).map(r => ({ date: r.paidDate || r.createdAt, title: `Thanh toÃ¡n ${r.month}`, detail: formatMoney(r.paidAmount || 0) })),
-    ...(memberships.filter(m => m.leftDate).map(m => ({ date: m.leftDate, title: 'Rá»i phÃ²ng', detail: `P${m.roomId}` })))
-  ].filter(i => i.date).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '820px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2 style={{ fontSize: '26px' }}>{tenant.name}</h2>
-            <p className="muted">{tenant.phone || 'ChÆ°a cÃ³ SÄT'} â€¢ CCCD {tenant.cccd || 'ChÆ°a cáº­p nháº­t'}</p>
-          </div>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack" style={{ gap: '16px' }}>
-          <div className="tenant-detail-grid">
-            <div className="op-card">
-              <h3 className="op-card-title">CÆ° trÃº</h3>
-              <p className="op-value">P{activeMembership?.roomId || 'â€”'}</p>
-              <p className="op-label">{activeMembership?.status === 'active' ? 'Äang á»Ÿ' : 'ÄÃ£ rá»i'} â€¢ {activeMembership?.role === 'primary' ? 'Äáº¡i diá»‡n' : 'á» cÃ¹ng'}</p>
-            </div>
-            <div className="op-card">
-              <h3 className="op-card-title">Há»£p Ä‘á»“ng</h3>
-              <p className="op-value">{contract ? `${formatBusinessDate(contract.startDate)} â†’ ${formatBusinessDate(contract.endDate)}` : isOwnerOccupiedRoom(room) ? 'Chá»§ nhÃ  á»Ÿ' : 'ChÆ°a cÃ³'}</p>
-              <p className="op-label">{contract ? calculateRentalDuration(contract.startDate, contract.endDate) : 'KhÃ´ng Ã¡p dá»¥ng'}</p>
-            </div>
-            <div className="op-card">
-              <h3 className="op-card-title">Thanh toÃ¡n</h3>
-              <p className="op-value" style={{ color: debt > 0 ? 'var(--danger)' : 'var(--success)' }}>{debt > 0 ? formatMoney(debt) : 'KhÃ´ng ná»£'}</p>
-              <p className="op-label">{currentReceipt ? `Phiáº¿u ${currentReceipt.month}` : 'ChÆ°a cÃ³ phiáº¿u thÃ¡ng nÃ y'}</p>
-            </div>
-            <div className="op-card">
-              <h3 className="op-card-title">Ra vÃ o</h3>
-              <p className="op-value">{tenant.licensePlate || 'ChÆ°a cÃ³ biá»ƒn sá»‘'}</p>
-              <p className="op-label">VÃ¢n tay: {tenant.fingerprintCode || 'ChÆ°a Ä‘Äƒng kÃ½'} â€¢ {tenant.fingerprintStatus || 'ChÆ°a Ä‘Äƒng kÃ½'}</p>
-            </div>
-          </div>
-          <div className="op-card">
-            <h3 className="op-card-title">Timeline</h3>
-            {timeline.map((item, idx) => (
-              <div key={`${item.title}-${idx}`} className="tenant-timeline-row">
-                <span>{formatDisplayDate(String(item.date || '').slice(0, 10))}</span>
-                <b>{item.title}</b>
-                <em>{item.detail}</em>
-              </div>
-            ))}
-            {!timeline.length && <p className="muted small">ChÆ°a cÃ³ lá»‹ch sá»­ hoáº¡t Ä‘á»™ng.</p>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EditTenantModal({ tenant, onClose, onSave }) {
-  const [form, setForm] = useState({ ...tenant });
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Sá»­a ngÆ°á»i thuÃª: {tenant.name}</h2>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2">
-          <div className="form-grid-v2">
-            <label style={{ gridColumn: 'span 2' }}>Há» tÃªn <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></label>
-            <label>SÄT <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></label>
-            <label>CCCD <input value={form.cccd} onChange={e => setForm({...form, cccd: e.target.value})} /></label>
-            <label>Biá»ƒn sá»‘ xe <input value={form.licensePlate || form.vehicle || ''} onChange={e => setForm({...form, licensePlate: e.target.value})} /></label>
-            <label>MÃ£ vÃ¢n tay <input value={form.fingerprintCode || ''} onChange={e => setForm({...form, fingerprintCode: e.target.value})} placeholder="VD: F502-01" /></label>
-            <label>Tráº¡ng thÃ¡i vÃ¢n tay
-              <select value={form.fingerprintStatus || 'ChÆ°a Ä‘Äƒng kÃ½'} onChange={e => setForm({...form, fingerprintStatus: e.target.value})}>
-                <option>ChÆ°a Ä‘Äƒng kÃ½</option>
-                <option>ÄÃ£ Ä‘Äƒng kÃ½</option>
-                <option>Cáº§n xÃ³a</option>
-                <option>ÄÃ£ xÃ³a</option>
-              </select>
-            </label>
-            <label>Vai trÃ² 
-              <select value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
-                <option value="primary">NgÆ°á»i Ä‘á»©ng tÃªn</option>
-                <option value="secondary">NgÆ°á»i á»Ÿ cÃ¹ng</option>
-              </select>
-            </label>
-            <label style={{ gridColumn: 'span 2' }}>Äá»‹a chá»‰ <input value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} /></label>
-            <label style={{ gridColumn: 'span 2' }}>Ghi chÃº <textarea value={form.note || ''} onChange={e => setForm({...form, note: e.target.value})} /></label>
-          </div>
-          <button className="primary-btn wide" style={{ marginTop: '24px' }} onClick={() => onSave(form)}>LÆ°u thay Ä‘á»•i</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RoommateModal({ room, contract, onClose, onSave }) {
-  const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({
-    name: '',
-    phone: '',
-    cccd: '',
-    cccdDate: '',
-    cccdPlace: '',
-    birthday: '',
-    address: '',
-    licensePlate: '',
-    fingerprintCode: '',
-    fingerprintStatus: 'ChÆ°a Ä‘Äƒng kÃ½',
-    joinedDate: new Date().toISOString().slice(0, 10),
-    note: '',
-    idPaste: ''
-  });
-
-  const applyPastedIdInfo = (text) => {
-    const parsed = parseVietnameseIdCard(text);
-
-    setForm(prev => ({
-      ...prev,
-      idPaste: text,
-      cccd: parsed.cccd || prev.cccd,
-      name: parsed.name || prev.name,
-      birthday: parsed.birthday || prev.birthday,
-      address: parsed.address || prev.address,
-      cccdDate: parsed.issueDate || prev.cccdDate,
-      cccdPlace: parsed.issuePlace || prev.cccdPlace,
-      note: parsed.note || prev.note
-    }));
-  };
-
-  const handleSave = () => {
-    if (isSaving) return;
-    if (!form.name.trim()) {
-      alert('Vui lÃ²ng nháº­p há» tÃªn ngÆ°á»i á»Ÿ cÃ¹ng.');
-      return;
-    }
-    if (!form.joinedDate) {
-      alert('Vui lÃ²ng nháº­p ngÃ y vÃ o á»Ÿ.');
-      return;
-    }
-    setIsSaving(true);
-    const tenantId = uid('tenant');
-    const membershipId = uid('membership');
-    const tenant = {
-      id: tenantId,
-      name: form.name.trim(),
-      phone: form.phone,
-      cccd: form.cccd,
-      cccdDate: form.cccdDate,
-      cccdPlace: form.cccdPlace,
-      birthday: form.birthday,
-      address: form.address,
-      licensePlate: form.licensePlate,
-      fingerprintCode: form.fingerprintCode,
-      fingerprintStatus: form.fingerprintStatus,
-      role: 'member',
-      status: 'active',
-      note: form.note,
-      createdAt: new Date().toISOString()
-    };
-    const membership = {
-      id: membershipId,
-      contractId: contract.id,
-      tenantId,
-      roomId: room.id,
-      role: 'member',
-      status: 'active',
-      joinedDate: form.joinedDate,
-      leftDate: '',
-      createdAt: new Date().toISOString()
-    };
-    try {
-      const saved = onSave({ tenant, membership });
-      if (saved === false) {
-        setIsSaving(false);
-      }
-    } catch (error) {
-      console.error(error);
-      setIsSaving(false);
-      alert('KhÃ´ng lÆ°u Ä‘Æ°á»£c ngÆ°á»i á»Ÿ cÃ¹ng. Vui lÃ²ng thá»­ láº¡i.');
-    }
-  };
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>ThÃªm ngÆ°á»i á»Ÿ cÃ¹ng â€¢ PhÃ²ng {room.id}</h2>
-            <p className="muted">Gáº¯n ngÆ°á»i á»Ÿ cÃ¹ng vÃ o há»£p Ä‘á»“ng {contract.contractNo || contract.id}</p>
-          </div>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack">
-          <div className="paste-id-card">
-            <label>DÃ¡n nhanh thÃ´ng tin CCCD
-              <textarea
-                value={form.idPaste}
-                onChange={e => applyPastedIdInfo(e.target.value)}
-                placeholder="DÃ¡n nguyÃªn ná»™i dung CCCD á»Ÿ Ä‘Ã¢y, há»‡ thá»‘ng tá»± Ä‘iá»n: há» tÃªn, sá»‘ CCCD, ngÃ y sinh, thÆ°á»ng trÃº, ngÃ y cáº¥p..."
-              />
-            </label>
-          </div>
-          <div className="rental-subsection-title">CCCD máº·t trÆ°á»›c</div>
-          <div className="form-grid-v2">
-            <label style={{ gridColumn: 'span 2' }}>Há» vÃ  tÃªn <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Nguyá»…n VÄƒn A" /></label>
-            <label>Sá»‘ CCCD <input value={form.cccd} onChange={e => setForm({...form, cccd: e.target.value})} /></label>
-            <label>NgÃ y sinh <input type="date" value={form.birthday} onChange={e => setForm({...form, birthday: e.target.value})} /></label>
-            <label style={{ gridColumn: 'span 2' }}>Äá»‹a chá»‰ thÆ°á»ng trÃº <input value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></label>
-          </div>
-          <div className="rental-subsection-title">CCCD máº·t sau</div>
-          <div className="form-grid-v2">
-            <label>NgÃ y cáº¥p CCCD <input type="date" value={form.cccdDate} onChange={e => setForm({...form, cccdDate: e.target.value})} /></label>
-            <label>NÆ¡i cáº¥p <input value={form.cccdPlace} onChange={e => setForm({...form, cccdPlace: e.target.value})} /></label>
-            <label style={{ gridColumn: 'span 2' }}>Ghi chÃº CCCD / MRZ <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="Giá»›i tÃ­nh, quá»‘c tá»‹ch, quÃª quÃ¡n, háº¡n CCCD, Ä‘áº·c Ä‘iá»ƒm nháº­n dáº¡ng, MRZ..." /></label>
-          </div>
-          <div className="rental-subsection-title">LiÃªn há»‡ & quáº£n lÃ½ ra vÃ o</div>
-          <div className="form-grid-v2">
-            <label>Sá»‘ Ä‘iá»‡n thoáº¡i <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="09xx..." /></label>
-            <label>NgÃ y vÃ o á»Ÿ <input type="date" value={form.joinedDate} onChange={e => setForm({...form, joinedDate: e.target.value})} /></label>
-            <label>Biá»ƒn sá»‘ xe <input value={form.licensePlate} onChange={e => setForm({...form, licensePlate: e.target.value})} /></label>
-            <label>MÃ£ vÃ¢n tay <input value={form.fingerprintCode} onChange={e => setForm({...form, fingerprintCode: e.target.value})} placeholder="VD: F502-02" /></label>
-            <label>Tráº¡ng thÃ¡i vÃ¢n tay
-              <select value={form.fingerprintStatus} onChange={e => setForm({...form, fingerprintStatus: e.target.value})}>
-                <option>ChÆ°a Ä‘Äƒng kÃ½</option>
-                <option>ÄÃ£ Ä‘Äƒng kÃ½</option>
-                <option>Cáº§n xÃ³a</option>
-                <option>ÄÃ£ xÃ³a</option>
-              </select>
-            </label>
-          </div>
-          <div className="op-action-footer">
-            <button className="secondary-btn" onClick={onClose}>Há»§y</button>
-            <button className="primary-btn" onClick={handleSave} disabled={isSaving}>{isSaving ? 'Äang lÆ°u...' : '+ ThÃªm ngÆ°á»i á»Ÿ cÃ¹ng'}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReceiptModal({ receipt, room, data, bankInfo, onClose, onPrev, onNext }) {
-  if (!receipt || !room) return null;
-  const enrichedReceipt = enrichReceiptWithTransferUtility(receipt, data);
-  const paymentState = getReceiptPaymentState(enrichedReceipt);
-  const displayReceipt = {
-    ...enrichedReceipt,
-    debt: paymentState.debt,
-    status: paymentState.status
-  };
-  const isMonthly = receipt.type === 'monthly';
-  const contract = (data.contracts || []).find(c => c.id === displayReceipt.contractId);
-  const tenant = getTenantForReceipt(data, displayReceipt) || { name: 'â€”', phone: 'â€”' };
-  const settlementReport = !isMonthly
-    ? (data.moveOutReports || []).find(report => report.contractId === displayReceipt.contractId && report.roomId === displayReceipt.roomId)
-    : null;
-
-  function handlePrintReceipt() {
-    const content = document.getElementById('printable-receipt');
-    if (!content) return;
-    
-    // Create iframe
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-    
-    const doc = iframe.contentWindow.document;
-    
-    // Copy all styles
-    const styles = document.querySelectorAll('link[rel="stylesheet"], style');
-    doc.write('<html><head><title>In phiáº¿u thu</title>');
-    styles.forEach(s => doc.write(s.outerHTML));
-    
-    // Add A5 specific style for iframe
-    doc.write(`
-      <style>
-        body { margin: 0; padding: 0; background: white; font-family: 'Inter', 'Be Vietnam Pro', sans-serif; }
-        .printable-receipt { 
-          width: 148mm !important; 
-          margin: 0 !important;
-          padding: 2mm 4mm !important; /* Extremely tight padding */
-          box-shadow: none !important;
-          border: none !important;
-          font-size: 12px; /* Smaller base font */
-        }
-        @page { size: A5 portrait; margin: 0; }
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        
-        /* Maximum Compression */
-        .receipt-header-v4 { margin-bottom: 4px !important; }
-        .receipt-header-v4 .brand { font-size: 14px !important; margin: 0 !important; }
-        .receipt-header-v4 .sub { display: none !important; } /* Hide slogan to save space */
-        .receipt-header-v4 h1 { font-size: 18px !important; margin: 0 !important; }
-        .paid-stamp-v4 { top: 20mm !important; right: 8mm !important; padding: 6px 12px !important; border-width: 3px !important; border-radius: 10px !important; }
-        .paid-stamp-v4 span { font-size: 14px !important; }
-        .paid-stamp-v4 small { font-size: 9px !important; }
-        
-        .info-bar-v4 { gap: 4px !important; padding: 4px 10px !important; margin-bottom: 8px !important; border-radius: 8px !important; }
-        .info-bar-v4 .value { font-size: 13px !important; }
-        
-        .receipt-body-v4 { gap: 10px !important; grid-template-columns: 1fr 260px !important; }
-        .receipt-items-section h3 { margin-bottom: 8px !important; padding-bottom: 4px !important; }
-        .charge-row-v4 { padding: 4px 0 !important; }
-        .charge-row-v4 .name { font-size: 13px !important; }
-        .charge-row-v4 .amount { font-size: 14px !important; }
-        
-        .payment-card-v4 { padding: 10px !important; gap: 8px !important; border-radius: 12px !important; }
-        .qr-box-v4 { padding: 8px !important; gap: 4px !important; }
-        .qr-box-v4 img { width: 170px !important; height: 170px !important; padding: 6px !important; image-rendering: crisp-edges !important; }
-        .qr-box-v4 p { font-size: 9px !important; }
-        
-        .total-summary-v4 { padding: 10px !important; margin-top: 4px !important; border-radius: 10px !important; }
-        .total-summary-v4 .total-amount { font-size: 18px !important; }
-        
-        .signatures-v4 { margin-top: 10px !important; margin-bottom: 10px !important; gap: 10px !important; }
-        .signature-space-v4 { height: 30px !important; }
-        .signature-box h4 { font-size: 12px !important; }
-        
-        .thank-you-v4 { padding-top: 10px !important; margin-top: 10px !important; font-size: 10px !important; }
-        .tenant-info-v4 { padding: 8px !important; margin-top: 8px !important; font-size: 11px !important; }
-      </style>
-    `);
-    
-    doc.write('</head><body>');
-    doc.write(content.outerHTML);
-    doc.write('</body></html>');
-    doc.close();
-    
-    iframe.contentWindow.focus();
-    setTimeout(() => {
-      iframe.contentWindow.print();
-      document.body.removeChild(iframe);
-    }, 500);
-  }
-
-  const handleCopyTransfer = () => {
-    navigator.clipboard.writeText(transferContent(displayReceipt));
-    alert('ÄÃ£ copy ná»™i dung chuyá»ƒn khoáº£n!');
-  };
-
-  return (
-    <div className="modal no-print-backdrop" onClick={onClose}>
-      <div className="receipt-modal-v3 liquid-glass" onClick={e => e.stopPropagation()}>
-        <div className="modal-header no-print" style={{ padding: '10px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button className="secondary-btn" onClick={onPrev} disabled={!onPrev} style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0 }}>â†</button>
-              <button className="secondary-btn" onClick={onNext} disabled={!onNext} style={{ borderRadius: '50%', width: '32px', height: '32px', padding: 0 }}>â†’</button>
-            </div>
-            <div>
-              <h2 style={{ fontSize: '18px', margin: 0 }}>Phiáº¿u thu {getTransferRoomLabel(displayReceipt)}</h2>
-              <p className="muted small">ThÃ¡ng {displayReceipt.month}</p>
-            </div>
-          </div>
-          <button className="secondary-btn" onClick={onClose} style={{ borderRadius: '50%', width: '36px', height: '36px', padding: 0 }}>âœ•</button>
-        </div>
-
-        <div className="modal-body-v3 scrollable">
-          <PrintableReceipt 
-            receipt={displayReceipt}
-            room={room} 
-            tenant={tenant} 
-            contract={contract}
-            bankInfo={bankInfo} 
-            settlementReport={settlementReport}
-          />
-        </div>
-
-        <div className="modal-footer-v3 no-print" style={{ padding: '10px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button className="secondary-btn" onClick={handleCopyTransfer}>ğŸ“‹ Copy ná»™i dung CK</button>
-          <button className="primary-btn" onClick={handlePrintReceipt}>ğŸ–¨ï¸ In phiáº¿u thu</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SettlementReceiptBreakdown({ report, receipt, room, table = false }) {
-  const roomChargeDays = Number(report?.roomChargeDays || 0);
-  const reportEndDate = report?.actualEndDate ? new Date(report.actualEndDate) : null;
-  const inferredMonthDays = reportEndDate && !Number.isNaN(reportEndDate.getTime())
-    ? new Date(reportEndDate.getFullYear(), reportEndDate.getMonth() + 1, 0).getDate()
-    : 30;
-  const billingMonthDays = Number(report?.billingMonthDays || inferredMonthDays);
-  const monthlyRent = Number(report?.monthlyRent ?? room?.rent ?? 0);
-  const monthlyServices = Number(report?.monthlyFixedServices ?? 0);
-  const proratedRent = Number(report?.proratedRent ?? receipt?.rent ?? 0);
-  const proratedServices = Number(report?.proratedFixedServices ?? receipt?.fixedServices ?? 0);
-  const rentDetails = roomChargeDays
-    ? `${formatMoney(monthlyRent)} / ${billingMonthDays} ngÃ y Ã— ${roomChargeDays} ngÃ y`
-    : (monthlyRent ? `Tiá»n phÃ²ng thÃ¡ng: ${formatMoney(monthlyRent)}` : '');
-  const serviceDetails = roomChargeDays && monthlyServices
-    ? `${formatMoney(monthlyServices)} / ${billingMonthDays} ngÃ y Ã— ${roomChargeDays} ngÃ y`
-    : '';
-  const rowData = report ? [
-    ['Tiá»n phÃ²ng phÃ¡t sinh', proratedRent, rentDetails],
-    ['Dá»‹ch vá»¥ phÃ¡t sinh', proratedServices, serviceDetails],
-    ...(report.settlementMode === 'prepaid_month_refund_deposit' ? [
-      ['Tiá»n phÃ²ng Ä‘Ã£ thu thÃ¡ng nÃ y', report.prepaidRentPaid, ''],
-      ['Dá»‹ch vá»¥ Ä‘Ã£ thu thÃ¡ng nÃ y', report.prepaidFixedServicesPaid, ''],
-      ['HoÃ n tiá»n phÃ²ng chÆ°a sá»­ dá»¥ng', report.prepaidUnusedRentRefund, ''],
-      ['HoÃ n dá»‹ch vá»¥ chÆ°a sá»­ dá»¥ng', report.prepaidUnusedServicesRefund, ''],
-    ] : []),
-    ['Tiá»n Ä‘iá»‡n', report.electricAmount, `${report.electricOld ?? 0} â†’ ${report.electricNew ?? 0} (${report.electricUsed ?? 0} kWh)`],
-    ['Tiá»n nÆ°á»›c', report.waterAmount, `${report.waterOld ?? 0} â†’ ${report.waterNew ?? 0} (${report.waterUsed ?? 0} mÂ³)`],
-    ['Tiá»n phÃ²ng / cÃ´ng ná»£ khÃ¡c', report.unpaidRent, ''],
-    ['PhÃ­ vá»‡ sinh', report.cleaningFee, ''],
-    ['PhÃ­ hÆ° há»ng', report.damageFee, ''],
-    ['PhÃ­ khÃ¡c', report.otherFee, ''],
-  ].filter(([, amount], index) => index < 4 || Number(amount || 0) !== 0) : [];
-
-  if (!report) {
-    return table
-      ? <tr><td style={{ border: '1px solid black', padding: '8px' }}>PhÃ­ chá»‘t táº¥t toÃ¡n tráº£ phÃ²ng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(receipt.total)}</td></tr>
-      : <div className="charge-row-v4"><div className="row-main"><span className="name">ğŸ“ PhÃ­ táº¥t toÃ¡n tráº£ phÃ²ng</span><span className="amount">{formatMoney(receipt.total)}</span></div></div>;
-  }
-
-  if (table) return <>
-    {rowData.map(([label, amount, details]) => <tr key={label}><td style={{ border: '1px solid black', padding: '8px' }}>{label}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{details || '-'}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(amount || 0)}</td></tr>)}
-    <tr style={{ fontWeight: 'bold', background: '#f8fafc' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Tá»”NG PHÃT SINH</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.totalIncurred || 0)}</td></tr>
-    {Number(report.depositUsed || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Tiá»n cá»c Ä‘á»‘i trá»«</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>- {formatMoney(report.depositUsed)}</td></tr>}
-    {Number(report.depositForfeited || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Cá»c giá»¯ láº¡i do tráº£ sá»›m</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.depositForfeited)}</td></tr>}
-    {Number(report.mustRefund || 0) > 0 && <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Chá»§ nhÃ  hoÃ n khÃ¡ch</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(report.mustRefund)}</td></tr>}
-  </>;
-
-  return <div className="receipt-charge-group settlement-breakdown">
-    <div className="group-title">CHI TIáº¾T Táº¤T TOÃN / TRáº¢ PHÃ’NG</div>
-    {rowData.map(([label, amount, details]) => <div className="charge-row-v4" key={label}>
-      <div className="row-main"><span className="name">{label}</span><span className="amount">{formatMoney(amount || 0)}</span></div>
-      {details && <p className="details">{details}</p>}
-    </div>)}
-    <div className="charge-row-v4"><div className="row-main"><span className="name"><b>Tá»•ng phÃ¡t sinh</b></span><span className="amount">{formatMoney(report.totalIncurred || 0)}</span></div></div>
-    {Number(report.depositUsed || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Tiá»n cá»c Ä‘á»‘i trá»«</span><span className="amount">- {formatMoney(report.depositUsed)}</span></div></div>}
-    {Number(report.depositForfeited || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Cá»c giá»¯ láº¡i do tráº£ sá»›m</span><span className="amount">{formatMoney(report.depositForfeited)}</span></div></div>}
-    {Number(report.mustRefund || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">Chá»§ nhÃ  hoÃ n khÃ¡ch</span><span className="amount">{formatMoney(report.mustRefund)}</span></div></div>}
-    <div className="charge-row-v4"><div className="row-main"><span className="name"><b>KhÃ¡ch cáº§n thanh toÃ¡n</b></span><span className="amount">{formatMoney(report.mustCollect || 0)}</span></div></div>
-  </div>;
-}
-
-function PrintableReceipt({ receipt, room, tenant, contract, bankInfo, settlementReport }) {
-  const isMonthly = receipt.type === 'monthly';
-  const isRenewalAdjustment = receipt.type === 'renewal_adjustment';
-  const paymentState = getReceiptPaymentState(receipt);
-  const normalizedReceipt = { ...receipt, status: paymentState.status, debt: paymentState.debt };
-  const eOld = getElectricOld(receipt);
-  const eNew = getElectricNew(receipt);
-  const wOld = getWaterOld(receipt);
-  const wNew = getWaterNew(receipt);
-  const transferOldUtility = receipt.transferOldRoomUtility;
-  const informationalDepositAmount = isInformationalDepositReceiptLine(receipt)
-    ? Number(receipt.other || 0)
-    : getReceiptContractDeposit(receipt, contract);
-  const extraOther = getBillableOtherAmount(receipt) - Number(transferOldUtility?.total || 0);
-  const hasTransferBreakdown = isMonthly && transferOldUtility;
-  const showCurrentElectric = !hasTransferBreakdown || Number(receipt.electricAmount || 0) > 0 || Number(receipt.electricUsed || 0) > 0;
-  const showCurrentWater = !hasTransferBreakdown || Number(receipt.waterAmount || 0) > 0 || Number(receipt.waterUsed || 0) > 0;
-  const currentMonthLabel = receipt.month ? `${String(Number(receipt.month.split('/')[0]))}/${receipt.month.split('/')[1]}` : '';
-  
-  const statusColor = normalizedReceipt.status === 'ÄÃ£ thanh toÃ¡n' ? '#166534' : normalizedReceipt.status === 'Ná»£ má»™t pháº§n' ? '#92400e' : '#991b1b';
-  const statusBg = normalizedReceipt.status === 'ÄÃ£ thanh toÃ¡n' ? '#dcfce7' : normalizedReceipt.status === 'Ná»£ má»™t pháº§n' ? '#fef3c7' : '#fee2e2';
-
-  return (
-    <div id="printable-receipt" className="printable-receipt">
-      {paymentState.isPaid && (
-        <div className="paid-stamp-v4">
-          <span>ÄÃƒ THANH TOÃN</span>
-          <small>{formatMoney(paymentState.paidAmount)}</small>
-        </div>
-      )}
-      <header className="receipt-header-v4">
-        <div className="brand-box">
-          <h3 className="brand">ROOM MANAGER</h3>
-          <p className="sub">Há»‡ thá»‘ng quáº£n lÃ½ phÃ²ng trá» chuyÃªn nghiá»‡p</p>
-        </div>
-        <div className="status-section">
-          <h1 className="title">{isMonthly ? 'PHIáº¾U THU TIá»€N PHÃ’NG' : isRenewalAdjustment ? 'PHIáº¾U THU ÄIá»€U CHá»ˆNH GIA Háº N' : 'PHIáº¾U Táº¤T TOÃN'}</h1>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <span className="status-badge-liquid" style={{ background: statusBg, color: statusColor, fontSize: '11px' }}>
-              {normalizedReceipt.status.toUpperCase()}
-            </span>
-            <span className="code" style={{ fontSize: '12px', color: '#64748b' }}>{receiptCode(receipt)}</span>
-          </div>
-        </div>
-      </header>
-
-      <div className="info-bar-v4">
-        <div className="item"><span className="label">PhÃ²ng</span><span className="value">{getTransferRoomLabel(receipt)}</span></div>
-        <div className="item"><span className="label">ThÃ¡ng thu</span><span className="value">{receipt.month}</span></div>
-        <div className="item"><span className="label">NgÃ y láº­p</span><span className="value">{new Date(receipt.createdAt).toLocaleDateString('vi-VN')}</span></div>
-        <div className="item"><span className="label">Háº¡n tráº£</span><span className="value">Trong 5 ngÃ y</span></div>
-      </div>
-
-      <div className="receipt-tenant-note-v4">
-        <p><b>KhÃ¡ch thuÃª:</b> {tenant.name} â€¢ <b>SÄT:</b> {tenant.phone}</p>
-        <p><b>Ghi chÃº:</b> {receipt.note || 'Vui lÃ²ng thanh toÃ¡n trong vÃ²ng 5 ngÃ y ká»ƒ tá»« ngÃ y nháº­n phiáº¿u. Xin cáº£m Æ¡n!'}</p>
-      </div>
-
-      {isMonthly && informationalDepositAmount > 0 && (
-        <div className="receipt-tenant-note-v4" style={{ border: '1px solid #dbeafe', background: '#eff6ff' }}>
-          <p><b>ThÃ´ng tin cá»c há»£p Ä‘á»“ng:</b> {formatMoney(informationalDepositAmount)}</p>
-          <p><b>LÆ°u Ã½:</b> Khoáº£n cá»c chá»‰ ghi nháº­n Ä‘á»ƒ theo dÃµi há»£p Ä‘á»“ng, khÃ´ng cá»™ng vÃ o tá»•ng tiá»n phiáº¿u thÃ¡ng.</p>
-        </div>
-      )}
-
-      <div className="receipt-body-v4">
-        <div className="receipt-items-section">
-          <h3>CHI TIáº¾T KHOáº¢N THU</h3>
-          
-          {isMonthly ? (
-            <>
-              {hasTransferBreakdown && (
-                <div className="receipt-charge-group old-room">
-                  <div className="group-title">I. Chi phÃ­ phÃ²ng cÅ© chÆ°a thanh toÃ¡n</div>
-                  <div className="group-meta">
-                    <span>PhÃ²ng cÅ©: <b>P{transferOldUtility.oldRoomId}</b></span>
-                    <span>Thá»i gian á»Ÿ: <b>{formatDisplayDate(transferOldUtility.oldStayFrom)}</b> - <b>{formatDisplayDate(transferOldUtility.oldStayTo)}</b></span>
-                    <span>Sá»‘ ngÃ y tÃ­nh tiá»n: <b>{transferOldUtility.oldRoomDays || 0} ngÃ y</b></span>
-                  </div>
-
-                  <div className="charge-row-v4">
-                    <div className="row-main"><span className="name">ğŸ  Tiá»n thuÃª phÃ²ng cÅ© thÃ¡ng {transferOldUtility.oldBillingMonth}</span><span className="amount">{formatMoney(transferOldUtility.oldRentAmount || 0)}</span></div>
-                    <p className="details">{formatMoney(transferOldUtility.oldMonthlyRent || 0)} / {transferOldUtility.oldMonthDays || 30} x {transferOldUtility.oldRoomDays || 0} ngÃ y</p>
-                  </div>
-
-                  {(transferOldUtility.oldServiceAmount || 0) > 0 && (
-                    <div className="charge-row-v4">
-                      <div className="row-main"><span className="name">ğŸ› ï¸ Dá»‹ch vá»¥ phÃ²ng cÅ©</span><span className="amount">{formatMoney(transferOldUtility.oldServiceAmount || 0)}</span></div>
-                      <p className="details">{transferOldUtility.oldServiceMode === 'monthly' ? 'Thu cá»‘ Ä‘á»‹nh theo thÃ¡ng' : `${formatMoney(transferOldUtility.oldMonthlyServiceFee || 0)} / ${transferOldUtility.oldMonthDays || 30} x ${transferOldUtility.oldRoomDays || 0} ngÃ y`}</p>
-                    </div>
-                  )}
-
-                  <div className="charge-row-v4">
-                    <div className="row-main"><span className="name">âš¡ Äiá»‡n phÃ²ng cÅ©</span><span className="amount">{formatMoney(transferOldUtility.electricAmount || 0)}</span></div>
-                    <div className="details">
-                      <span>CS cÅ©: <b>{transferOldUtility.electricOld}</b></span>
-                      <span>Má»›i: <b>{transferOldUtility.electricNew}</b></span>
-                      <span>Sá»­ dá»¥ng: <b>{transferOldUtility.electricUsed}</b> kWh</span>
-                    </div>
-                  </div>
-
-                  <div className="charge-row-v4">
-                    <div className="row-main"><span className="name">ğŸ’§ NÆ°á»›c phÃ²ng cÅ©</span><span className="amount">{formatMoney(transferOldUtility.waterAmount || 0)}</span></div>
-                    <div className="details">
-                      <span>CS cÅ©: <b>{transferOldUtility.waterOld}</b></span>
-                      <span>Má»›i: <b>{transferOldUtility.waterNew}</b></span>
-                      <span>Sá»­ dá»¥ng: <b>{transferOldUtility.waterUsed}</b> mÂ³</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className={hasTransferBreakdown ? 'receipt-charge-group current-room' : ''}>
-                {hasTransferBreakdown && (
-                  <>
-                    <div className="group-title">II. Chi phÃ­ phÃ²ng hiá»‡n táº¡i</div>
-                    <div className="group-meta">
-                      <span>PhÃ²ng hiá»‡n táº¡i: <b>P{receipt.roomId}</b></span>
-                      <span>ThÃ¡ng thu: <b>{receipt.month}</b></span>
-                      {receipt.currentRoomChargeDays && receipt.currentRoomMonthDays && receipt.currentRoomChargeDays !== receipt.currentRoomMonthDays && <span>Sá»‘ ngÃ y tÃ­nh tiá»n: <b>{receipt.currentRoomChargeDays} ngÃ y</b></span>}
-                    </div>
-                  </>
-                )}
-
-                <div className="charge-row-v4">
-                  <div className="row-main"><span className="name">ğŸ  Tiá»n thuÃª phÃ²ng{currentMonthLabel ? ` thÃ¡ng ${currentMonthLabel}` : ''}</span><span className="amount">{formatMoney(receipt.rent)}</span></div>
-                  {receipt.currentRoomChargeDays && receipt.currentRoomMonthDays && receipt.currentRoomChargeDays !== receipt.currentRoomMonthDays && (
-                    <p className="details">
-                      {receipt.currentRoomChargeFrom && receipt.currentRoomChargeTo && <>Tá»« {formatDisplayDate(receipt.currentRoomChargeFrom)} Ä‘áº¿n {formatDisplayDate(receipt.currentRoomChargeTo)}. </>}
-                      {formatMoney(receipt.currentRoomMonthlyRent || room.rent || 0)} / {receipt.currentRoomMonthDays} x {receipt.currentRoomChargeDays} ngÃ y
-                    </p>
-                  )}
-                </div>
-
-                <div className="charge-row-v4">
-                  <div className="row-main"><span className="name">ğŸ› ï¸ {hasTransferBreakdown ? 'Dá»‹ch vá»¥' : 'Dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh'}{currentMonthLabel ? ` thÃ¡ng ${currentMonthLabel}` : ''}</span><span className="amount">{formatMoney(receipt.fixedServices)}</span></div>
-                  <p className="details">
-                    {receipt.currentRoomChargeDays && receipt.currentRoomMonthDays && receipt.currentRoomChargeDays !== receipt.currentRoomMonthDays
-                      ? `${formatMoney(receipt.currentRoomMonthlyServiceFee || 0)} / ${receipt.currentRoomMonthDays} x ${receipt.currentRoomChargeDays} ngÃ y. `
-                      : ''}
-                    (1 ngÆ°á»i: 200.000Ä‘/thÃ¡ng; tá»« 2 ngÆ°á»i trá»Ÿ lÃªn: 400.000Ä‘/thÃ¡ng)
-                  </p>
-                </div>
-
-                {showCurrentElectric && (
-                  <div className="charge-row-v4">
-                    <div className="row-main"><span className="name">âš¡ Tiá»n Ä‘iá»‡n</span><span className="amount">{formatMoney(receipt.electricAmount)}</span></div>
-                    <div className="details">
-                      <span>CS cÅ©: <b>{eOld}</b></span>
-                      <span>Má»›i: <b>{eNew}</b></span>
-                      <span>Sá»­ dá»¥ng: <b>{receipt.electricUsed}</b> kWh</span>
-                      <span>ÄÆ¡n giÃ¡: <b>{formatMoney(room.electricPrice)}</b></span>
-                    </div>
-                  </div>
-                )}
-
-                {showCurrentWater && (
-                  <div className="charge-row-v4">
-                    <div className="row-main"><span className="name">ğŸ’§ Tiá»n nÆ°á»›c</span><span className="amount">{formatMoney(receipt.waterAmount)}</span></div>
-                    <div className="details">
-                      <span>CS cÅ©: <b>{wOld}</b></span>
-                      <span>Má»›i: <b>{wNew}</b></span>
-                      <span>Sá»­ dá»¥ng: <b>{receipt.waterUsed}</b> mÂ³</span>
-                      <span>ÄÆ¡n giÃ¡: <b>{formatMoney(room.waterPrice)}</b></span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {extraOther !== 0 && (
-                <div className="receipt-charge-group">
-                  <div className="group-title">{hasTransferBreakdown ? 'III. Khoáº£n phÃ¡t sinh khÃ¡c' : 'Khoáº£n phÃ¡t sinh khÃ¡c'}</div>
-                  <div className="charge-row-v4">
-                    <div className="row-main"><span className="name">{getOtherReceiptLabel(receipt)}</span><span className="amount">{formatMoney(extraOther)}</span></div>
-                  </div>
-                </div>
-              )}
-            </>
-          ) : isRenewalAdjustment ? (
-            <div className="receipt-charge-group renewal-adjustment-breakdown">
-              <div className="group-title">CHI TIáº¾T ÄIá»€U CHá»ˆNH GIA Háº N</div>
-              {Number(receipt.rent || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">ChÃªnh lá»‡ch tÄƒng giÃ¡ thuÃª</span><span className="amount">{formatMoney(receipt.rent)}</span></div></div>}
-              {Number(receipt.other || 0) > 0 && <div className="charge-row-v4"><div className="row-main"><span className="name">ChÃªnh lá»‡ch tÄƒng tiá»n cá»c</span><span className="amount">{formatMoney(receipt.other)}</span></div></div>}
-            </div>
-          ) : (
-            <SettlementReceiptBreakdown report={settlementReport} receipt={receipt} room={room} />
-          )}
-        </div>
-
-        <div className="payment-column-v4">
-          <div className="payment-card-v4">
-            {paymentState.isPaid ? (
-              <div className="paid-confirm-card-v4">
-                <div className="paid-checkmark-v4">âœ“</div>
-                <p>Phiáº¿u Ä‘Ã£ thanh toÃ¡n Ä‘á»§</p>
-                <span>KhÃ´ng cáº§n quÃ©t QR thanh toÃ¡n láº¡i</span>
-              </div>
-            ) : (
-              <div className="qr-box-v4">
-                <img src={buildVietQrUrl(bankInfo, receipt)} alt="QR VietQR" />
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontSize: '11px', fontWeight: '700', margin: 0 }}>QUÃ‰T MÃƒ THANH TOÃN</p>
-                  <p style={{ fontSize: '10px', color: '#64748b' }}>Tá»± Ä‘á»™ng Ä‘iá»n sá»‘ tiá»n & ná»™i dung</p>
-                </div>
-              </div>
-            )}
-
-            <div className="payment-details-v4">
-              <div className="row"><span className="label">NgÃ¢n hÃ ng</span><span className="val">{bankInfo.bankName}</span></div>
-              <div className="row"><span className="label">Sá»‘ tÃ i khoáº£n</span><span className="val">{bankInfo.accountNo}</span></div>
-              <div className="row"><span className="label">Chá»§ tÃ i khoáº£n</span><span className="val">{bankInfo.accountName}</span></div>
-              <div className="row"><span className="label">Ná»™i dung CK</span><span className="val" style={{ color: '#1e40af' }}>{transferContent(receipt)}</span></div>
-            </div>
-
-            <div className="total-summary-v4">
-              <p className="label">{paymentState.isPaid ? 'Tá»•ng cá»™ng Ä‘Ã£ thu' : paymentState.isAdjustment ? 'Cáº§n thu thÃªm' : 'Tá»•ng cá»™ng cáº§n tráº£'}</p>
-              <p className="total-amount">{formatMoney(paymentState.isPaid ? receipt.total : (paymentState.debt || receipt.total))}</p>
-              {paymentState.isAdjustment && paymentState.basePaidAmount > 0 && <p className="remaining-amount-v4" style={{ color: '#475569' }}>ÄÃ£ thu trÆ°á»›c Ä‘Ã³: {formatMoney(paymentState.basePaidAmount)}</p>}
-              {paymentState.isPartial && <p className="remaining-amount-v4">CÃ²n ná»£: {formatMoney(paymentState.debt)}</p>}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <footer className="receipt-footer-v4">
-        <div className="signatures-v4 screen-optional-signatures">
-          <div className="signature-box">
-            <h4>NGÆ¯á»œI THU TIá»€N</h4>
-            <p className="muted">(KÃ½ vÃ  ghi rÃµ há» tÃªn)</p>
-            <div className="signature-space-v4"></div>
-            <p><b>DIá»†M THá»Š BÃŒNH</b></p>
-          </div>
-          <div className="signature-box">
-            <h4>NGÆ¯á»œI Ná»˜P TIá»€N</h4>
-            <p className="muted">NgÃ y ..... thÃ¡ng ..... nÄƒm 20...</p>
-            <div className="signature-space-v4"></div>
-            <p><b>{tenant.name}</b></p>
-          </div>
-        </div>
-
-        <div className="thank-you-v4">
-          Vui lÃ²ng thanh toÃ¡n Ä‘Ãºng háº¡n Ä‘á»ƒ Ä‘áº£m báº£o quyá»n lá»£i dá»‹ch vá»¥. TrÃ¢n trá»ng cáº£m Æ¡n!
-        </div>
-      </footer>
-    </div>
-  );
-}
-
-function ReceiptItem({ receipt, room, contract, bankInfo, data }) {
-  const displayReceipt = enrichReceiptWithTransferUtility(receipt, data);
-  const tenant = getTenantForReceipt(data, displayReceipt) || { name: 'N/A' };
-  const isMonthly = displayReceipt.type === 'monthly';
-  const isRenewalAdjustment = displayReceipt.type === 'renewal_adjustment';
-  const transferOldUtility = displayReceipt.transferOldRoomUtility;
-  const informationalDepositAmount = isInformationalDepositReceiptLine(displayReceipt)
-    ? Number(displayReceipt.other || 0)
-    : getReceiptContractDeposit(displayReceipt, contract);
-  const extraOther = getBillableOtherAmount(displayReceipt) - Number(transferOldUtility?.total || 0);
-  const showCurrentElectric = !transferOldUtility || Number(displayReceipt.electricAmount || 0) > 0 || Number(displayReceipt.electricUsed || 0) > 0;
-  const showCurrentWater = !transferOldUtility || Number(displayReceipt.waterAmount || 0) > 0 || Number(displayReceipt.waterUsed || 0) > 0;
-  const settlementReport = !isMonthly
-    ? (data.moveOutReports || []).find(report => report.contractId === displayReceipt.contractId && report.roomId === displayReceipt.roomId)
-    : null;
-  return (
-    <div className="receipt-page" style={{ padding: '40px', background: 'white', color: 'black', fontFamily: 'serif', position: 'relative', borderBottom: '1px dashed #eee' }}>
-      <div style={{ textAlign: 'center', marginBottom: '20px' }}><h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{isMonthly ? 'PHIáº¾U THU TIá»€N PHÃ’NG' : isRenewalAdjustment ? 'PHIáº¾U THU ÄIá»€U CHá»ˆNH GIA Háº N' : 'PHIáº¾U CHá»T Táº¤T TOÃN'}</h1><p style={{ fontSize: '14px' }}>{isMonthly ? `ThÃ¡ng ${displayReceipt.month}` : isRenewalAdjustment ? `Ãp dá»¥ng thÃ¡ng ${displayReceipt.month}` : 'Quyáº¿t toÃ¡n tráº£ phÃ²ng'}</p></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><div><p>PhÃ²ng: <b>{getTransferRoomLabel(displayReceipt)}</b></p><p>KhÃ¡ch thuÃª: <b>{tenant.name}</b></p><p>NgÃ y láº­p: {new Date(displayReceipt.createdAt).toLocaleDateString('vi-VN')}</p></div><div style={{ textAlign: 'right' }}><p>Tráº¡ng thÃ¡i: <b>{displayReceipt.status}</b></p></div></div>
-      {isMonthly && informationalDepositAmount > 0 && <div style={{ border: '1px solid #bfdbfe', background: '#eff6ff', padding: '8px 10px', marginBottom: '14px', fontSize: '13px' }}><b>ThÃ´ng tin cá»c há»£p Ä‘á»“ng:</b> {formatMoney(informationalDepositAmount)}. Khoáº£n nÃ y chá»‰ Ä‘á»ƒ theo dÃµi há»£p Ä‘á»“ng, khÃ´ng cá»™ng vÃ o tá»•ng tiá»n phiáº¿u thÃ¡ng.</div>}
-      <table className="contract-table" style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-        <thead><tr style={{ background: '#f8fafc' }}><th style={{ border: '1px solid black', padding: '8px' }}>Ná»™i dung</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Chá»‰ sá»‘</th><th style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>ThÃ nh tiá»n</th></tr></thead>
-        <tbody>
-          {isMonthly ? (
-            <>
-              <tr><td style={{ border: '1px solid black', padding: '8px' }}>Tiá»n phÃ²ng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>-</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.rent)}</td></tr>
-              <tr><td style={{ border: '1px solid black', padding: '8px' }}>{transferOldUtility ? 'Dá»‹ch vá»¥ thÃ¡ng' : 'Dá»‹ch vá»¥ cá»‘ Ä‘á»‹nh'}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>1 ngÆ°á»i: 200.000Ä‘/thÃ¡ng; tá»« 2 ngÆ°á»i: 400.000Ä‘/thÃ¡ng</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.fixedServices)}</td></tr>
-              {showCurrentElectric && (
-                <tr>
-                  <td style={{ border: '1px solid black', padding: '8px' }}>Tiá»n Ä‘iá»‡n</td>
-                  <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>
-                    CS cÅ©: {displayReceipt.electricOld} â†’ CS má»›i: {displayReceipt.electricNew}<br/>
-                    (Sá»­ dá»¥ng: {displayReceipt.electricUsed} kWh)
-                  </td>
-                  <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.electricAmount)}</td>
-                </tr>
-              )}
-              {showCurrentWater && (
-                <tr>
-                  <td style={{ border: '1px solid black', padding: '8px' }}>Tiá»n nÆ°á»›c</td>
-                  <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>
-                    CS cÅ©: {displayReceipt.waterOld} â†’ CS má»›i: {displayReceipt.waterNew}<br/>
-                    (Sá»­ dá»¥ng: {displayReceipt.waterUsed} mÂ³)
-                  </td>
-                  <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.waterAmount)}</td>
-                </tr>
-              )}
-              {transferOldUtility && (
-                <>
-                  <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}><td colSpan="3" style={{ border: '1px solid black', padding: '8px' }}>Chi phÃ­ phÃ²ng cÅ© chÆ°a thanh toÃ¡n - P{transferOldUtility.oldRoomId} ({formatDisplayDate(transferOldUtility.oldStayFrom)} - {formatDisplayDate(transferOldUtility.oldStayTo)}, {transferOldUtility.oldRoomDays || 0} ngÃ y)</td></tr>
-                  <tr>
-                    <td style={{ border: '1px solid black', padding: '8px' }}>Tiá»n thuÃª phÃ²ng cÅ© thÃ¡ng {transferOldUtility.oldBillingMonth}</td>
-                    <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{formatMoney(transferOldUtility.oldMonthlyRent || 0)} / {transferOldUtility.oldMonthDays || 30} x {transferOldUtility.oldRoomDays || 0} ngÃ y</td>
-                    <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(transferOldUtility.oldRentAmount || 0)}</td>
-                  </tr>
-                  {(transferOldUtility.oldServiceAmount || 0) > 0 && (
-                    <tr>
-                      <td style={{ border: '1px solid black', padding: '8px' }}>Dá»‹ch vá»¥ phÃ²ng cÅ©</td>
-                      <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{transferOldUtility.oldServiceMode === 'monthly' ? 'Thu cá»‘ Ä‘á»‹nh theo thÃ¡ng' : `${formatMoney(transferOldUtility.oldMonthlyServiceFee || 0)} / ${transferOldUtility.oldMonthDays || 30} x ${transferOldUtility.oldRoomDays || 0} ngÃ y`}</td>
-                      <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(transferOldUtility.oldServiceAmount || 0)}</td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td style={{ border: '1px solid black', padding: '8px' }}>Äiá»‡n phÃ²ng cÅ© P{transferOldUtility.oldRoomId}</td>
-                    <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Äiá»‡n: {transferOldUtility.electricOld} â†’ {transferOldUtility.electricNew} ({transferOldUtility.electricUsed} kWh)</td>
-                    <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(transferOldUtility.electricAmount || 0)}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ border: '1px solid black', padding: '8px' }}>NÆ°á»›c phÃ²ng cÅ© P{transferOldUtility.oldRoomId}</td>
-                    <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>NÆ°á»›c: {transferOldUtility.waterOld} â†’ {transferOldUtility.waterNew} ({transferOldUtility.waterUsed} mÂ³)</td>
-                    <td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(transferOldUtility.waterAmount || 0)}</td>
-                  </tr>
-                </>
-              )}
-              {extraOther !== 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>{getOtherReceiptLabel(displayReceipt)}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{displayReceipt.otherNote || '-'}</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(extraOther)}</td></tr>}
-            </>
-          ) : isRenewalAdjustment ? (
-            <>
-              {Number(displayReceipt.rent || 0) > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>ChÃªnh lá»‡ch tÄƒng giÃ¡ thuÃª</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Theo phá»¥ lá»¥c gia háº¡n</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.rent)}</td></tr>}
-              {Number(displayReceipt.other || 0) > 0 && <tr><td style={{ border: '1px solid black', padding: '8px' }}>ChÃªnh lá»‡ch tÄƒng tiá»n cá»c</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>Theo phá»¥ lá»¥c gia háº¡n</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.other)}</td></tr>}
-            </>
-          ) : (
-            <SettlementReceiptBreakdown report={settlementReport} receipt={displayReceipt} room={room} table />
-          )}
-          <tr style={{ fontWeight: 'bold' }}><td colSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>Tá»”NG Cá»˜NG</td><td style={{ border: '1px solid black', padding: '8px', textAlign: 'right' }}>{formatMoney(displayReceipt.total)}</td></tr>
-        </tbody>
-      </table>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}><div style={{ textAlign: 'center', width: '200px' }}><p><b>QUÃ‰T MÃƒ THANH TOÃN</b></p><img src={buildVietQrUrl(bankInfo, displayReceipt)} alt="QR" style={{ width: '120px', border: '1px solid #eee', padding: '5px' }} /><p style={{ fontSize: '10px' }}>{bankInfo.bankName} - {bankInfo.accountNo}</p></div><div style={{ textAlign: 'center', width: '200px' }}><p><b>CHá»¦ NHÃ€ KÃ TÃŠN</b></p><div style={{ height: '80px' }}></div><p><b>DIá»†M THá»Š BÃŒNH</b></p></div></div>
-      <p style={{ fontStyle: 'italic', fontSize: '12px', marginTop: '20px', textAlign: 'center' }}>QuÃ½ khÃ¡ch vui lÃ²ng thanh toÃ¡n trong vÃ²ng 5 ngÃ y ká»ƒ tá»« ngÃ y nháº­n phiáº¿u. TrÃ¢n trá»ng!</p>
-    </div>
-  );
-}
-
-function RoomOpsModal({ mode, room, onClose, onSave }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const oldElectric = room.electricNew ?? room.electricOld ?? room.electricStart ?? room.initialElectric ?? 0;
-  const oldWater = room.waterNew ?? room.waterOld ?? room.waterStart ?? room.initialWater ?? 0;
-  const configs = {
-    asset: {
-      title: `ThÃªm tÃ i sáº£n â€¢ PhÃ²ng ${room.id}`,
-      submit: '+ ThÃªm tÃ i sáº£n',
-      initial: {
-        name: '',
-        category: 'Ná»™i tháº¥t',
-        quantity: 1,
-        handoverStatus: 'Tá»‘t',
-        currentStatus: 'Tá»‘t',
-        handoverDate: today,
-        value: 0,
-        deductDeposit: false,
-        note: ''
-      }
-    },
-    maintenance: {
-      title: `Táº¡o yÃªu cáº§u báº£o trÃ¬ â€¢ PhÃ²ng ${room.id}`,
-      submit: '+ Táº¡o báº£o trÃ¬',
-      initial: {
-        title: '',
-        category: 'Thiáº¿t bá»‹',
-        priority: 'Trung bÃ¬nh',
-        reporter: 'KhÃ¡ch thuÃª',
-        assignee: '',
-        cost: 0,
-        costOwner: 'Chá»§ trá»',
-        status: 'Má»›i táº¡o',
-        createdDate: today,
-        note: ''
-      }
-    },
-    file: {
-      title: `Táº£i tá»‡p lÃªn â€¢ PhÃ²ng ${room.id}`,
-      submit: '+ LÆ°u tá»‡p',
-      initial: {
-        name: '',
-        group: 'Há»£p Ä‘á»“ng',
-        size: '',
-        uploader: 'Admin',
-        uploadedAt: today,
-        note: ''
-      }
-    },
-    meter: {
-      title: `Ghi chá»‰ sá»‘ Ä‘iá»‡n nÆ°á»›c â€¢ PhÃ²ng ${room.id}`,
-      submit: 'LÆ°u chá»‰ sá»‘',
-      initial: {
-        electricOld: oldElectric,
-        electricNew: oldElectric,
-        waterOld: oldWater,
-        waterNew: oldWater,
-        readingDate: today,
-        reader: 'Admin',
-        electricPhoto: '',
-        waterPhoto: '',
-        note: ''
-      }
-    }
-  };
-  const config = configs[mode];
-  const [form, setForm] = useState(config.initial);
-  const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
-
-  const handleSubmit = () => {
-    if (mode === 'asset' && !form.name.trim()) return alert('Vui lÃ²ng nháº­p tÃªn tÃ i sáº£n.');
-    if (mode === 'maintenance' && !form.title.trim()) return alert('Vui lÃ²ng nháº­p tiÃªu Ä‘á» sá»± cá»‘.');
-    if (mode === 'file' && !form.name.trim()) return alert('Vui lÃ²ng nháº­p tÃªn tá»‡p.');
-    if (mode === 'meter' && (Number(form.electricNew) < Number(form.electricOld) || Number(form.waterNew) < Number(form.waterOld))) {
-      return alert('Chá»‰ sá»‘ má»›i khÃ´ng Ä‘Æ°á»£c nhá» hÆ¡n chá»‰ sá»‘ cÅ©.');
-    }
-    onSave({
-      ...form,
-      id: uid(mode),
-      roomId: room.id,
-      quantity: Number(form.quantity || 0),
-      value: Number(form.value || 0),
-      cost: Number(form.cost || 0),
-      electricOld: Number(form.electricOld || 0),
-      electricNew: Number(form.electricNew || 0),
-      waterOld: Number(form.waterOld || 0),
-      waterNew: Number(form.waterNew || 0),
-      createdAt: new Date().toISOString()
-    });
-  };
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '680px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>{config.title}</h2>
-            <p className="muted small">Dá»¯ liá»‡u Ä‘Æ°á»£c lÆ°u trá»±c tiáº¿p vÃ o há»“ sÆ¡ phÃ²ng vÃ  cáº­p nháº­t badge tÆ°Æ¡ng á»©ng.</p>
-          </div>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack" style={{ gap: '18px' }}>
-          {mode === 'asset' && (
-            <div className="form-grid-v2">
-              <label style={{ gridColumn: 'span 2' }}>TÃªn tÃ i sáº£n <input value={form.name} onChange={e => update('name', e.target.value)} placeholder="GiÆ°á»ng, tá»§, mÃ¡y láº¡nh..." /></label>
-              <label>Loáº¡i <input value={form.category} onChange={e => update('category', e.target.value)} /></label>
-              <label>Sá»‘ lÆ°á»£ng <input type="number" value={form.quantity} onChange={e => update('quantity', e.target.value)} /></label>
-              <label>TÃ¬nh tráº¡ng bÃ n giao <input value={form.handoverStatus} onChange={e => update('handoverStatus', e.target.value)} /></label>
-              <label>TÃ¬nh tráº¡ng hiá»‡n táº¡i <input value={form.currentStatus} onChange={e => update('currentStatus', e.target.value)} /></label>
-              <label>NgÃ y bÃ n giao <input type="date" value={form.handoverDate} onChange={e => update('handoverDate', e.target.value)} /></label>
-              <label>GiÃ¡ trá»‹ Æ°á»›c tÃ­nh <input type="number" value={form.value} onChange={e => update('value', e.target.value)} /></label>
-              <label style={{ gridColumn: 'span 2', flexDirection: 'row', alignItems: 'center' }}><input type="checkbox" checked={form.deductDeposit} onChange={e => update('deductDeposit', e.target.checked)} /> CÃ³ trá»« cá»c náº¿u há»ng</label>
-              <label style={{ gridColumn: 'span 2' }}>Ghi chÃº <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
-            </div>
-          )}
-          {mode === 'maintenance' && (
-            <div className="form-grid-v2">
-              <label style={{ gridColumn: 'span 2' }}>TiÃªu Ä‘á» sá»± cá»‘ <input value={form.title} onChange={e => update('title', e.target.value)} placeholder="MÃ¡y láº¡nh khÃ´ng láº¡nh, rÃ² nÆ°á»›c..." /></label>
-              <label>Loáº¡i sá»± cá»‘ <select value={form.category} onChange={e => update('category', e.target.value)}><option>Äiá»‡n</option><option>NÆ°á»›c</option><option>Thiáº¿t bá»‹</option><option>Vá»‡ sinh</option><option>KhÃ¡c</option></select></label>
-              <label>Má»©c Ä‘á»™ <select value={form.priority} onChange={e => update('priority', e.target.value)}><option>Tháº¥p</option><option>Trung bÃ¬nh</option><option>Kháº©n cáº¥p</option></select></label>
-              <label>NgÆ°á»i bÃ¡o <input value={form.reporter} onChange={e => update('reporter', e.target.value)} /></label>
-              <label>NgÆ°á»i xá»­ lÃ½ <input value={form.assignee} onChange={e => update('assignee', e.target.value)} /></label>
-              <label>Chi phÃ­ <input type="number" value={form.cost} onChange={e => update('cost', e.target.value)} /></label>
-              <label>BÃªn chá»‹u phÃ­ <select value={form.costOwner} onChange={e => update('costOwner', e.target.value)}><option>Chá»§ trá»</option><option>KhÃ¡ch thuÃª</option><option>Chia sáº»</option></select></label>
-              <label>Tráº¡ng thÃ¡i <select value={form.status} onChange={e => update('status', e.target.value)}><option>Má»›i táº¡o</option><option>Äang xá»­ lÃ½</option><option>Chá» linh kiá»‡n</option><option>HoÃ n táº¥t</option><option>ÄÃ£ há»§y</option></select></label>
-              <label>NgÃ y táº¡o <input type="date" value={form.createdDate} onChange={e => update('createdDate', e.target.value)} /></label>
-              <label style={{ gridColumn: 'span 2' }}>Ghi chÃº <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
-            </div>
-          )}
-          {mode === 'file' && (
-            <div className="form-grid-v2">
-              <label style={{ gridColumn: 'span 2' }}>TÃªn tá»‡p <input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Hop-dong-P202.pdf" /></label>
-              <label>NhÃ³m tá»‡p <select value={form.group} onChange={e => update('group', e.target.value)}><option>Há»£p Ä‘á»“ng</option><option>CCCD</option><option>Thanh toÃ¡n</option><option>Äiá»‡n nÆ°á»›c</option><option>TÃ i sáº£n</option><option>Báº£o trÃ¬</option><option>KhÃ¡c</option></select></label>
-              <label>Dung lÆ°á»£ng <input value={form.size} onChange={e => update('size', e.target.value)} placeholder="2.4 MB" /></label>
-              <label>NgÆ°á»i táº£i lÃªn <input value={form.uploader} onChange={e => update('uploader', e.target.value)} /></label>
-              <label>NgÃ y táº£i lÃªn <input type="date" value={form.uploadedAt} onChange={e => update('uploadedAt', e.target.value)} /></label>
-              <label style={{ gridColumn: 'span 2' }}>Ghi chÃº/Ä‘Æ°á»ng dáº«n <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
-            </div>
-          )}
-          {mode === 'meter' && (
-            <div className="form-grid-v2">
-              <label>Äiá»‡n cÅ© <input type="number" value={form.electricOld} onChange={e => update('electricOld', e.target.value)} /></label>
-              <label>Äiá»‡n má»›i <input type="number" value={form.electricNew} onChange={e => update('electricNew', e.target.value)} /></label>
-              <label>NÆ°á»›c cÅ© <input type="number" value={form.waterOld} onChange={e => update('waterOld', e.target.value)} /></label>
-              <label>NÆ°á»›c má»›i <input type="number" value={form.waterNew} onChange={e => update('waterNew', e.target.value)} /></label>
-              <label>NgÃ y ghi <input type="date" value={form.readingDate} onChange={e => update('readingDate', e.target.value)} /></label>
-              <label>NgÆ°á»i ghi <input value={form.reader} onChange={e => update('reader', e.target.value)} /></label>
-              <label>áº¢nh Ä‘á»“ng há»“ Ä‘iá»‡n <input value={form.electricPhoto} onChange={e => update('electricPhoto', e.target.value)} placeholder="TÃªn file hoáº·c Ä‘Æ°á»ng dáº«n" /></label>
-              <label>áº¢nh Ä‘á»“ng há»“ nÆ°á»›c <input value={form.waterPhoto} onChange={e => update('waterPhoto', e.target.value)} placeholder="TÃªn file hoáº·c Ä‘Æ°á»ng dáº«n" /></label>
-              <label style={{ gridColumn: 'span 2' }}>Ghi chÃº <textarea value={form.note} onChange={e => update('note', e.target.value)} /></label>
-            </div>
-          )}
-          <div className="btn-group">
-            <button className="secondary-btn" onClick={onClose}>Há»§y</button>
-            <button className="primary-btn" onClick={handleSubmit}>{config.submit}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PaymentModal({ receipt, onClose, onSave }) {
-  const receiptPaymentState = getReceiptPaymentState(receipt || {});
-  const [paidAmount, setPaidAmount] = useState(receiptPaymentState.debt || receipt?.total || 0);
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
-  
-  if (!receipt) return null;
-
-  return (
-    <div className="modal" onClick={onClose}>
-      <div className="detail-modal-v2 liquid-glass" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>XÃ¡c nháº­n thanh toÃ¡n</h2>
-          <button className="secondary-btn" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack">
-          <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
-            <p>PhÃ²ng: <b>{getTransferRoomLabel(receipt)}</b></p>
-            <p>{receiptPaymentState.isAdjustment ? 'Khoáº£n cáº§n thu thÃªm' : 'Tá»•ng tiá»n'}: <b>{formatMoney(receiptPaymentState.debt || receipt.total)}</b></p>
-            {receiptPaymentState.isAdjustment && <p className="muted small">ÄÃ£ thu trÆ°á»›c Ä‘Ã³: {formatMoney(receiptPaymentState.basePaidAmount)}</p>}
-            <p className="muted small">ThÃ¡ng {receipt.month}</p>
-          </div>
-          <label>
-            Sá»‘ tiá»n khÃ¡ch tráº£ 
-            <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} />
-          </label>
-          <label>
-            NgÃ y thanh toÃ¡n 
-            <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} />
-          </label>
-          <div style={{ marginTop: '10px' }}>
-            {Number(paidAmount) >= (receiptPaymentState.debt || receipt.total) ? 
-              <span className="status-badge-liquid active">Thanh toÃ¡n Ä‘á»§</span> : 
-              Number(paidAmount) > 0 ? 
-                <span className="status-badge-liquid notice">Thanh toÃ¡n má»™t pháº§n</span> : 
-                <span className="status-badge-liquid debt">ChÆ°a tráº£ tiá»n</span>
-            }
-          </div>
-          <button className="primary-btn wide" onClick={() => { 
-            if (receiptPaymentState.isAdjustment) {
-              const adjustmentDue = Number(receipt.adjustmentDueAmount || receiptPaymentState.adjustmentDue || receipt.total || 0);
-              const nextAdjustmentPaid = Number(receipt.adjustmentPaidAmount || 0) + Number(paidAmount || 0);
-              let status = 'ChÆ°a thanh toÃ¡n';
-              if (nextAdjustmentPaid >= adjustmentDue) status = 'ÄÃ£ thanh toÃ¡n';
-              else if (nextAdjustmentPaid > 0) status = 'Ná»£ má»™t pháº§n';
-              onSave({
-                ...receipt,
-                adjustmentDueAmount: adjustmentDue,
-                adjustmentPaidAmount: nextAdjustmentPaid,
-                adjustmentPaidDate: paidDate,
-                status
-              });
-              return;
-            }
-            let status = 'ChÆ°a thanh toÃ¡n'; 
-            if (Number(paidAmount) >= receipt.total) status = 'ÄÃ£ thanh toÃ¡n'; 
-            else if (Number(paidAmount) > 0) status = 'Ná»£ má»™t pháº§n'; 
-            onSave({ ...receipt, paidAmount: Number(paidAmount), paidDate, status }); 
-          }}>XÃ¡c nháº­n</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExpensesTab({ data, onAction, focusFilter, onFocusConsumed }) {
-  const [filter, setFilter] = useState(() => ({ supplierId: '', categoryId: '', status: 'all', month: getCurrentMonthLabel() }));
-
-  useEffect(() => {
-    if (!focusFilter) return;
-    setFilter(prev => ({ ...prev, ...focusFilter }));
-    onFocusConsumed?.();
-  }, [focusFilter, onFocusConsumed]);
-
-  const filteredExpenses = useMemo(() => {
-    return (data.expensePayments || []).filter(e => {
-      if (filter.month && e.month !== filter.month) return false;
-      if (filter.supplierId && e.supplierId !== filter.supplierId) return false;
-      if (filter.categoryId && e.categoryId !== filter.categoryId) return false;
-      if (filter.status !== 'all' && e.status !== filter.status) return false;
-      return true;
-    }).sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
-  }, [data.expensePayments, filter]);
-
-  return (
-    <div className="stack" style={{ gap: '16px' }}>
-      <div className="widget liquid-glass no-print" style={{ padding: '16px' }}>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ margin: 0 }}>ThÃ¡ng <input type="month" value={filter.month ? `${filter.month.split('/')[1]}-${filter.month.split('/')[0]}` : ''} onChange={e => {
-            if (!e.target.value) return setFilter({...filter, month: ''});
-            const [y, m] = e.target.value.split('-'); 
-            setFilter({...filter, month: `${m}/${y}`}); 
-          }} /></label>
-          <label style={{ margin: 0 }}>NhÃ  CC / NhÃ  cung cáº¥p <select value={filter.supplierId} onChange={e => setFilter({...filter, supplierId: e.target.value})}><option value="">Táº¥t cáº£</option>{(data.suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-          <label style={{ margin: 0 }}>Loáº¡i chi phÃ­ <select value={filter.categoryId} onChange={e => setFilter({...filter, categoryId: e.target.value})}><option value="">Táº¥t cáº£</option>{(data.expenseCategories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-          <label style={{ margin: 0 }}>Tráº¡ng thÃ¡i <select value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}><option value="all">Táº¥t cáº£</option><option value="paid">ÄÃ£ thanh toÃ¡n</option><option value="partial">Thanh toÃ¡n má»™t pháº§n</option><option value="unpaid">ChÆ°a thanh toÃ¡n</option></select></label>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="primary-btn" onClick={() => onAction('create_expense')}>+ Táº¡o phiáº¿u chi</button>
-            <button className="secondary-btn" onClick={() => onAction('manage_suppliers')}>ğŸ¢ Quáº£n lÃ½ NhÃ  CC</button>
-          </div>
-        </div>
-      </div>
-      <div className="widget liquid-glass" style={{ padding: 0 }}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>MÃ£ phiáº¿u</th><th>NgÃ y</th><th>NhÃ  CC</th><th>Loáº¡i</th><th>Ná»™i dung</th><th>Tá»•ng tiá»n</th><th>ÄÃ£ tráº£</th><th>Tráº¡ng thÃ¡i</th><th>Thao tÃ¡c</th></tr></thead>
-            <tbody>
-              {filteredExpenses.map(e => {
-                const supplier = (data.suppliers || []).find(s => s.id === e.supplierId);
-                const category = (data.expenseCategories || []).find(c => c.id === e.categoryId);
-                return (
-                  <tr key={e.id}>
-                    <td><span className="small muted mono">{e.expenseCode}</span></td>
-                    <td>{e.paymentDate ? e.paymentDate.split('-').reverse().join('/') : 'N/A'}</td>
-                    <td><b>{supplier?.name || e.recipientName || 'VÃ£ng lai'}</b></td>
-                    <td><span className="small muted">{category?.name}</span></td>
-                    <td>{e.title}</td>
-                    <td style={{ fontWeight: '700' }}>{formatMoney(e.totalAmount)}</td>
-                    <td>{formatMoney(e.paidAmount)}</td>
-                    <td>
-                      <span className={`status-badge-liquid ${e.status === 'paid' ? 'active' : e.status === 'partial' ? 'notice' : 'debt'}`}>
-                        {e.status === 'paid' ? 'ÄÃƒ THANH TOÃN' : e.status === 'partial' ? 'THANH TOÃN Má»˜T PHáº¦N' : 'CHÆ¯A THANH TOÃN'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button className="secondary-btn sm" onClick={() => onAction('edit_expense', e)}>âœï¸</button>
-                        <button className="secondary-btn sm" onClick={() => onAction('view_qr', e)}>ğŸ“±</button>
-                        <button className="secondary-btn sm" style={{ color: '#ef4444' }} onClick={() => onAction('delete_expense', e)}>ğŸ—‘ï¸</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredExpenses.length === 0 && <tr><td colSpan="9" style={{ textAlign: 'center', padding: '40px' }}>KhÃ´ng cÃ³ dá»¯ liá»‡u chi phÃ­.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SuppliersTab({ data, onAction }) {
-  return (
-    <div className="stack" style={{ gap: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button className="secondary-btn" onClick={() => onAction('back')}>â¬… Quay láº¡i Chi phÃ­</button>
-        <button className="primary-btn" onClick={() => onAction('add_supplier')}>+ ThÃªm NhÃ  CC</button>
-      </div>
-      <div className="widget liquid-glass" style={{ padding: 0 }}>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>TÃªn NhÃ  CC</th><th>SÄT</th><th>NgÃ¢n hÃ ng</th><th>Sá»‘ tÃ i khoáº£n</th><th>Ghi chÃº</th><th>Thao tÃ¡c</th></tr></thead>
-            <tbody>
-              {data.suppliers.map(s => (
-                <tr key={s.id}>
-                  <td><b>{s.name}</b></td>
-                  <td>{s.phone}</td>
-                  <td>{s.bankName}</td>
-                  <td>{s.bankAccount}</td>
-                  <td><span className="small muted">{s.note}</span></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button className="secondary-btn sm" onClick={() => onAction('edit_supplier', s)}>âœï¸ Sá»­a</button>
-                      <button className="secondary-btn sm" style={{ color: '#ef4444' }} onClick={() => onAction('delete_supplier', s)}>ğŸ—‘ï¸</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {data.suppliers.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>ChÆ°a cÃ³ nhÃ  cung cáº¥p nÃ o.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FinancialReportTab({ data, onAction }) {
-  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthLabel());
-
-  const stats = useMemo(() => {
-    const monthIncome = (data.receipts || []).filter(r => r.month === selectedMonth);
-    const totalIncome = monthIncome.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-    const incomeDebt = monthIncome.reduce((sum, r) => sum + (r.total - (r.paidAmount || 0)), 0);
-
-    const monthExpense = (data.expensePayments || []).filter(e => e.month === selectedMonth);
-    const totalExpense = monthExpense.reduce((sum, e) => sum + (e.paidAmount || 0), 0);
-    const expenseDebt = monthExpense.reduce((sum, e) => sum + (e.totalAmount - (e.paidAmount || 0)), 0);
-
-    return {
-      totalIncome,
-      totalExpense,
-      profit: totalIncome - totalExpense,
-      incomeDebt,
-      expenseDebt,
-      incomeVouchers: monthIncome,
-      expenseVouchers: monthExpense
-    };
-  }, [data, selectedMonth]);
-
-  return (
-    <div className="stack" style={{ gap: '24px' }}>
-      <div className="widget liquid-glass no-print" style={{ padding: '16px' }}>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '18px', margin: 0 }}>BÃ¡o cÃ¡o thÃ¡ng</h2>
-          <input type="month" value={selectedMonth ? `${selectedMonth.split('/')[1]}-${selectedMonth.split('/')[0]}` : ''} onChange={e => {
-            if (!e.target.value) return;
-            const [y, m] = e.target.value.split('-'); 
-            setSelectedMonth(`${m}/${y}`); 
-          }} />
-        </div>
-      </div>
-
-      <div className="stats-grid">
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid var(--success)' }}>
-          <p className="stat-label">Tá»•ng thu</p>
-          <p className="stat-value">{formatMoney(stats.totalIncome)}</p>
-          <p className="stat-note">Tiá»n thá»±c nháº­n tá»« khÃ¡ch</p>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid var(--danger)' }}>
-          <p className="stat-label">Tá»•ng chi</p>
-          <p className="stat-value">{formatMoney(stats.totalExpense)}</p>
-          <p className="stat-note">Tiá»n thá»±c chi cho nhÃ  CC</p>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid var(--primary)' }}>
-          <p className="stat-label">Lá»£i nhuáº­n</p>
-          <p className="stat-value" style={{ color: stats.profit >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatMoney(stats.profit)}</p>
-          <p className="stat-note">Thu - Chi</p>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid #f43f5e' }}>
-          <p className="stat-label">Ná»£ khÃ¡ch thuÃª</p>
-          <p className="stat-value">{formatMoney(stats.incomeDebt)}</p>
-          <p className="stat-note">ChÆ°a thu tá»« khÃ¡ch</p>
-        </div>
-        <div className="stat-card-liquid" style={{ borderLeft: '4px solid #8b5cf6' }}>
-          <p className="stat-label">Ná»£ nhÃ  cung cáº¥p</p>
-          <p className="stat-value">{formatMoney(stats.expenseDebt)}</p>
-          <p className="stat-note">ChÆ°a tráº£ cho NCC</p>
-        </div>
-      </div>
-
-      <div className="dashboard-grid-main" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <div className="widget liquid-glass" style={{ padding: 0 }}>
-          <div style={{ padding: '16px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '16px' }}>ğŸ“¥ Chi tiáº¿t khoáº£n thu</h3>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>PhÃ²ng</th><th>Loáº¡i</th><th>Tá»•ng</th><th>ÄÃ£ thu</th></tr></thead>
-              <tbody>
-                {stats.incomeVouchers.map(r => (
-                  <tr key={r.id}>
-                    <td><b>P{r.roomId}</b></td>
-                    <td><span className="small muted">{receiptTypeLabel(r.type)}</span></td>
-                    <td>{formatMoney(r.total)}</td>
-                    <td style={{ color: 'var(--success)', fontWeight: '600' }}>{formatMoney(r.paidAmount)}</td>
-                  </tr>
-                ))}
-                {stats.incomeVouchers.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>KhÃ´ng cÃ³ khoáº£n thu nÃ o.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="widget liquid-glass" style={{ padding: 0 }}>
-          <div style={{ padding: '16px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-            <h3 style={{ fontSize: '16px' }}>ğŸ“¤ Chi tiáº¿t khoáº£n chi</h3>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>NhÃ  CC</th><th>Loáº¡i</th><th>Tá»•ng</th><th>ÄÃ£ tráº£</th></tr></thead>
-              <tbody>
-                {stats.expenseVouchers.map(e => {
-                  const supplier = (data.suppliers || []).find(s => s.id === e.supplierId);
-                  const category = (data.expenseCategories || []).find(c => c.id === e.categoryId);
-                  return (
-                    <tr key={e.id}>
-                      <td><b>{supplier?.name || 'VÃ£ng lai'}</b></td>
-                      <td><span className="small muted">{category?.name}</span></td>
-                      <td>{formatMoney(e.totalAmount || 0)}</td>
-                      <td style={{ color: 'var(--danger)', fontWeight: '600' }}>{formatMoney(e.paidAmount || 0)}</td>
-                    </tr>
-                  );
-                })}
-                {stats.expenseVouchers.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>KhÃ´ng cÃ³ khoáº£n chi nÃ o.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExpenseModal({ expense, data, onClose, onSave }) {
-  const [form, setForm] = useState(expense || {
-    id: uid('exp'),
-    supplierId: '',
-    categoryId: 'cat_other',
-    month: getCurrentMonthLabel(),
-    paymentDate: new Date().toISOString().slice(0, 10),
-    title: '',
-    description: '',
-    totalAmount: 0,
-    paidAmount: 0,
-    status: 'unpaid',
-    paymentMethod: 'transfer',
-    note: ''
-  });
-
-  // Tá»± sinh mÃ£ phiáº¿u chi
-  useEffect(() => {
-    if (!expense && !form.expenseCode) {
-      const [m, y] = (form.month || getCurrentMonthLabel()).split('/');
-      const prefix = `PC-${y}${m}`;
-      const count = (data.expensePayments || []).filter(e => e.expenseCode && e.expenseCode.startsWith(prefix)).length + 1;
-      const code = `${prefix}-${String(count).padStart(3, '0')}`;
-      setForm(prev => ({ ...prev, expenseCode: code }));
-    }
-  }, [form.month, expense, data.expensePayments]);
-
-  useEffect(() => {
-    let status = 'unpaid';
-    if (form.paidAmount >= form.totalAmount && form.totalAmount > 0) status = 'paid';
-    else if (form.paidAmount > 0) status = 'partial';
-    setForm(prev => ({ ...prev, status }));
-  }, [form.totalAmount, form.paidAmount]);
-
-  // Tá»± chá»n loáº¡i chi phÃ­ theo nhÃ  cung cáº¥p
-  const handleSupplierChange = (val) => {
-    const sup = (data.suppliers || []).find(s => s.id === val);
-    const updates = { supplierId: val };
-    if (sup && sup.defaultCategory) {
-      updates.categoryId = sup.defaultCategory;
-    }
-    // Náº¿u chá»n vÃ£ng lai, xÃ³a tÃªn ngÆ°á»i nháº­n cÅ©
-    if (!val) updates.recipientName = '';
-    setForm(prev => ({ ...prev, ...updates }));
-  };
-
-  return (
-    <div className="modal">
-      <div className="detail-modal-v2" style={{ maxWidth: '700px' }}>
-        <div className="modal-header">
-          <div><h2 style={{ fontSize: '20px' }}>{expense ? 'Sá»­a phiáº¿u chi' : 'Táº¡o phiáº¿u chi má»›i'}</h2><p className="muted">Quáº£n lÃ½ khoáº£n thanh toÃ¡n cho nhÃ  cung cáº¥p</p></div>
-          <button className="secondary-btn sm" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack" style={{ gap: '20px' }}>
-          <div className="form-grid-v2">
-            <label>MÃ£ phiáº¿u chi (Tá»± sinh)
-              <input type="text" value={form.expenseCode || ''} readOnly style={{ background: '#f8fafc', fontWeight: 'bold' }} />
-            </label>
-            <label>NhÃ  CC / NhÃ  cung cáº¥p
-              <select value={form.supplierId} onChange={e => handleSupplierChange(e.target.value)}>
-                <option value="">-- VÃ£ng lai / KhÃ´ng cÃ³ trong danh sÃ¡ch --</option>
-                {(data.suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </label>
-          </div>
-          
-          {!form.supplierId && (
-            <label>TÃªn ngÆ°á»i nháº­n / ÄÆ¡n vá»‹ nháº­n tiá»n (Báº¯t buá»™c khi vÃ£ng lai)
-              <input type="text" value={form.recipientName || ''} onChange={e => setForm({...form, recipientName: e.target.value})} placeholder="Nháº­p tÃªn ngÆ°á»i nháº­n tiá»n..." />
-            </label>
-          )}
-
-          <div className="form-grid-v2">
-            <label>Loáº¡i chi phÃ­
-              <select value={form.categoryId} onChange={e => setForm({...form, categoryId: e.target.value})}>
-                {data.expenseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </label>
-            <label>ThÃ¡ng Ã¡p dá»¥ng
-              <input type="month" value={form.month ? `${form.month.split('/')[1]}-${form.month.split('/')[0]}` : ''} onChange={e => {
-                if (!e.target.value) return;
-                const [y, m] = e.target.value.split('-'); 
-                setForm({...form, month: `${m}/${y}`}); 
-              }} />
-            </label>
-            <label>NgÃ y thanh toÃ¡n
-              <input type="date" value={form.paymentDate} onChange={e => setForm({...form, paymentDate: e.target.value})} />
-            </label>
-          </div>
-          <label>Ná»™i dung chi
-            <input type="text" placeholder="VD: Tiá»n Ä‘iá»‡n thÃ¡ng 5, Sá»­a vÃ²i nÆ°á»›c..." value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-          </label>
-          <div className="form-grid-v2">
-            <label>Tá»•ng tiá»n (VND)
-              <input type="number" value={form.totalAmount} onChange={e => setForm({...form, totalAmount: Number(e.target.value)})} />
-            </label>
-            <label>ÄÃ£ tráº£ (VND)
-              <input type="number" value={form.paidAmount} onChange={e => setForm({...form, paidAmount: Number(e.target.value)})} />
-            </label>
-            <label>PhÆ°Æ¡ng thá»©c
-              <select value={form.paymentMethod} onChange={e => setForm({...form, paymentMethod: e.target.value})}>
-                <option value="transfer">Chuyá»ƒn khoáº£n</option>
-                <option value="cash">Tiá»n máº·t</option>
-                <option value="qr">QuÃ©t mÃ£ QR</option>
-              </select>
-            </label>
-            <label>Tráº¡ng thÃ¡i tá»± tÃ­nh
-              <span className={`status-badge-liquid ${form.status === 'paid' ? 'active' : form.status === 'partial' ? 'notice' : 'debt'}`} style={{ height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {form.status === 'paid' ? 'ÄÃ£ thanh toÃ¡n' : form.status === 'partial' ? 'Thanh toÃ¡n má»™t pháº§n' : 'ChÆ°a thanh toÃ¡n'}
-              </span>
-            </label>
-          </div>
-          <label>Ghi chÃº
-            <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="ThÃªm ghi chÃº náº¿u cáº§n..."></textarea>
-          </label>
-          <div className="op-action-footer">
-            <button className="secondary-btn" onClick={onClose}>Há»§y</button>
-            <button className="primary-btn" onClick={() => {
-              if (!form.title) return alert('Vui lÃ²ng nháº­p ná»™i dung chi.');
-              if (!form.supplierId && !form.recipientName) return alert('Vui lÃ²ng nháº­p tÃªn ngÆ°á»i nháº­n khi chá»n VÃ£ng lai.');
-              onSave(form);
-            }}>LÆ°u phiáº¿u chi</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SupplierModal({ supplier, onClose, onSave }) {
-  const [form, setForm] = useState(supplier || {
-    id: uid('sup'),
-    name: '',
-    phone: '',
-    email: '',
-    address: '',
-    bankName: '',
-    bankAccount: '',
-    bankOwner: '',
-    note: ''
-  });
-
-  return (
-    <div className="modal">
-      <div className="detail-modal-v2">
-        <div className="modal-header">
-          <div><h2 style={{ fontSize: '20px' }}>{supplier ? 'Sá»­a NhÃ  cung cáº¥p' : 'ThÃªm NhÃ  cung cáº¥p'}</h2><p className="muted">ThÃ´ng tin Ä‘á»‘i tÃ¡c / ngÆ°á»i nháº­n thanh toÃ¡n</p></div>
-          <button className="secondary-btn sm" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack" style={{ gap: '20px' }}>
-          <div className="form-grid-v2">
-            <label>TÃªn NhÃ  cung cáº¥p / TÃªn riÃªng
-              <input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="VD: Äiá»‡n lá»±c, Internet VNPT..." />
-            </label>
-            <label>Sá»‘ Ä‘iá»‡n thoáº¡i
-              <input type="text" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
-            </label>
-          </div>
-          <div className="form-grid-v2">
-            <label>TÃªn NgÃ¢n hÃ ng
-              <input type="text" value={form.bankName} onChange={e => setForm({...form, bankName: e.target.value})} placeholder="VD: MB, VCB..." />
-            </label>
-            <label>Sá»‘ tÃ i khoáº£n
-              <input type="text" value={form.bankAccount} onChange={e => setForm({...form, bankAccount: e.target.value})} />
-            </label>
-            <label>TÃªn chá»§ tÃ i khoáº£n
-              <input type="text" value={form.bankOwner} onChange={e => setForm({...form, bankOwner: e.target.value})} />
-            </label>
-          </div>
-          <label>Ghi chÃº
-            <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})}></textarea>
-          </label>
-          <div className="op-action-footer">
-            <button className="secondary-btn" onClick={onClose}>Há»§y</button>
-            <button className="primary-btn" onClick={() => {
-              if (!form.name) return alert('Vui lÃ²ng nháº­p tÃªn nhÃ  cung cáº¥p.');
-              onSave(form);
-            }}>LÆ°u thÃ´ng tin</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExpenseQRModal({ expense, supplier, onClose }) {
-  const recipientName = supplier?.name || expense.recipientName || 'VÃ£ng lai';
-  const bankName = supplier?.bankName || expense.recipientBankName || '';
-  const bankAccount = supplier?.bankAccount || expense.recipientBankAccount || '';
-  const bankOwner = supplier?.bankOwner || expense.recipientBankOwner || recipientName;
-  const qrImageUrl = expense.recipientQrImageUrl || expense.qrImageUrl || '';
-  const remainingAmount = Math.max(0, Number(expense.totalAmount || 0) - Number(expense.paidAmount || 0));
-  const displayAmount = remainingAmount > 0 ? remainingAmount : Number(expense.totalAmount || 0);
-  const transferText = `${expense.expenseCode || ''} ${expense.title || ''}`.trim();
-  const copyExpenseTransfer = () => {
-    const text = `${bankName}\nSTK: ${bankAccount}\nChá»§ TK: ${bankOwner}\nSá»‘ tiá»n: ${formatMoney(displayAmount)}\nNá»™i dung: ${transferText}`;
-    navigator.clipboard.writeText(text);
-    alert('ÄÃ£ copy thÃ´ng tin chuyá»ƒn khoáº£n phiáº¿u chi.');
-  };
-
-  return (
-    <div className="modal no-print" onClick={onClose}>
-      <div className="detail-modal-v2" style={{ maxWidth: '400px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 style={{ fontSize: '18px' }}>MÃ£ QR Thanh toÃ¡n</h2>
-          <button className="secondary-btn sm" onClick={onClose}>âœ•</button>
-        </div>
-        <div className="detail-body-v2 stack" style={{ alignItems: 'center' }}>
-          <p>Thanh toÃ¡n cho: <b>{recipientName}</b></p>
-          <p style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)' }}>{formatMoney(displayAmount)}</p>
-          
-          {qrImageUrl && (
-            <div className="settlement-qr-card" style={{ width: '100%' }}>
-              <h4>QR ngÆ°á»i nháº­n</h4>
-              <img src={qrImageUrl} alt="QR ngÆ°á»i nháº­n tiá»n" />
-            </div>
-          )}
-
-          {bankAccount ? (
-            <div className="widget" style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
-              <p className="small muted">THÃ”NG TIN CHUYá»‚N KHOáº¢N</p>
-              <p style={{ marginTop: '10px' }}>NgÃ¢n hÃ ng: <b>{bankName || 'ChÆ°a cáº­p nháº­t'}</b></p>
-              <p>Sá»‘ TK: <b>{bankAccount}</b></p>
-              <p>Chá»§ TK: <b>{bankOwner || 'ChÆ°a cáº­p nháº­t'}</b></p>
-              <p style={{ marginTop: '10px' }} className="small">Ná»™i dung: <b>{transferText}</b></p>
-            </div>
-          ) : (
-            <div className="warning-box">Phiáº¿u chi nÃ y chÆ°a cÃ³ thÃ´ng tin ngÃ¢n hÃ ng. CÃ³ thá»ƒ lÆ°u link áº£nh QR hoáº·c cáº­p nháº­t STK ngÆ°á»i nháº­n.</div>
-          )}
-          
-          {(bankAccount || qrImageUrl) && <button className="secondary-btn wide" onClick={copyExpenseTransfer}>ğŸ“‹ Copy ná»™i dung CK</button>}
-          <button className="primary-btn wide" style={{ marginTop: '20px' }} onClick={() => window.print()}>ğŸ–¨ï¸ In chá»©ng tá»«</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default App;
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×½ïdèµ©hºÚn¶X§zÍZ[\Ü™XXİÈ\ÙQY™™Xİ\ÙSY[[Ë\ÙTİ]HHœ›ÛH	Ü™XXİ	ÎÂš[\Ü
+ˆ\ÈÖœ›ÛH	ŞŞ	ÎÂš[\Ü	Ë‹Üİ[\Ë˜ÜÜÉÎÂ‚˜ÛÛœİÕÔQÑWÒÑVHH	Ü›ÛÛWÛX[˜YÙ\—Ü\—Ø\İŒIÎÂ˜ÛÛœİS’×ÒÑVHH	Ü›ÛÛWÛX[˜YÙ\—Ø˜[š×İŒIÎÂ˜ÛÛœİS—ÒÑVHH	Ü›ÛÛWÛX[˜YÙ\—Ü[—İŒIÎÂ‚˜ÛÛœİQUSĞS’ÈHÂˆ˜[šÓ˜[YNˆ	Ó™ğè›ˆ0è™ÈPÔ1$8n©İH1¬°è0è]šxnàÛˆšxnáİ˜[IËˆ˜[šĞÛÙNˆ	Ğ’Q‰ËˆXØÛİ[›Îˆ	ÎÌŒMŒIËˆXØÛİ[˜[YNˆ	Ò8næÒS’ĞS’xná“H8nâˆ°ã’	ËŸNÂ‚™[˜İ[ÛˆÙ]İ\œ™[[ÛX™[
+]HH™]È]J
+JHÂˆ™]\›ˆ	Ôİš[™Ê]K™Ù][Û
+
+H
+ÈJKœYİ\
+‹	Ì	Ê_KÉÙ]K™Ù][YX\Š
+_XÂŸB‚˜ÛÛœİQUSÑUHHÂˆ›ÛÛ\ÎˆÂˆÈYˆ	ÌŒIË™[ˆÍÌ\ÜÚ]ˆÍÌÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÌŒ‰Ë™[ˆŒ\ÜÚ]ˆÛX[š[™ÎˆÍÍK[]˜]ÜˆÍÍK][™NˆÍÍK[\›™]ˆÍÍK[XİšXÔšXÙNˆÍŒØ]\”šXÙNˆL›İNˆ	ØÚ8néÈš0è8nçÉÈKˆÈYˆ	ÌÌIË™[ˆ\ÜÚ]ˆÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÌÌ‰Ë™[ˆŒ\ÜÚ]ˆŒÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÌÌÉË™[ˆÌ\ÜÚ]ˆÌÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍIË™[ˆÌ\ÜÚ]ˆÌÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	Í‰Ë™[ˆÍŒ\ÜÚ]ˆÍŒÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍÉË™[ˆÌ\ÜÚ]ˆÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍLIË™[ˆ\ÜÚ]ˆÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍL‰Ë™[ˆÎ\ÜÚ]ˆÎÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍLÉË™[ˆL\ÜÚ]ˆLÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍŒIË™[ˆL\ÜÚ]ˆLÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍŒ‰Ë™[ˆÎ\ÜÚ]ˆÎÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍŒÉË™[ˆ\ÜÚ]ˆÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍÌIË™[ˆ\ÜÚ]ˆÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÑÚxn¨ÛHL	H0ëH8nâØÚ¸néIÈKˆÈYˆ	ÍÌ‰Ë™[ˆÍL\ÜÚ]ˆÍLÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆÈYˆ	ÍÌÉË™[ˆ\ÜÚ]ˆÛX[š[™ÎˆL[]˜]ÜˆL][™NˆL[\›™]ˆL[XİšXÔšXÙNˆÎØ]\”šXÙNˆÌŒ›İNˆ	ÉÈKˆKˆ[˜[Îˆ×KˆY[X™\œÚ\Îˆ×KˆÛÛ˜XİÎˆ×Kˆ™XÙZ\Îˆ×Kˆ[İ™Sİ]™\ÜÎˆ×KˆÛÛ˜Xİ™[™]Ø[Îˆ×Kˆ›ÛÛU˜[œÙ™\œÎˆ×Kˆİ\Y\œÎˆÂˆÈYˆ	Üİ\Ù]›‰Ë˜[YNˆ	ñ$xnáÛˆ8nìXÉËÜ›İ\ˆ	ñ$xnáÛ‰ËY˜][Ø]YÛÜNˆ	ØØ]Ù[XÉÈKˆÈYˆ	Üİ\İØ]\‰Ë˜[YNˆ	Ğøn©\±¬8næØÉËÜ›İ\ˆ	Ó±¬8næØÉËY˜][Ø]YÛÜNˆ	ØØ]İØ]\‰ÈKˆÈYˆ	Üİ\İ›œ	Ë˜[YNˆ	Õ“”	ËÜ›İ\ˆ	Ò[\›™]	ËY˜][Ø]YÛÜNˆ	ØØ]Ú[\›™]	ÈKˆÈYˆ	Üİ\Ùœ	Ë˜[YNˆ	Ñ”[XÛÛIËÜ›İ\ˆ	Ò[\›™]	ËY˜][Ø]YÛÜNˆ	ØØ]Ú[\›™]	ÈKˆÈYˆ	Üİ\İšY][	Ë˜[YNˆ	ÕšY][[XÛÛIËÜ›İ\ˆ	Ò[\›™]	ËY˜][Ø]YÛÜNˆ	ØØ]Ú[\›™]	ÈKˆÈYˆ	Üİ\ÜØİ‰Ë˜[YNˆ	ÔĞÕ‰ËÜ›İ\ˆ	Õ^xnà[ˆ0ëšÈxn¨[™ÉËY˜][Ø]YÛÜNˆ	ØØ]Ú[\›™]	ÈKˆÈYˆ	Üİ\İ˜\ÚÜš]˜]IË˜[YNˆ	ÕHÛÛH°èXÈ0è›ˆ8n«\	ËÜ›İ\ˆ	Ô°èXÈÈpíH±¬8nç[™ÉËY˜][Ø]YÛÜNˆ	ØØ]İ˜\Ú	ÈKˆÈYˆ	Üİ\İ˜\ÚØÚ]IË˜[YNˆ	Ğğí™ÈHpíH±¬8nç[™È1$pí8nâÉËÜ›İ\ˆ	Ô°èXÈÈpíH±¬8nç[™ÉËY˜][Ø]YÛÜNˆ	ØØ]İ˜\Ú	ÈKˆÈYˆ	Üİ\ØÛX[—ÜİY™‰Ë˜[YNˆ	Óš0è›ˆšpê›ˆ¸náÈÚ[š	ËÜ›İ\ˆ	Õ¸náÈÚ[š	ËY˜][Ø]YÛÜNˆ	ØØ]ØÛX[š[™ÉÈKˆÈYˆ	Üİ\ØÛX[—ÜÙ\šXÙIË˜[YNˆ	Ñ8nâØÚ¸néH¸náÈÚ[š	ËÜ›İ\ˆ	Õ¸náÈÚ[š	ËY˜][Ø]YÛÜNˆ	ØØ]ØÛX[š[™ÉÈKˆÈYˆ	Üİ\ÜÙXİ\š]IË˜[YNˆ	Ğ¸n¨ÛÈ¸náÈ0ì˜Hš0è	ËÜ›İ\ˆ	Ğ¸n¨ÛÈ¸náÉËY˜][Ø]YÛÜNˆ	ØØ]ÙİX\™	ÈKˆÈYˆ	Üİ\Ù[]˜]Ü‰Ë˜[YNˆ	Ñ8nâØÚ¸néH¸n¨ÛÈ°ë[™Èpè^IËÜ›İ\ˆ	Õ[™Èpè^IËY˜][Ø]YÛÜNˆ	ØØ]ÛXZ[[˜[˜ÙIÈKˆÈYˆ	Üİ\ØØ[Y\˜IË˜[YNˆ	Ñ8nâØÚ¸néHØ[Y\˜H[ˆš[š	ËÜ›İ\ˆ	ĞØ[Y\˜IËY˜][Ø]YÛÜNˆ	ØØ]ØØ[Y\˜IÈKˆÈYˆ	Üİ\ÜØØÉË˜[YNˆ	Ñ8nâØÚ¸néHĞĞÉËÜ›İ\ˆ	ÔĞĞÉËY˜][Ø]YÛÜNˆ	ØØ]ÜØØÉÈKˆÈYˆ	Üİ\Ù[X×Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈ1$ZxnáÛ‰ËÜ›İ\ˆ	ÔønëXHÚ8nëØIËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\İØ]\—Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈ±¬8næØÉËÜ›İ\ˆ	ÔønëXHÚ8nëØIËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\ØZ[Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈ8näÈÈ0èH8nì[™ÉËÜ›İ\ˆ	ÔønëXHÚ8nëØIËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\ÜZ[Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈñ¨[‰ËÜ›İ\ˆ	ÔønëXHÚ8nëØIËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\ÛØÚ×Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈÚ0ìØIËÜ›İ\ˆ	ÔønëXHÚ8nëØIËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\ÙÛ\Ü×Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈš0íHğë[š	ËÜ›İ\ˆ	ÔønëXHÚ8nëØIËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\ÙÛÜ—Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈønëXHİxnä[‰ËÜ›İ\ˆ	ÔønëXHÚ8nëØIËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\ØX×Ü™\Z\‰Ë˜[YNˆ	Õ8nèÈønëXHpè^H8n¨[š	ËÜ›İ\ˆ	ñ$xnáÛˆ8n¨[š	ËY˜][Ø]YÛÜNˆ	ØØ]Ü™\Z\‰ÈKˆÈYˆ	Üİ\ØX×ØÛX[‰Ë˜[YNˆ	Ñ8nâØÚ¸néH¸náÈÚ[špè^H8n¨[š	ËÜ›İ\ˆ	ñ$xnáÛˆ8n¨[š	ËY˜][Ø]YÛÜNˆ	ØØ]ØÛX[š[™ÉÈKˆÈYˆ	Üİ\Ù\›š]\™IË˜[YNˆ	ĞønëXH0è™È¸næZH8n©]	ËÜ›İ\ˆ	Ó¸næZH8n©]	ËY˜][Ø]YÛÜNˆ	ØØ]ÛX]\šX[	ÈKˆÈYˆ	Üİ\Ú\™Ø\™IË˜[YNˆ	ĞønëXH0è™È1$ZxnáÛˆ±¬8næØÉËÜ›İ\ˆ	Õ¸n«]1¬	ËY˜][Ø]YÛÜNˆ	ØØ]ÛX]\šX[	ÈKˆÈYˆ	Üİ\ÛX]\šX[ÉË˜[YNˆ	ĞønëXH0è™È¸n«]xnáİH0èH8nì[™ÉËÜ›İ\ˆ	Õ¸n«]1¬	ËY˜][Ø]YÛÜNˆ	ØØ]ÛX]\šX[	ÈKˆÈYˆ	Üİ\ÛY][	Ë˜[YNˆ	ĞønëXH0è™ÈÚ[HÚ0ëIËÜ›İ\ˆ	Õ¸n«]1¬	ËY˜][Ø]YÛÜNˆ	ØØ]ÛX]\šX[	ÈKˆÈYˆ	Üİ\Ù[XİšX×ÜİÜ™IË˜[YNˆ	ĞønëXH0è™Èxn¯İ¸nâÈ1$ZxnáÛ‰ËÜ›İ\ˆ	Õxn¯İ¸nâÉËY˜][Ø]YÛÜNˆ	ØØ]ÛX]\šX[	ÈKˆÈYˆ	Üİ\İØ]\—ÜİÜ™IË˜[YNˆ	ĞønëXH0è™Èxn¯İ¸nâÈ±¬8næØÉËÜ›İ\ˆ	Õxn¯İ¸nâÉËY˜][Ø]YÛÜNˆ	ØØ]ÛX]\šX[	ÈKˆÈYˆ	Üİ\Ø\X[˜ÙIË˜[YNˆ	ĞønëXH0è™È1$ZxnáÛˆpè^IËÜ›İ\ˆ	ÑÚXH8né[™ÉËY˜][Ø]YÛÜNˆ	ØØ]ÛX]\šX[	ÈKˆÈYˆ	Üİ\Û][™IË˜[YNˆ	Ñ8nâØÚ¸néHÚxn­İøn©^IËÜ›İ\ˆ	ÑÚxn­İøn©^IËY˜][Ø]YÛÜNˆ	ØØ]Ûİ\‰ÈKˆÈYˆ	Üİ\Ü\İ	Ë˜[YNˆ	Ñ8nâØÚ¸néHxnáİğíˆ°î[™ÉËÜ›İ\ˆ	Ñxnáİğíˆ°î[™ÉËY˜][Ø]YÛÜNˆ	ØØ]Ûİ\‰ÈKˆÈYˆ	Üİ\ÙØ\™[‰Ë˜[YNˆ	Ñ8nâØÚ¸néHÚ1 ÛHğìØÈğèH[š	ËÜ›İ\ˆ	ĞğèH[š	ËY˜][Ø]YÛÜNˆ	ØØ]Ûİ\‰ÈKˆÈYˆ	Üİ\ÛYØ[	Ë˜[YNˆ	Ñ8nâØÚ¸néH0è\0ïIËÜ›İ\ˆ	Ô0è\0ïIËY˜][Ø]YÛÜNˆ	ØØ]ÜÙ\šXÙIÈKˆÈYˆ	Üİ\ØXØÉË˜[YNˆ	Ñ8nâØÚ¸néHøn¯Èğè[‰ËÜ›İ\ˆ	Òøn¯Èğè[‰ËY˜][Ø]YÛÜNˆ	ØØ]ÜÙ\šXÙIÈKˆÈYˆ	Üİ\Ø˜[š×Ù™YIË˜[YNˆ	Ó™ğè›ˆ0è™ÈÈ0ëHÚ^xnàÛˆÚøn¨Û‰ËÜ›İ\ˆ	Ó™ğè›ˆ0è™ÉËY˜][Ø]YÛÜNˆ	ØØ]Ø˜[šÉÈKˆÈYˆ	Üİ\İ^	Ë˜[YNˆ	Ğñ¨H]X[ˆxn¯ÉËÜ›İ\ˆ	Õxn¯ÉËY˜][Ø]YÛÜNˆ	ØØ]İ^	ÈKˆÈYˆ	Üİ\Û[™Ü™	Ë˜[YNˆ	ĞÚ8néÈš0èÈ°ê›ˆÚÈpêˆxn­İ¸n¬[™ÉËÜ›İ\ˆ	ĞÚ8néÈš0è	ËY˜][Ø]YÛÜNˆ	ØØ]Ü™[	ÈKˆÈYˆ	Üİ\ÛYÛ]	Ë˜[YNˆ	Ğ˜[ˆ]xn¨Ûˆ0ïH0ì˜Hš0è	ËÜ›İ\ˆ	Ô]xn¨Ûˆ0ïIËY˜][Ø]YÛÜNˆ	ØØ]ÛX[˜YÙ[Y[	ÈKˆÈYˆ	Üİ\Ûİ\‰Ë˜[YNˆ	Óš0èİ[™Èøn©\Ú0èXÉËÜ›İ\ˆ	ÒÚ0èXÉËY˜][Ø]YÛÜNˆ	ØØ]Ûİ\‰ÈKˆKˆ^[œÙPØ]YÛÜšY\ÎˆÂˆÈYˆ	ØØ]Ù[XÉË˜[YNˆ	Õxnà[ˆ1$ZxnáÛ‰ÈKˆÈYˆ	ØØ]İØ]\‰Ë˜[YNˆ	Õxnà[ˆ±¬8næØÉÈKˆÈYˆ	ØØ]Ú[\›™]	Ë˜[YNˆ	Ò[\›™]È^xnà[ˆ0ëš	ÈKˆÈYˆ	ØØ]ØÛX[š[™ÉË˜[YNˆ	Õ¸náÈÚ[š	ÈKˆÈYˆ	ØØ]Ü™\Z\‰Ë˜[YNˆ	ÔønëXHÚ8nëØIÈKˆÈYˆ	ØØ]ÛX]\šX[	Ë˜[YNˆ	Õ¸n«]1¬È¸næZH8n©]	ÈKˆÈYˆ	ØØ]Ü™[	Ë˜[YNˆ	Õxnà[ˆpêˆxn­İ¸n¬[™ÉÈKˆÈYˆ	ØØ]İ˜\Ú	Ë˜[YNˆ	Ô0ëH°èXÉÈKˆÈYˆ	ØØ]ÙİX\™	Ë˜[YNˆ	Ğ¸n¨ÛÈ¸náÉÈKˆÈYˆ	ØØ]ÛXZ[[˜[˜ÙIË˜[YNˆ	Ğ¸n¨ÛÈ°ë	ÈKˆÈYˆ	ØØ]ØØ[Y\˜IË˜[YNˆ	ĞØ[Y\˜IÈKˆÈYˆ	ØØ]ÜØØÉË˜[YNˆ	ÔĞĞÉÈKˆÈYˆ	ØØ]Ø˜[šÉË˜[YNˆ	Ô0ëH™ğè›ˆ0è™ÉÈKˆÈYˆ	ØØ]İ^	Ë˜[YNˆ	Õxn¯ÈÈ0ëIÈKˆÈYˆ	ØØ]ÛX[˜YÙ[Y[	Ë˜[YNˆ	Ô0ëH]xn¨Ûˆ0ïIÈKˆÈYˆ	ØØ]ÜÙ\šXÙIË˜[YNˆ	Ô0ëH8nâØÚ¸néIÈKˆÈYˆ	ØØ]Ûİ\‰Ë˜[YNˆ	ĞÚH0ëHÚ0èXÉÈKˆKˆ^[œÙT^[Y[Îˆ×KŸNÂ‚™[˜İ[ÛˆØY™T™XY
+Ù^K˜[˜XÚÊHÂˆHÂˆÛÛœİ˜]ÈHØØ[İÜ˜YÙK™Ù]][JÙ^JNÂˆYˆ
+\˜]È˜]ÈOOH	İ[™Yš[™Y	È˜]ÈOOH	Û[	ÊH™]\›ˆ˜[˜XÚÎÂˆ™]\›ˆ”ÓÓ‹œ\œÙJ˜]ÊNÂˆHØ]Ú
+JHÂˆÛÛœÛÛK™\œ›ÜŠ	Ó8nåÚH1$xnãXÈ8nëÈxnáİN‰ËJNÂˆ™]\›ˆ˜[˜XÚÎÂˆBŸB‚™[˜İ[ÛˆÙ]]U™\œÚ[ÛŠ]JHÂˆYˆ
+Y]JH™]\›ˆÂˆÛÛœİ]QšY[ÈHÉØÜ™X]Y]	Ë	İ\]Y]	Ë	ÜØ]™Y]	Ë	ÜZY]IË	ÜÚYÛ™Y]IË	Üİ\]IË	Ú›Ú[™Y]IË	Ù[™Y]	Ë	Ü™[™]ÙY]	×NÂˆÛÛœİÛÛXİ[ÛœÈHÉÜ›ÛÛ\ÉË	İ[˜[ÉË	ÛY[X™\œÚ\ÉË	ØÛÛ˜XİÉË	Ü™XÙZ\ÉË	Û[İ™Sİ]™\ÜÉË	ØÛÛ˜Xİ™[™]Ø[ÉË	Ü›ÛÛU˜[œÙ™\œÉË	Üİ\Y\œÉË	Ù^[œÙPØ]YÛÜšY\ÉË	Ù^[œÙT^[Y[É×NÂˆ™]\›ˆÛÛXİ[ÛœËœ™YXÙJ
+X^Ù^JHOˆÂˆ™]\›ˆX]›X^
+X^‹‹Š
+]VÚÙ^WH×JK›X\
+][HOˆÂˆ™]\›ˆX]›X^
+‹‹™]QšY[Ë›X\
+šY[OˆÂˆÛÛœİ[YHH]Kœ\œÙJ][OË–ÙšY[H	ÉÊNÂˆ™]\›ˆ[X™\‹š\Ó˜SŠ[YJHÈˆ[YNÂˆJJNÂˆJJJNÂˆK
+NÂŸB‚™[˜İ[ÛˆZY
+™Yš^
+HÂˆ™]\›ˆ	Ü™Yš^WÉÑ]K››İÊ
+_WÉÓX]œ˜[™ÛJ
+KÔİš[™ÊÍŠKœÛXÙJ‹
+_XÂŸB‚™[˜İ[ÛˆY™“[ÛÊKŠHÂˆÛÛœİİ\H\œÙQ]Q›^X›JJNÂˆÛÛœİ[™H\œÙQ]Q›^X›JŠNÂˆYˆ
+\İ\Y[™
+H™]\›ˆÂˆ][ÛÈH
+[™™Ù][YX\Š
+HHİ\™Ù][YX\Š
+JH
+ˆLÂˆ[ÛÈOHİ\™Ù][Û
+
+NÂˆ[ÛÈ
+ÏH[™™Ù][Û
+
+NÂˆ™]\›ˆ[ÛÈHÈˆ[ÛÎÂŸB‚™[˜İ[Ûˆ›Ü›X][Û™^J˜[YJHÂˆ™]\›ˆ™]È[“[X™\‘›Ü›X]
+	İšKU“‰ËÂˆİ[Nˆ	Øİ\œ™[˜ŞIËˆİ\œ™[˜ŞNˆ	Õ“‘	ËˆJK™›Ü›X]
+˜[YJNÂŸB‚™[˜İ[Ûˆ[X™\•ÕÛÜ™Ê[X™\ŠHÂˆYˆ
+[X™\ˆOOH
+H™]\›ˆ	ÒÚ0í™È1$xnäÛ™ÉÎÂˆÛÛœİ[š]ÈHÉÉË	È™Ú0ë‰Ë	ÈšxnáİIË	È8níÉË	È™Ú0ëˆ8níÉË	ÈšxnáİH8níÉ×NÂˆÛÛœİ™XY™YQYÚ]ÈH
+[JHOˆÂˆÛÛœİYÚ]ÈHÉÚÚ0í™ÉË	Ûxnæ]	Ë	ÚZIË	Ø˜IË	Ø¸nä[‰Ë	Û± ÛIË	Üğè]IË	Ø¸n¨ŞIË	İ0è[IË	ØÚ0ë[‰×NÂˆ]HHX]™›ÛÜŠ[HÈL
+NÂˆ]ˆHX]™›ÛÜŠ
+[H	HL
+HÈL
+NÂˆ]ÈH[H	HLÂˆ]™\ÈH	ÉÎÂˆYˆ
+Hˆ
+H™\È
+ÏHYÚ]ÖØWH
+È	È± ÛH	ÎÂˆYˆ
+ˆˆJH™\È
+ÏHYÚ]ÖØ—H
+È	Èq¬1¨ZH	ÎÂˆYˆ
+ˆOOHJH™\È
+ÏH	Ûq¬8nçZH	ÎÂˆYˆ
+Hˆ	‰ˆˆOOH	‰ˆÈˆ
+H™\È
+ÏH	Û8n®È	ÎÂˆYˆ
+ÈOOHH	‰ˆˆˆ
+H™\È
+ÏH	Û1 ÛH	ÎÂˆ[ÙHYˆ
+ÈOOHH	‰ˆˆˆJH™\È
+ÏH	Ûxnä]	ÎÂˆ[ÙHYˆ
+Èˆ
+HOOH	‰ˆˆOOH
+JH™\È
+ÏHYÚ]ÖØ×NÂˆ™]\›ˆ™\ÎÂˆNÂˆ]™\ÈH	ÉÎÂˆ][š]YHÂˆ][\HX]˜XœÊ[X™\ŠNÂˆÚ[H
+[\ˆ
+HÂˆ]™YHH[\	HLÂˆYˆ
+™YHˆ
+H™\ÈH™XY™YQYÚ]Ê™YJH
+È[š]Öİ[š]YH
+È	È	È
+È™\ÎÂˆ[\HX]™›ÛÜŠ[\ÈL
+NÂˆ[š]Y
+ÊÎÂˆBˆ™]\›ˆ™\Ëš[J
+K˜Ú\]
+
+KÕ\\Ø\ÙJ
+H
+È™\Ëš[J
+KœÛXÙJJH
+È	È1$xnäÛ™ÉÎÂŸB‚™[˜İ[Ûˆ\œÙQ]Q›^X›J˜[YJHÂˆYˆ
+]˜[YJH™]\›ˆ[ÂˆYˆ
+˜[YH[œİ[˜Ù[Ùˆ]JH™]\›ˆ˜[YNÂˆÛÛœİ^Hİš[™Ê˜[YJNÂˆYˆ
+^š[˜ÛY\Ê	ËIÊJH™]\›ˆ™]È]J	İ^UŒŒ
+NÂˆYˆ
+^š[˜ÛY\Ê	ËÉÊJHÂˆÛÛœİ\ÈH^œÜ]
+	ËÉÊNÂˆYˆ
+\Ë›[™İOOHÊH™]\›ˆ™]È]J	Ü\ÖÌ—_KIÜ\ÖÌWKœYİ\
+‹	Ì	Ê_KIÜ\ÖÌKœYİ\
+‹	Ì	Ê_UŒŒ
+NÂˆBˆ™]\›ˆ[ÂŸB‚˜ÛÛœİS•SQĞÓÓ•PÕÖQPT”ÈHÌNLNMÌNÂ‚™[˜İ[Ûˆ\Ò[˜[YÛÛ˜Xİ]J˜[YJHÂˆÛÛœİ]HH\œÙQ]Q›^X›J˜[YJNÂˆYˆ
+Y]H[X™\‹š\Ó˜SŠ]K™Ù][YJ
+JJH™]\›ˆYNÂˆ™]\›ˆS•SQĞÓÓ•PÕÖQPT”Ëš[˜ÛY\Ê]K™Ù][YX\Š
+JNÂŸB‚™[˜İ[Ûˆ›Ü›X]ÛÛ˜Xİ]J˜[YK˜[˜XÚÈH	ĞÚ1¬Høn«\š8n«]	ÊHÂˆYˆ
+\Ò[˜[YÛÛ˜Xİ]J˜[YJJH™]\›ˆ˜[˜XÚÎÂˆÛÛœİ]HH\œÙQ]Q›^X›J˜[YJNÂˆYˆ
+Y]JH™]\›ˆ˜[˜XÚÎÂˆ™]\›ˆ]KÓØØ[Q]Tİš[™Ê	İšKU“‰ËÈ^Nˆ	Ì‹YYÚ]	Ë[Ûˆ	Ì‹YYÚ]	ËYX\ˆ	Û[Y\šXÉÈJNÂŸB‚™[˜İ[Ûˆ\Õ˜[Y\Ú[™\ÜÑ]J˜[YJHÂˆ™]\›ˆZ\Ò[˜[YÛÛ˜Xİ]J˜[YJNÂŸB‚™[˜İ[Ûˆ›Ü›X]\Ú[™\ÜÑ]J˜[YK˜[˜XÚÈH	ĞÚ1¬Høn«\š8n«]	ÊHÂˆ™]\›ˆ›Ü›X]ÛÛ˜Xİ]J˜[YK˜[˜XÚÊNÂŸB‚™[˜İ[ÛˆØ[İ[]T™[[\˜][ÛŠİ\]K[™]JHÂˆYˆ
+\Ò[˜[YÛÛ˜Xİ]Jİ\]JH\Ò[˜[YÛÛ˜Xİ]J[™]JJH™]\›ˆ	ø %	ÎÂˆÛÛœİİ\H\œÙQ]Q›^X›Jİ\]JNÂˆÛÛœİ[™H\œÙQ]Q›^X›J[™]JNÂˆYˆ
+\İ\Y[™[™Hİ\
+H™]\›ˆ	ø %	ÎÂˆÛÛœİ[ÛÈHY™“[ÛÊİ\]K[™]JNÂˆ™]\›ˆ[ÛÈˆÈ	Û[ÛßH0è[™Øˆ	ø %	ÎÂŸB‚™[˜İ[Ûˆ\Õ˜[YÛÛ˜Xİ˜[™ÙJİ\]K[™]JHÂˆYˆ
+\Ò[˜[YÛÛ˜Xİ]Jİ\]JH\Ò[˜[YÛÛ˜Xİ]J[™]JJH™]\›ˆ˜[ÙNÂˆ™]\›ˆ\œÙQ]Q›^X›J[™]JHˆ\œÙQ]Q›^X›Jİ\]JNÂŸB‚™[˜İ[Ûˆ\œÙUšY]˜[Y\ÙQ]U˜[YJ˜[YJHÂˆÛÛœİX]ÚHİš[™Ê˜[YH	ÉÊK›X]Ú
+ÊÌKŸJV×Ë‹WJÌKŸJV×Ë‹WJÍJKÊNÂˆYˆ
+[X]Ú
+H™]\›ˆ	ÉÎÂˆÛÛœİË^K[ÛYX\—HHX]ÚÂˆ™]\›ˆ	ŞYX\ŸKIÛ[ÛœYİ\
+‹	Ì	Ê_KIÙ^KœYİ\
+‹	Ì	Ê_XÂŸB‚™[˜İ[Ûˆ›Ü›X[^™TÙX\˜Ú^
+˜[YJHÂˆ™]\›ˆİš[™Ê˜[YH	ÉÊBˆ››Ü›X[^™J	Ó‘‘	ÊBˆœ™\XÙJÖ×LÌWLÍ™—KÙË	ÉÊBˆœ™\XÙJñ$KÙË	Ù	ÊBˆœ™\XÙJñ$ÙË	Ñ	ÊBˆœ™\XÙJÖÊ‹×ØKÙË	ÉÊBˆœ™\XÙJ×Ê—×Ê‹ÙË	ËÉÊBˆÓİÙ\Ø\ÙJ
+NÂŸB‚™[˜İ[ÛˆÛX[“ØÜ•˜[YJ˜[YJHÂˆ™]\›ˆİš[™Ê˜[YH	ÉÊBˆœ™\XÙJ×–×Î»ï&—x $ø %8 (—JËË	ÉÊBˆœ™\XÙJ×ÊËÙË	È	ÊBˆš[J
+NÂŸB‚™[˜İ[Ûˆİš\š[[™İX[YX™[Z[
+˜[YJHÂˆ™]\›ˆÛX[“ØÜ•˜[YJ˜[YJBˆœ™\XÙJ×–Ê‹×Ø×J‹Ë	ÉÊBˆœ™\XÙJ×—Ï×ÊŠ[˜[Y_]HÙˆš\]KÊ›[ÛÊYX\Ÿ]H[ÛYX\ŸÙ^˜][Û˜[]_XÙHÙˆÜšYÚ[ŸXÙHÙˆ™\ÚY[˜Ù_]HÙˆ^\_]HÙˆ\ÜİY_\œÛÛ˜[Y[YšXØ][ÛŸ\ÜİYY_›×ÊWÊ×Ê‹ÚK	ÉÊBˆœ™\XÙJ×–Ê‹×ØÎ—J‹Ë	ÉÊBˆš[J
+NÂŸB‚™[˜İ[Ûˆ™XYYØ\™šY[
+[™\ËX™[ËİÜX™[ÈH×JHÂˆÛÛœİ›Ü›X[^™YX™[ÈHX™[Ë›X\
+›Ü›X[^™TÙX\˜Ú^
+NÂˆÛÛœİ›Ü›X[^™YİÜÈHË‹‹›X™[Ë‹‹œİÜX™[×K›X\
+›Ü›X[^™TÙX\˜Ú^
+NÂˆ›Üˆ
+]HHÈH[™\Ë›[™İÈH
+ÏHJHÂˆÛÛœİ˜]Ó[™HH[™\ÖÚWNÂˆÛÛœİ›Ü›X[^™Y[™HH›Ü›X[^™TÙX\˜Ú^
+˜]Ó[™JNÂˆÛÛœİX]ÚYX™[H›Ü›X[^™YX™[Ë™š[™
+X™[Oˆ›Ü›X[^™Y[™Kš[˜ÛY\ÊX™[
+JNÂˆYˆ
+[X]ÚYX™[
+HÛÛ[YNÂ‚ˆÛÛœİX™[[™^H›Ü›X[^™Y[™Kš[™^ÙŠX]ÚYX™[
+NÂˆÛÛœİX\šÙ\›\ÜÓ[™HH˜]Ó[™Kœ™\XÙJÖÊ‹×ØKÙË	ÉÊNÂˆÛÛœİ˜[YPY\ÛÛÛˆHX\šÙ\›\ÜÓ[™K›X]Ú
+ÖÎ»ï&—WÊŠŠÊIÊOË–ÌWH	ÉÎÂˆÛÛœİY\“X™[Hİš\š[[™İX[YX™[Z[
+˜[YPY\ÛÛÛˆX\šÙ\›\ÜÓ[™KœÛXÙJX™[[™^
+ÈX]ÚYX™[›[™İ
+JNÂˆYˆ
+Y\“X™[	‰ˆK×—ß››×ÉÚK\İ
+Y\“X™[
+JH™]\›ˆY\“X™[Â‚ˆÛÛœİÛÛXİYH×NÂˆ›Üˆ
+]ˆHH
+ÈNÈˆ[™\Ë›[™İÈˆ
+ÏHJHÂˆÛÛœİ™^H[™\ÖÚ—NÂˆÛÛœİ›Ü›X[^™Y™^H›Ü›X[^™TÙX\˜Ú^
+™^
+NÂˆYˆ
+›Ü›X[^™YİÜËœÛÛYJİÜOˆ›Ü›X[^™Y™^š[˜ÛY\ÊİÜ
+JJHœ™XZÎÂˆYˆ
+×ŠX][ØßX]Ø]_œ›Û˜XÚß\ŸY››JKÚK\İ
+›Ü›X[^™Y™^
+JHœ™XZÎÂˆYˆ
+™^š[J
+JHÛÛXİYœ\Ú
+™^š[J
+JNÂˆYˆ
+ÛÛXİY›[™İHÊHœ™XZÎÂˆBˆ™]\›ˆÛX[“ØÜ•˜[YJÛÛXİYš›Ú[Š	Ë	ÊJNÂˆBˆ™]\›ˆ	ÉÎÂŸB‚™[˜İ[Ûˆ\œÙS\“˜[YJ^
+HÂˆÛÛœİ\“[™\ÈHİš[™Ê^	ÉÊKœÜ]
+××‹ÊBˆ›X\
+[™HOˆ[™Kš[J
+JBˆ™š[\Š[™HOˆ×–ĞKVŒNO^ÌMKIË\İ
+[™JJNÂˆÛÛœİ˜[YS[™HHË‹‹›\“[™\×Kœ™]™\œÙJ
+K™š[™
+[™HOˆ[™Kš[˜ÛY\Ê	Ï	ÊH	‰ˆÖĞKV—KË\İ
+[™JJNÂˆYˆ
+[˜[YS[™JH™]\›ˆ	ÉÎÂˆ™]\›ˆ˜[YS[™Bˆœ™\XÙJÏ
+ËÙË	È	ÊBˆš[J
+BˆÓİÙ\Ø\ÙJ
+Bˆœ™\XÙJ×—ËÙËÚ\ˆOˆÚ\‹Õ\\Ø\ÙJ
+JNÂŸB‚™[˜İ[Ûˆ\œÙS\š\^J^
+HÂˆÛÛœİ\“[™HHİš[™Ê^	ÉÊKœÜ]
+××‹ÊK›X\
+[™HOˆ[™Kš[J
+JK™š[™
+[™HOˆ×—ÍŸWÖÓQ—KÚK\İ
+[™JJNÂˆYˆ
+[\“[™JH™]\›ˆ	ÉÎÂˆÛÛœİX]ÚH\“[™K›X]Ú
+×ŠÌŸJJÌŸJJÌŸJKÊNÂˆYˆ
+[X]Ú
+H™]\›ˆ	ÉÎÂˆÛÛœİË^K[KHHX]ÚÂˆÛÛœİYX\”™Yš^H[X™\Š^JHˆÌÈ	ÌNIÈˆ	ÌŒ	ÎÂˆ™]\›ˆ	ŞYX\”™Yš^IŞ^_KIÛ[_KIÙXÂŸB‚™[˜İ[Ûˆ\œÙUšY]˜[Y\ÙRYØ\™
+^
+HÂˆÛÛœİ˜]Õ^Hİš[™Ê^	ÉÊNÂˆÛÛœİ[™\ÈH˜]Õ^œÜ]
+××‹ÊK›X\
+[™HOˆ[™Kš[J
+JK™š[\Š›ÛÛX[ŠNÂˆÛÛœİİÜX™[ÈHÂˆ	Ò8nãH°è0ê›‰Ë	Ñ[˜[YIË	Ó™ğèHÚ[š	Ë	Ñ]HÙˆš\	Ë	ÑÚxnæÚH0ë[š	Ë	ÔÙ^	Ëˆ	Ô]xnäXÈ8nâØÚ	Ë	Ó˜][Û˜[]IË	Ô]pêˆ]pè[‰Ë	ÔXÙHÙˆÜšYÚ[‰Ë	Ó±¨ZH1¬8nç[™È°î‰Ëˆ	ÔXÙHÙˆ™\ÚY[˜ÙIË	ĞğìÈÚpèH¸nâÈ1$xn¯Û‰Ë	Ñ]HÙˆ^\IË	ñ$8n­ØÈ1$ZxnàÛHš8n«[ˆ8n¨[™ÉËˆ	Ô\œÛÛ˜[Y[YšXØ][Û‰Ë	Ó™ğèHøn©\	Ë	Ó™ğèK0è[™Ë± ÛIË	Ñ]K[ÛYX\‰Ë	Ñ]HÙˆ\ÜİYIË	Ó™ñ¬8nçZHğïIË	Ñ0ì›™ÈpèÉË	ÓT–‰ÂˆNÂˆÛÛœİX™[YYH™XYYØ\™šY[
+[™\ËÉÔønäHĞĞÑ	Ë	ÔønäKÓ›Ë‰Ë	ÔønäKÓ›ÉË	ÔønäIË	Ó›Ë‰Ë	Ó›É×KİÜX™[ÊNÂˆÛÛœİİ[™[Û™RYH˜]Õ^›X]Ú
+×—ÌLŸW‹ÊOË–ÌH	ÉÎÂˆÛÛœİØØÙH
+X™[YY›X]Ú
+×ÌLŸKÊOË–ÌHİ[™[Û™RY
+Kš[J
+NÂˆÛÛœİ˜[YHH™XYYØ\™šY[
+[™\ËÉÒ8nãH°è0ê›‹Ñ[˜[YIË	Ò8nãH°è0ê›‰Ë	Ñ[˜[YI×KİÜX™[ÊH\œÙS\“˜[YJ˜]Õ^
+NÂˆÛÛœİš\^U^H™XYYØ\™šY[
+[™\ËÉÓ™ğèHÚ[šÑ]HÙˆš\	Ë	Ó™ğèHÚ[š	Ë	Ñ]HÙˆš\	×KİÜX™[ÊNÂˆÛÛœİš\^HH\œÙUšY]˜[Y\ÙQ]U˜[YJš\^U^
+H\œÙS\š\^J˜]Õ^
+NÂˆÛÛœİY™\ÜÈH™XYYØ\™šY[
+[™\ËÉÓ±¨ZH1¬8nç[™È°î‹ÔXÙHÙˆ™\ÚY[˜ÙIË	Ó±¨ZH1¬8nç[™È°î‰Ë	ÔXÙHÙˆ™\ÚY[˜ÙI×KİÜX™[ÊNÂˆÛÛœİ\ÜİYQ]HH\œÙUšY]˜[Y\ÙQ]U˜[YJ™XYYØ\™šY[
+[™\ËÉÓ™ğèK0è[™Ë± ÛKÑ]K[ÛYX\‰Ë	Ó™ğèK0è[™Ë± ÛIË	Ñ]K[ÛYX\‰Ë	Ó™ğèHøn©\	Ë	Ñ]HÙˆ\ÜİYI×KİÜX™[ÊJNÂˆÛÛœİ\ÜİYTXÙHH™XYYØ\™šY[
+[™\ËÉÓ±¨ZHøn©\	Ë	Ğñ¨H]X[ˆøn©\	Ë	Ò\ÜİYYI×KİÜX™[ÊNÂˆÛÛœİ^˜QšY[ÈHÂˆÉÑÚxnæÚH0ë[š	Ë™XYYØ\™šY[
+[™\ËÉÑÚxnæÚH0ë[šÔÙ^	Ë	ÑÚxnæÚH0ë[š	Ë	ÔÙ^	×KİÜX™[ÊWKˆÉÔ]xnäXÈ8nâØÚ	Ë™XYYØ\™šY[
+[™\ËÉÔ]xnäXÈ8nâØÚÓ˜][Û˜[]IË	Ô]xnäXÈ8nâØÚ	Ë	Ó˜][Û˜[]I×KİÜX™[ÊWKˆÉÔ]pêˆ]pè[‰Ë™XYYØ\™šY[
+[™\ËÉÔ]pêˆ]pè[‹ÔXÙHÙˆÜšYÚ[‰Ë	Ô]pêˆ]pè[‰Ë	ÔXÙHÙˆÜšYÚ[‰×KİÜX™[ÊWKˆÉĞğìÈÚpèH¸nâÈ1$xn¯Û‰Ë™XYYØ\™šY[
+[™\ËÉĞğìÈÚpèH¸nâÈ1$xn¯Û‹Ñ]HÙˆ^\IË	ĞğìÈÚpèH¸nâÈ1$xn¯Û‰Ë	Ñ]HÙˆ^\I×KİÜX™[ÊWKˆÉñ$8n­ØÈ1$ZxnàÛHš8n«[ˆ8n¨[™ÉË™XYYØ\™šY[
+[™\ËÉñ$8n­ØÈ1$ZxnàÛHš8n«[ˆ8n¨[™ËÔ\œÛÛ˜[Y[YšXØ][Û‰Ë	ñ$8n­ØÈ1$ZxnàÛHš8n«[ˆ8n¨[™ÉË	Ô\œÛÛ˜[Y[YšXØ][Û‰×KİÜX™[ÊWKˆÉÓ™ñ¬8nçZHğïIË™XYYØ\™šY[
+[™\ËÉÓ™ñ¬8nçZHğïIË	ĞønéXÈ±¬8nçÛ™ÈønéXÈøn¨Ûšğè]]xn¨Ûˆ0ïH0èšÚ0ë[š¸nàH¸n«]8nìH0èÈ8næZI×KİÜX™[ÊWBˆK™š[\Š
+Ë˜[YWJHOˆ˜[YJNÂˆÛÛœİ›Ü›X[^™Y˜]Õ^H›Ü›X[^™TÙX\˜Ú^
+˜]Õ^
+NÂˆÛÛœİ\’[™^H›Ü›X[^™Y˜]Õ^š[™^ÙŠ	Û\‰ÊHHÈ›Ü›X[^™Y˜]Õ^š[™^ÙŠ	Û\‰ÊHˆ›Ü›X[^™Y˜]Õ^š[™^ÙŠ	ÙÛ™ÈXIÊNÂˆÛÛœİ\•^H\’[™^HˆÈ˜]Õ^œÛXÙJ\’[™^
+KœÜ]
+××‹ÊKœÛXÙJJK›X\
+[™HOˆ[™Kš[J
+JK™š[\Š›ÛÛX[ŠKš›Ú[Š	×‰ÊBˆˆ[™\Ë™š[\Š[™HOˆ×–ĞKVŒNO^ÌMKIË\İ
+[™JJKš›Ú[Š	×‰ÊNÂˆÛÛœİ›İHHÂˆ‹‹™^˜QšY[Ë›X\
+
+ÛX™[˜[YWJHOˆ	ÛX™[Nˆ	İ˜[Y_X
+Kˆ\•^ÈT–—‰Û\•^Xˆ	ÉÂˆK™š[\Š›ÛÛX[ŠKš›Ú[Š	×‰ÊNÂ‚ˆ™]\›ˆÈØØÙ˜[YNˆÛX[“ØÜ•˜[YJ˜[YJKš\^KY™\ÜË\ÜİYQ]K\ÜİYTXÙK›İHNÂŸB‚™[˜İ[Ûˆ›Ü›X]]Q›Ü’[œ]
+˜[YJHÂˆ™]\›ˆ\Ò[˜[YÛÛ˜Xİ]J˜[YJHÈ	ÉÈˆİš[™Ê˜[YJKœÛXÙJL
+NÂŸB‚™[˜İ[Ûˆ›Ü›X]\Ü^Q]J˜[YK˜[˜XÚÈH	ø %	ÊHÂˆYˆ
+]˜[YJH™]\›ˆ˜[˜XÚÎÂˆÛÛœİ]HH\œÙQ]Q›^X›J˜[YJNÂˆYˆ
+Y]H[X™\‹š\Ó˜SŠ]K™Ù][YJ
+JJH™]\›ˆ˜[˜XÚÎÂˆ™]\›ˆ]KÓØØ[Q]Tİš[™Ê	İšKU“‰ËÈ^Nˆ	Ì‹YYÚ]	Ë[Ûˆ	Ì‹YYÚ]	ËYX\ˆ	Û[Y\šXÉÈJNÂŸB‚™[˜İ[Ûˆ\Õ˜[Y]Tİš[™Ê˜[YJHÂˆYˆ
+]˜[YJH™]\›ˆ˜[ÙNÂˆÛÛœİ]HH™]È]J˜[YH
+È	ÕŒŒ	ÊNÂˆ™]\›ˆS[X™\‹š\Ó˜SŠ]K™Ù][YJ
+JNÂŸB‚™[˜İ[ÛˆY[ÛÕÑ]J˜[YK[ÛÊHÂˆYˆ
+Z\Õ˜[Y]Tİš[™Ê˜[YJJH™]\›ˆ	ÉÎÂˆÛÛœİ]HH™]È]J˜[YH
+È	ÕŒŒ	ÊNÂˆ]KœÙ][Û
+]K™Ù][Û
+
+H
+È[ÛÊNÂˆ™]\›ˆ]KÒTÓÔİš[™Ê
+KœÛXÙJL
+NÂŸB‚™[˜İ[ÛˆY^\ÕÑ]J˜[YK^\ÊHÂˆYˆ
+Z\Õ˜[Y]Tİš[™Ê˜[YJJH™]\›ˆ	ÉÎÂˆÛÛœİ]HH™]È]J˜[YH
+È	ÕŒŒ	ÊNÂˆ]KœÙ]]J]K™Ù]]J
+H
+È^\ÊNÂˆ™]\›ˆ]KÒTÓÔİš[™Ê
+KœÛXÙJL
+NÂŸB‚™[˜İ[ÛˆÙ]^\Õ[[
+]TİŠHÂˆÛÛœİ]HH\œÙQ]Q›^X›J]TİŠNÂˆYˆ
+Y]JH™]\›ˆ[ÂˆÛÛœİ›İÈH™]È]J
+NÂˆ›İËœÙ]İ\œÊ
+NÂˆ™]\›ˆX]˜ÙZ[
+
+]K™Ù][YJ
+HH›İË™Ù][YJ
+JHÈ
+NÂŸB‚™[˜İ[ÛˆÙ]]\İXİ]™SY[X™\œÚ\›Ü”›ÛÛJ]K›ÛÛRY
+HÂˆ™]\›ˆ
+]K›Y[X™\œÚ\È×JBˆ™š[\ŠHOˆKœ›ÛÛRYOOH›ÛÛRY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊBˆœÛÜ
+
+KŠHOˆÂˆÛÛœİ›ÛTØÛÜ™HH
+‹œ›ÛHOOH	Üš[X\IÈÈHˆ
+HH
+Kœ›ÛHOOH	Üš[X\IÈÈHˆ
+NÂˆYˆ
+›ÛTØÛÜ™HOOH
+H™]\›ˆ›ÛTØÛÜ™NÂˆÛÛœİ›Ú[™YY™ˆH
+\œÙQ]Q›^X›J‹š›Ú[™Y]JOË™Ù][YJ
+H
+HH
+\œÙQ]Q›^X›JKš›Ú[™Y]JOË™Ù][YJ
+H
+NÂˆYˆ
+›Ú[™YY™ˆOOH
+H™]\›ˆ›Ú[™YY™Âˆ™]\›ˆ
+\œÙQ]Q›^X›J‹˜Ü™X]Y]
+OË™Ù][YJ
+H
+HH
+\œÙQ]Q›^X›JK˜Ü™X]Y]
+OË™Ù][YJ
+H
+NÂˆJVÌH[ÂŸB‚™[˜İ[ÛˆÙ]İ\œ™[ÛÛ˜Xİ›Ü”›ÛÛJ]K›ÛÛRY
+HÂˆÛÛœİXİ]™SY[X™\œÚ\HÙ]]\İXİ]™SY[X™\œÚ\›Ü”›ÛÛJ]K›ÛÛRY
+NÂˆYˆ
+Xİ]™SY[X™\œÚ\Ë˜ÛÛ˜XİY
+HÂˆÛÛœİY[X™\œÚ\ÛÛ˜XİH
+]K˜ÛÛ˜XİÈ×JK™š[™
+ÈOˆËšYOOHXİ]™SY[X™\œÚ\˜ÛÛ˜XİY
+NÂˆYˆ
+Y[X™\œÚ\ÛÛ˜Xİ
+H™]\›ˆY[X™\œÚ\ÛÛ˜XİÂˆBˆ™]\›ˆ
+]K˜ÛÛ˜XİÈ×JBˆ™š[\ŠÈOˆËœ›ÛÛRYOOH›ÛÛRY	‰ˆ
+Ëœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÈËœİ]\ÈOOH	Û[İš[™×Ûİ]	ÊJBˆœÛÜ
+
+KŠHOˆÂˆÛÛœİİ\Y™ˆH
+\œÙQ]Q›^X›J‹œİ\]JOË™Ù][YJ
+H
+HH
+\œÙQ]Q›^X›JKœİ\]JOË™Ù][YJ
+H
+NÂˆYˆ
+İ\Y™ˆOOH
+H™]\›ˆİ\Y™Âˆ™]\›ˆ
+\œÙQ]Q›^X›J‹˜Ü™X]Y]
+OË™Ù][YJ
+H
+HH
+\œÙQ]Q›^X›JK˜Ü™X]Y]
+OË™Ù][YJ
+H
+NÂˆJVÌH[ÂŸB‚™[˜İ[ÛˆÙ]›ÛÛTİ]\Ò[™›Ê]K›ÛÛRY
+HÂˆÛÛœİ›ÛÛHH
+]Kœ›ÛÛ\È×JK™š[™
+ˆOˆ‹šYOOH›ÛÛRY
+NÂˆÛÛœİİÛ™\“ØØİ\YYH\ÓİÛ™\“ØØİ\YY›ÛÛJ›ÛÛJNÂˆÛÛœİÛÛ˜XİHÙ]İ\œ™[ÛÛ˜Xİ›Ü”›ÛÛJ]K›ÛÛRY
+NÂˆÛÛœİ\ĞXİ]™SY[X™\œÈH
+]K›Y[X™\œÚ\È×JKœÛÛYJHOˆKœ›ÛÛRYOOH›ÛÛRY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊNÂˆYˆ
+XÛÛ˜Xİ	‰ˆ\ĞXİ]™SY[X™\œÊH™]\›ˆÈX™[ˆ	ñ$[™È8nçÉËÛÛÜˆ	ÙÜ™Y[‰ËÛÛ˜Xİˆ[İÛ™\“ØØİ\YYNÂˆYˆ
+XÛÛ˜Xİ
+H™]\›ˆÈX™[ˆ	Õ¸nä[™ÉËÛÛÜˆ	ÙÜ˜^IËÛÛ˜Xİˆ[İÛ™\“ØØİ\YYNÂˆYˆ
+ÛÛ˜Xİœİ]\ÈOOH	Û›İXÙIÊH™]\›ˆÈX™[ˆ	Ğ°è[ÈÚ^xnàÛ‰ËÛÛÜˆ	ÛÜ˜[™ÙIËÛÛ˜XİNÂˆYˆ
+ÛÛ˜Xİœİ]\ÈOOH	Û[İš[™×Ûİ]	ÊH™]\›ˆÈX™[ˆ	ñ$[™È8n©]ğè[‰ËÛÛÜˆ	Ø›YIËÛÛ˜XİNÂˆ™]\›ˆÈX™[ˆ	ñ$[™È8nçÉËÛÛÜˆ	ÙÜ™Y[‰ËÛÛ˜XİİÛ™\“ØØİ\YYNÂŸB‚™[˜İ[Ûˆ\ÓİÛ™\“ØØİ\YY›ÛÛJ›ÛÛJHÂˆYˆ
+\›ÛÛJH™]\›ˆ˜[ÙNÂˆ™]\›ˆ›ÛÛKšYOOH	ÌŒ‰Èİš[™Ê›ÛÛK››İH	ÉÊKÓİÙ\Ø\ÙJ
+Kš[˜ÛY\Ê	ØÚ8néÈš0è	ÊNÂŸB‚™[˜İ[ÛˆÙ]\Ú›Ø\™İ]Ê]Kİ\œ™[[Û
+HÂˆÛÛœİİ[›ÛÛ\ÈH]Kœ›ÛÛ\Ë›[™İÂˆÛÛœİXİ]™PÛÛ˜XİÈH
+]K˜ÛÛ˜XİÈ×JK™š[\ŠÈOˆËœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÊNÂˆÛÛœİØØİ\YY›ÛÛ\ÈH
+]Kœ›ÛÛ\È×JK™š[\ŠˆOˆÙ]›ÛÛTİ]\Ò[™›Ê]K‹šY
+K›X™[OOH	Õ¸nä[™ÉÊK›[™İÂˆÛÛœİ˜XØ[›ÛÛ\ÈHİ[›ÛÛ\ÈHØØİ\YY›ÛÛ\ÎÂˆˆÛÛœİ^\š[™ĞÛÛ˜XİÈHXİ]™PÛÛ˜XİË™š[\ŠÈOˆÂˆÛÛœİ^\ÈHÙ]^\Õ[[
+Ë™[™]JNÂˆ™]\›ˆ^\ÈOOH[	‰ˆ^\ÈHÌÂˆJNÂ‚ˆÛÛœİİ\œ™[[˜[ÈH
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆKœİ]\ÈOOH	ØXİ]™IÊK›[™İÂˆˆÛÛœİ[Û™XÙZ\ÈH
+]Kœ™XÙZ\È×JK™š[\ŠˆOˆ‹›[ÛOOHİ\œ™[[Û	‰ˆ‹\HOOH	Û[ÛIÊNÂˆÛÛœİ[œZY™XÙZ\ÈH[Û™XÙZ\Ë™š[\ŠˆOˆÙ]™XÙZ\^[Y[İ]JŠK™Xˆ
+NÂˆˆÛÛœİİ[XH
+]Kœ™XÙZ\È×JKœ™YXÙJ
+İ[KŠHOˆÂˆ™]\›ˆİ[H
+ÈÙ]™XÙZ\^[Y[İ]JŠK™XÂˆK
+NÂ‚ˆÛÛœİ›İYZ[™Ó[İ™Sİ]HXİ]™PÛÛ˜XİË™š[\ŠÈOˆËœİ]\ÈOOH	Û›İXÙIÊNÂ‚ˆ™]\›ˆÂˆİ[›ÛÛ\ËˆØØİ\YY›ÛÛ\Ëˆ˜XØ[›ÛÛ\Ëˆ^\š[™ĞÛÛ˜XİËˆİ\œ™[[˜[Ëˆİ[™XÙZ\Îˆ[Û™XÙZ\Ë›[™İˆ[œZY™XÙZ\Ëˆİ[Xˆ›İYZ[™Ó[İ™Sİ]ˆNÂŸB‚™[˜İ[ÛˆÙ]š[X\U[˜[PÛÛ˜Xİ
+]KÛÛ˜XİY
+HÂˆYˆ
+XÛÛ˜XİY
+H™]\›ˆ[ÂˆÛÛœİš[X\SY[X™\ˆH
+]K›Y[X™\œÚ\È×JK™š[™
+HOˆK˜ÛÛ˜XİYOOHÛÛ˜XİY	‰ˆKœ›ÛHOOH	Üš[X\IÊNÂˆYˆ
+\š[X\SY[X™\ŠH™]\›ˆ[Âˆ™]\›ˆ
+]K[˜[È×JK™š[™
+OˆšYOOHš[X\SY[X™\‹[˜[Y
+H[ÂŸB‚™[˜İ[ÛˆÙ][˜[›Ü”™XÙZ\
+]K™XÙZ\
+HÂˆYˆ
+\™XÙZ\
+H™]\›ˆ[ÂˆÛÛœİPÛÛ˜XİHÙ]š[X\U[˜[PÛÛ˜Xİ
+]K™XÙZ\˜ÛÛ˜XİY
+NÂˆYˆ
+PÛÛ˜Xİ
+H™]\›ˆPÛÛ˜XİÂ‚ˆÛÛœİXİ]™T›ÛÛSY[X™\ˆH
+]K›Y[X™\œÚ\È×JK™š[™
+HO‚ˆKœ›ÛÛRYOOH™XÙZ\œ›ÛÛRY	‰‚ˆKœİ]\ÈOOH	ØXİ]™IÈ	‰‚ˆKœ›ÛHOOH	Üš[X\IÂˆ
+H
+]K›Y[X™\œÚ\È×JK™š[™
+HO‚ˆKœ›ÛÛRYOOH™XÙZ\œ›ÛÛRY	‰‚ˆKœİ]\ÈOOH	ØXİ]™IÂˆ
+NÂˆYˆ
+Xİ]™T›ÛÛSY[X™\ŠHÂˆÛÛœİ[˜[H
+]K[˜[È×JK™š[™
+OˆšYOOHXİ]™T›ÛÛSY[X™\‹[˜[Y
+NÂˆYˆ
+[˜[
+H™]\›ˆ[˜[ÂˆB‚ˆÛÛœİÛÛ˜XİY[X™\ˆH
+]K›Y[X™\œÚ\È×JK™š[™
+HOˆK˜ÛÛ˜XİYOOH™XÙZ\˜ÛÛ˜XİY
+NÂˆ™]\›ˆÛÛ˜XİY[X™\ˆÈ
+]K[˜[È×JK™š[™
+OˆšYOOHÛÛ˜XİY[X™\‹[˜[Y
+H[ˆ[ÂŸB‚™[˜İ[ÛˆÛ›QYÚ]Ê˜[YJHÂˆ™]\›ˆİš[™Ê˜[YH	ÉÊKœÜ]
+	ÉÊK™š[\ŠÈOˆÈH	Ì	È	‰ˆÈH	ÎIÊKš›Ú[Š	ÉÊNÂŸB‚™[˜İ[Ûˆ\œÙSØØ[S[X™\Š˜[YJHÂˆYˆ
+˜[YHOOH[˜[YHOOH[™Yš[™Y˜[YHOOH	ÉÊH™]\›ˆÂˆYˆ
+\[Ùˆ˜[YHOOH	Û[X™\‰ÊH™]\›ˆ˜[YNÂˆˆ]İˆHİš[™Ê˜[YJKš[J
+NÂˆYˆ
+\İŠH™]\›ˆÂ‚ˆËÈYˆ\™IÜÈÛ›HÛ™HÙ\\˜]Üˆ[™]	ÜÈ›ÛİÙYHHÜˆˆYÚ]Ë™X]]\ÈXÚ[X[ˆËÈİ\Ú\ÙKYˆ\™H\™HİÈ[™HÛÛ[XH]H[™ÛÛ[XH\ÈXÚ[X[ˆËÈÚ[\H\›ØXÚ›Üˆ\È\ˆYˆ]ÛÛZ[œÈHÛÛ[XK™\XÙH[İÈ[ˆ™\XÙHÛÛ[XHÚ]İ‚ˆËÈYˆ]ÛÛZ[œÈÛ›HİËÚXÚÈYˆ]ÛÚÜÈZÙHHİ\Ø[™ÈÙ\\˜]ÜˆÜˆXÚ[X[‚ˆËÈÚ]™[ˆ›ÛÛH[™XÙ\È\™H\İX[HˆL[™]™HHXÚ[X[ÙHØ[ˆ\Üİ[YN‚ˆËÈYˆÛİ[ÙˆİÈ\ÈH[™]	ÜÈ™X\ˆH[™]	ÜÈXÚ[X[‚ˆˆËÈ™]š\ÙYÚ[\H	ˆ›Ø\İ\›ØXÚ‚ˆËÈKˆ™[[İ™H[ÜXÙ\ÂˆİˆHİ‹œ™\XÙJ×ËÙË	ÉÊNÂˆˆËÈ‹ˆYˆ]\È›İ[™ˆOˆÛÛ[XH\È[[Üİ[Ø^\ÈHXÚ[X[[ˆ“ˆÜˆİ\ÈXÚ[X[[ˆ[‚ˆËÈÙIÛ™X]HTÕÛ™H\ÈHXÚ[X[Ù\\˜]Ü‹‚ˆÛÛœİ\İİHİ‹›\İ[™^ÙŠ	Ë‰ÊNÂˆÛÛœİ\İÛÛ[XHHİ‹›\İ[™^ÙŠ	Ë	ÊNÂˆˆYˆ
+\İİˆ\İÛÛ[XJHÂˆËÈİ\È]\‹™X]\ÈXÚ[X[ˆ™[[İ™H[İ\ˆÙ\\˜]ÜœË‚ˆ™]\›ˆ\œÙQ›Ø]
+İ‹œ™\XÙJËÙË	ÉÊJHÂˆH[ÙHYˆ
+\İÛÛ[XHˆ\İİ
+HÂˆËÈÛÛ[XH\È]\‹™X]\ÈXÚ[X[ˆ™[[İ™H[İË[ˆ™\XÙHÛÛ[XHÚ]İ‚ˆ™]\›ˆ\œÙQ›Ø]
+İ‹œ™\XÙJ×‹ÙË	ÉÊKœ™\XÙJËÙË	Ë‰ÊJHÂˆBˆˆËÈÛ›HÛ™H\HÜˆ›Û™Kˆˆ™]\›ˆ\œÙQ›Ø]
+İŠHÂŸB‚™[˜İ[Ûˆ›Ü›X]ØØ[S[X™\Š˜[YJHÂˆYˆ
+˜[YHOOH[˜[YHOOH[™Yš[™Y˜[YHOOH	ÉÈ˜[YHOOH	ÏÉÊH™]\›ˆ	ø %	ÎÂˆÛÛœİ[HH\[Ùˆ˜[YHOOH	Û[X™\‰ÈÈ˜[YHˆ\œÙQ›Ø]
+İš[™Ê˜[YJKœ™\XÙJËÙË	Ë‰ÊJNÂˆYˆ
+\Ó˜SŠ[JJH™]\›ˆ	ø %	ÎÂˆ™]\›ˆ™]È[“[X™\‘›Ü›X]
+	İšKU“‰ÊK™›Ü›X]
+[JNÂŸB‚™[˜İ[ÛˆXÚ[X[[œ]
+È˜[YKÛÚ[™ÙKİ[KÛ\ÜÓ˜[YHJHÂˆÛÛœİÑ\Ü^U˜[YHH
+˜[
+HOˆ
+˜[OOH[˜[OOH[™Yš[™YÈ	ÉÈˆİš[™Ê˜[
+JNÂˆÛÛœİÙ\Ü^U˜[YKÙ]\Ü^U˜[YWHH\ÙTİ]JÑ\Ü^U˜[YJ˜[YJJNÂ‚ˆ\ÙQY™™Xİ
+
+
+HOˆÂˆËÈ\]H\Ü^H˜[YHÚ[ˆ›Ü˜[YHÚ[™Ù\Èœ›ÛHİ]ÚYH
+K™Ëˆœ›ÛH™XØ[İ[]T™XÙZ\
+BˆËÈ]Û›HYˆ]	ÜÈ›İHØ[YH[X™\ˆÈ]›ÚYİ\œÛÜˆ[\[™ÂˆÛÛœİİ\œ™[[HH\œÙSØØ[S[X™\Š\Ü^U˜[YJNÂˆYˆ
+˜[YHOOHİ\œ™[[JHÂˆÙ]\Ü^U˜[YJÑ\Ü^U˜[YJ˜[YJJNÂˆBˆKİ˜[YWJNÂ‚ˆÛÛœİ[™PÚ[™ÙHH
+JHOˆÂˆÛÛœİ˜[HK\™Ù]˜[YNÂˆËÈ[İÈYÚ]ËİËÛÛ[X\Ë[™ÜXÙ\ÂˆYˆ
+×–ÌNK‹×J‰Ë\İ
+˜[
+JHÂˆÙ]\Ü^U˜[YJ˜[
+NÂˆÛÛœİ[HH\œÙSØØ[S[X™\Š˜[
+NÂˆÛÚ[™ÙJ[JNÂˆBˆNÂ‚ˆ™]\›ˆ
+ˆ[œ]ˆ\OH^ˆˆ˜[YO^Ù\Ü^U˜[Y_HˆÛÚ[™ÙO^Ú[™PÚ[™Ù_Hˆİ[O^Üİ[_HˆÛ\ÜÓ˜[YO^ØÛ\ÜÓ˜[Y_HˆÏ‚ˆ
+NÂŸB‚™[˜İ[Ûˆ˜[œÙ™\ÛÛ[
+™XÙZ\
+HÂˆ™]\›ˆ	Ü™XÙZ\œ›ÛÛRYH	ÛÛ›QYÚ]Ê™XÙZ\›[Û
+_XÂŸB‚™[˜İ[ÛˆZ[šY]\•\›
+˜[šÒ[™›Ë™XÙZ\
+HÂˆYˆ
+X˜[šÒ[™›Ë˜˜[šĞÛÙHX˜[šÒ[™›Ë˜XØÛİ[›È\™XÙZ\
+H™]\›ˆ	ÉÎÂˆÛÛœİ^[Y[İ]HHÙ]™XÙZ\^[Y[İ]J™XÙZ\
+NÂˆÛÛœİ[[İ[H^[Y[İ]K™XˆÈ^[Y[İ]K™Xˆ[X™\Š™XÙZ\İ[
+NÂˆÛÛœİ\˜[\ÈH™]ÈT“ÙX\˜Ú\˜[\ÊÂˆ[[İ[ˆİš[™ÊX]œ›İ[™
+[[İ[
+JKˆY[™›Îˆ˜[œÙ™\ÛÛ[
+™XÙZ\
+KˆXØÛİ[˜[YNˆ˜[šÒ[™›Ë˜XØÛİ[˜[YH	ÉËˆJNÂˆ™]\›ˆÎ‹ËÚ[YËšY]\‹š[ËÚ[XYÙKÉØ˜[šÒ[™›Ë˜˜[šĞÛÙ_KIØ˜[šÒ[™›Ë˜XØÛİ[›ßKXÛÛ\Xİ‹œ™ÏÉÜ\˜[\ËÔİš[™Ê
+_XÂŸB‚™[˜İ[ÛˆZ[^[Y[\•\›
+˜[šÒ[™›Ë[[İ[Y[™›ÊHÂˆYˆ
+X˜[šÒ[™›ÏË˜˜[šĞÛÙHX˜[šÒ[™›ÏË˜XØÛİ[›ÈX[[İ[
+H™]\›ˆ	ÉÎÂˆÛÛœİ\˜[\ÈH™]ÈT“ÙX\˜Ú\˜[\ÊÂˆ[[İ[ˆİš[™ÊX]œ›İ[™
+[X™\Š[[İ[
+JJKˆY[™›ËˆXØÛİ[˜[YNˆ˜[šÒ[™›Ë˜XØÛİ[˜[YH	ÉËˆJNÂˆ™]\›ˆÎ‹ËÚ[YËšY]\‹š[ËÚ[XYÙKÉØ˜[šÒ[™›Ë˜˜[šĞÛÙ_KIØ˜[šÒ[™›Ë˜XØÛİ[›ßKXÛÛ\Xİ‹œ™ÏÉÜ\˜[\ËÔİš[™Ê
+_XÂŸB‚™[˜İ[ÛˆÙ]ÛÛ˜XİØØİ\[Ûİ[
+]KÛÛ˜Xİ
+HÂˆYˆ
+XÛÛ˜Xİ
+H™]\›ˆÂˆÛÛœİPÛÛ˜XİH
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆK˜ÛÛ˜XİYOOHÛÛ˜XİšY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊK›[™İÂˆÛÛœİT›ÛÛHH
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆKœ›ÛÛRYOOHÛÛ˜Xİœ›ÛÛRY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊK›[™İÂˆ™]\›ˆX]›X^
+PÛÛ˜XİT›ÛÛJNÂŸB‚™[˜İ[Ûˆš^YÙ\šXÙUİ[
+›ÛÛKØØİ\[Ûİ[H[
+HÂˆYˆ
+\›ÛÛJH™]\›ˆÂˆYˆ
+ØØİ\[Ûİ[OOH[	‰ˆØØİ\[Ûİ[OOH[™Yš[™Y
+HÂˆYˆ
+[X™\ŠØØİ\[Ûİ[
+HH
+H™]\›ˆÂˆ™]\›ˆ[X™\ŠØØİ\[Ûİ[
+HHHÈŒˆÂˆBˆ™]\›ˆ[X™\Š›ÛÛK˜ÛX[š[™È
+H
+È[X™\Š›ÛÛK™[]˜]Üˆ
+H
+È[X™\Š›ÛÛK›][™H
+H
+È[X™\Š›ÛÛKš[\›™]
+NÂŸB‚™[˜İ[ÛˆÙ]^[œÙTZY[[İ[
+^[œÙJHÂˆ™]\›ˆ[X™\Š^[œÙOËœZY[[İ[ÏÈ^[œÙOË˜[[İ[ÏÈ
+NÂŸB‚™[˜İ[ÛˆÙ][XİšXÓÛ
+™XÙZ\
+HÂˆ™]\›ˆ[X™\Š™XÙZ\™[XİšXÓÛÏÈ™XÙZ\™[XİšXÔİ\ÏÈ
+NÂŸB‚™[˜İ[ÛˆÙ][XİšXÓ™]Ê™XÙZ\
+HÂˆÛÛœİÛHÙ][XİšXÓÛ
+™XÙZ\
+NÂˆ™]\›ˆ[X™\Š™XÙZ\™[XİšXÓ™]ÈÏÈ™XÙZ\™[XİšXÑ[™ÏÈÛ
+NÂŸB‚™[˜İ[ÛˆÙ]Ø]\“Û
+™XÙZ\
+HÂˆ™]\›ˆ[X™\Š™XÙZ\Ø]\“ÛÏÈ™XÙZ\Ø]\”İ\ÏÈ
+NÂŸB‚™[˜İ[ÛˆÙ]Ø]\“™]Ê™XÙZ\
+HÂˆÛÛœİÛHÙ]Ø]\“Û
+™XÙZ\
+NÂˆ™]\›ˆ[X™\Š™XÙZ\Ø]\“™]ÈÏÈ™XÙZ\Ø]\‘[™ÏÈÛ
+NÂŸB‚™[˜İ[Ûˆ™XÙZ\ÛÙJ™XÙZ\
+HÂˆ™]\›ˆ”Hˆ
+È™XÙZ\œ›ÛÛRY
+È‹Hˆ
+ÈÛ›QYÚ]Ê™XÙZ\›[Û
+NÂŸB‚™[˜İ[Ûˆ™XÙZ\\SX™[
+\KÚ]XÛÛˆH˜[ÙJHÂˆYˆ
+\HOOH	Û[ÛIÊH™]\›ˆÚ]XÛÛˆÈ	ü'äáHxn¯İH0è[™ÉÈˆ	Ôxn¯İH0è[™ÉÎÂˆYˆ
+\HOOH	Ü™[™]Ø[ØY\İY[	ÊH™]\›ˆÚ]XÛÛˆÈ	ü'å H1$xnà]HÚ8nâ[šÚXH8n¨[‰Èˆ	ñ$xnà]HÚ8nâ[šÚXH8n¨[‰ÎÂˆ™]\›ˆÚ]XÛÛˆÈ	ü'æªˆÚ8nä]¸n¨È0ì›™ÉÈˆ	ĞÚ8nä]¸n¨È0ì›™ÉÎÂŸB‚™[˜İ[Ûˆ\œÙS[Û˜[YJ[Û
+HÂˆYˆ
+[[Û
+H™]\›ˆÂˆÛÛœİÛKWHH[ÛœÜ]
+	ËÉÊK›X\
+[X™\ŠNÂˆ™]\›ˆH
+ˆLˆ
+ÈNÂŸB‚™[˜İ[Ûˆ[Ûœ›ÛQ]J˜[YJHÂˆÛÛœİ]HH\œÙQ]Q›^X›J˜[YJNÂˆYˆ
+Y]JH™]\›ˆ	ÉÎÂˆ™]\›ˆ	Ôİš[™Ê]K™Ù][Û
+
+H
+ÈJKœYİ\
+‹	Ì	Ê_KÉÙ]K™Ù][YX\Š
+_XÂŸB‚™[˜İ[Ûˆš[[™Ó[Û\Ê[Û
+HÂˆÛÛœİÛKWHHİš[™Ê[Û	ÉÊKœÜ]
+	ËÉÊK›X\
+[X™\ŠNÂˆ™]\›ˆÈ[ÛˆHYX\ˆHNÂŸB‚™[˜İ[Ûˆ^\Ò[š[[™Ó[Û
+[Û
+HÂˆÛÛœİ\ÈHš[[™Ó[Û\Ê[Û
+NÂˆYˆ
+\\Ë›[Û\\ËYX\ŠH™]\›ˆÌÂˆ™]\›ˆ™]È]J\ËYX\‹\Ë›[Û
+K™Ù]]J
+NÂŸB‚™[˜İ[Ûˆš[[™Ó[Ûİ\
+[Û
+HÂˆÛÛœİ\ÈHš[[™Ó[Û\Ê[Û
+NÂˆYˆ
+\\Ë›[Û\\ËYX\ŠH™]\›ˆ[Âˆ™]\›ˆ™]È]J\ËYX\‹\Ë›[ÛHKJNÂŸB‚™[˜İ[Ûˆš[[™Ó[Û[™
+[Û
+HÂˆÛÛœİ\ÈHš[[™Ó[Û\Ê[Û
+NÂˆYˆ
+\\Ë›[Û\\ËYX\ŠH™]\›ˆ[Âˆ™]\›ˆ™]È]J\ËYX\‹\Ë›[Û
+NÂŸB‚™[˜İ[Ûˆ›Ü›X]]R[œ]˜[YJ]JHÂˆYˆ
+Y]H[X™\‹š\Ó˜SŠ]K™Ù][YJ
+JJH™]\›ˆ	ÉÎÂˆ™]\›ˆ	Ù]K™Ù][YX\Š
+_KIÔİš[™Ê]K™Ù][Û
+
+H
+ÈJKœYİ\
+‹	Ì	Ê_KIÔİš[™Ê]K™Ù]]J
+JKœYİ\
+‹	Ì	Ê_XÂŸB‚™[˜İ[ÛˆY^\Ê˜[YK^\ÊHÂˆÛÛœİ]HH\œÙQ]Q›^X›J˜[YJNÂˆYˆ
+Y]JH™]\›ˆ[ÂˆÛÛœİ™^H™]È]J]JNÂˆ™^œÙ]]J™^™Ù]]J
+H
+È^\ÊNÂˆ™]\›ˆ™^ÂŸB‚™[˜İ[ÛˆÛ[\]UĞš[[™Ó[Û
+˜[YK[Û
+HÂˆÛÛœİ]HH\œÙQ]Q›^X›J˜[YJNÂˆÛÛœİİ\Hš[[™Ó[Ûİ\
+[Û
+NÂˆÛÛœİ[™Hš[[™Ó[Û[™
+[Û
+NÂˆYˆ
+Y]H\İ\Y[™
+H™]\›ˆ[ÂˆYˆ
+]Hİ\
+H™]\›ˆİ\ÂˆYˆ
+]Hˆ[™
+H™]\›ˆ[™Âˆ™]\›ˆ]NÂŸB‚™[˜İ[Ûˆ[˜Û\Ú]™Q^\Ğ™]ÙY[Šİ\˜[YK[™˜[YJHÂˆÛÛœİİ\H\œÙQ]Q›^X›Jİ\˜[YJNÂˆÛÛœİ[™H\œÙQ]Q›^X›J[™˜[YJNÂˆYˆ
+\İ\Y[™[™İ\
+H™]\›ˆÂˆÛÛœİİ\]ÈH]K•UÊİ\™Ù][YX\Š
+Kİ\™Ù][Û
+
+Kİ\™Ù]]J
+JNÂˆÛÛœİ[™]ÈH]K•UÊ[™™Ù][YX\Š
+K[™™Ù][Û
+
+K[™™Ù]]J
+JNÂˆ™]\›ˆX]™›ÛÜŠ
+[™]ÈHİ\]ÊHÈ
+H
+ÈNÂŸB‚™[˜İ[ÛˆY[ÛÕĞš[[™Ó[Û
+[Û[JHÂˆYˆ
+[[Û
+H™]\›ˆ	ÉÎÂˆÛÛœİÛKWHH[ÛœÜ]
+	ËÉÊK›X\
+[X™\ŠNÂˆYˆ
+[H^JH™]\›ˆ	ÉÎÂˆÛÛœİ]HH™]È]JKHHH
+È[KJNÂˆ™]\›ˆ	Ôİš[™Ê]K™Ù][Û
+
+H
+ÈJKœYİ\
+‹	Ì	Ê_KÉÙ]K™Ù][YX\Š
+_XÂŸB‚™[˜İ[Ûˆ\ÔØ[YPš[[™Ó[Û
+]U˜[YK[Û
+HÂˆ™]\›ˆ[Ûœ›ÛQ]J]U˜[YJHOOH[ÛÂŸB‚™[˜İ[Ûˆ\Õ˜[œÙ™\“Û›ÛÛPš[[™Ó[Û
+]U˜[YK[Û
+HÂˆÛÛœİ˜[œÙ™\“[ÛH[Ûœ›ÛQ]J]U˜[YJNÂˆ™]\›ˆ˜[œÙ™\“[ÛOOH[ÛÂŸB‚™[˜İ[ÛˆÙ]˜[œÙ™\”›ÛÛSX™[
+™XÙZ\
+HÂˆÛÛœİ˜[œÙ™\ˆH™XÙZ\Ë˜[œÙ™\“Û›ÛÛU][]NÂˆYˆ
+]˜[œÙ™\ŠH™]\›ˆ	Ü™XÙZ\Ëœ›ÛÛRY	ÉßXÂˆ™]\›ˆ	İ˜[œÙ™\‹›Û›ÛÛRYH8¡¤ˆ	Ü™XÙZ\œ›ÛÛRYXÂŸB‚™[˜İ[ÛˆÙ]™]š[İ\Ô™XÙZ\T›ÛÛJ™XÙZ\Ë›ÛÛRYİ\œ™[[ÛÜ[ÛœÈHßJHÂˆÛÛœİİ\œ™[˜[YHH\œÙS[Û˜[YJİ\œ™[[Û
+NÂˆ™]\›ˆ
+™XÙZ\È×JBˆ™š[\ŠˆO‚ˆ‹œ›ÛÛRYOOH›ÛÛRY	‰‚ˆ‹\HOOH	Û[ÛIÈ	‰‚ˆ‹šYOOHÜ[ÛœË™^ÛYT™XÙZ\Y	‰‚ˆ
+ˆ\œÙS[Û˜[YJ‹›[Û
+Hİ\œ™[˜[YHˆ
+ˆÜ[ÛœËš[˜ÛYTØ[YS[Û	‰‚ˆ\œÙS[Û˜[YJ‹›[Û
+HOOHİ\œ™[˜[YH	‰‚ˆ‹˜ÛÛ˜XİYOOHÜ[ÛœË™^ÛYTØ[YS[ÛÛÛ˜XİYˆ
+Bˆ
+Bˆ
+BˆœÛÜ
+
+KŠHOˆÂˆÛÛœİ[ÛY™ˆH\œÙS[Û˜[YJ‹›[Û
+HH\œÙS[Û˜[YJK›[Û
+NÂˆYˆ
+[ÛY™ˆOOH
+H™]\›ˆ[ÛY™Âˆ™]\›ˆ
+\œÙQ]Q›^X›J‹˜Ü™X]Y]
+OË™Ù][YJ
+H
+HH
+\œÙQ]Q›^X›JK˜Ü™X]Y]
+OË™Ù][YJ
+H
+NÂˆJVÌH[ÂŸB‚™[˜İ[ÛˆÙ]]\İ[ÛT™XÙZ\›Ü”›ÛÛJ]K›ÛÛRYÛÛ˜XİYH	ÉÊHÂˆÛÛœİ™XÙZ\ÈH
+]Kœ™XÙZ\È×JK™š[\ŠˆOˆ‹œ›ÛÛRYOOH›ÛÛRY	‰ˆ‹\HOOH	Û[ÛIÊNÂˆÛÛœİÛÜ]\İH
+›İÜÊHOˆË‹‹œ›İÜ×KœÛÜ
+
+KŠHOˆÂˆÛÛœİ[ÛY™ˆH\œÙS[Û˜[YJ‹›[Û
+HH\œÙS[Û˜[YJK›[Û
+NÂˆYˆ
+[ÛY™ˆOOH
+H™]\›ˆ[ÛY™Âˆ™]\›ˆ
+\œÙQ]Q›^X›J‹˜Ü™X]Y]
+OË™Ù][YJ
+H
+HH
+\œÙQ]Q›^X›JK˜Ü™X]Y]
+OË™Ù][YJ
+H
+NÂˆJVÌH[ÂˆYˆ
+ÛÛ˜XİY
+HÂˆÛÛœİPÛÛ˜XİHÛÜ]\İ
+™XÙZ\Ë™š[\ŠˆOˆ‹˜ÛÛ˜XİYOOHÛÛ˜XİY
+JNÂˆYˆ
+PÛÛ˜Xİ
+H™]\›ˆPÛÛ˜XİÂˆBˆ™]\›ˆÛÜ]\İ
+™XÙZ\ÊNÂŸB‚™[˜İ[ÛˆÙ]]\İ[ÛT™XÙZ\›ÜÛÛ˜Xİ
+]K›ÛÛRYÛÛ˜XİYH	ÉÊHÂˆYˆ
+XÛÛ˜XİY
+H™]\›ˆ[Âˆ™]\›ˆË‹‹Š]Kœ™XÙZ\È×JWBˆ™š[\ŠˆOˆ‹œ›ÛÛRYOOH›ÛÛRY	‰ˆ‹˜ÛÛ˜XİYOOHÛÛ˜XİY	‰ˆ‹\HOOH	Û[ÛIÊBˆœÛÜ
+
+KŠHOˆÂˆÛÛœİ[ÛY™ˆH\œÙS[Û˜[YJ‹›[Û
+HH\œÙS[Û˜[YJK›[Û
+NÂˆYˆ
+[ÛY™ˆOOH
+H™]\›ˆ[ÛY™Âˆ™]\›ˆ
+\œÙQ]Q›^X›J‹˜Ü™X]Y]
+OË™Ù][YJ
+H
+HH
+\œÙQ]Q›^X›JK˜Ü™X]Y]
+OË™Ù][YJ
+H
+NÂˆJVÌH[ÂŸB‚˜ÛÛœİÓ“ÕÓ—ĞÓÓ•PÕÓQUT—ÔÕT•ÈHÂˆ	Ò1$LÌKLŒŒ	ÎˆÈ[XİšXÓÛˆBŸNÂ‚™[˜İ[Ûˆ\ÓY]\”İ\˜[YJ˜[YJHÂˆ™]\›ˆ˜[YHOOH[™Yš[™Y	‰ˆ˜[YHOOH[	‰ˆ˜[YHOOH	ÉÎÂŸB‚™[˜İ[ÛˆÙ]ÛÛ˜XİY]\”İ\ÊÛÛ˜Xİ
+HÂˆÛÛœİ\›\ÈHÛÛ˜XİË\›\È	‰ˆ\[ÙˆÛÛ˜Xİ\›\ÈOOH	ÛØš™Xİ	ÈÈÛÛ˜Xİ\›\ÈˆßNÂˆÛÛœİÛÛ™šYİ\™YH\›\Ë›Y]\”İ\\›\Ë›Y]\”™\Ù]ßNÂˆÛÛœİÛ›İÛˆHÓ“ÕÓ—ĞÓÓ•PÕÓQUT—ÔÕT•ÖØÛÛ˜XİË˜ÛÛ˜Xİ›×HßNÂˆ™]\›ˆÈ‹‹šÛ›İÛ‹‹‹˜ÛÛ™šYİ\™YNÂŸB‚™[˜İ[ÛˆÙ]ÛÛ˜XİY]\”İ\
+ÛÛ˜XİÙ^JHÂˆÛÛœİİ\ÈHÙ]ÛÛ˜XİY]\”İ\ÊÛÛ˜Xİ
+NÂˆ™]\›ˆ\ÓY]\”İ\˜[YJİ\ÖÚÙ^WJHÈ[X™\Šİ\ÖÚÙ^WJHˆ[ÂŸB‚™[˜İ[ÛˆÙ]›ÛÛSY]\”İ\
+›ÛÛKÙ^JHÂˆYˆ
+Ù^HOOH	Ù[XİšXÓÛ	ÊHÂˆ™]\›ˆ[X™\Š›ÛÛK™[XİšXÓ™]ÈÏÈ›ÛÛK™[XİšXÑ[™ÏÈ›ÛÛK™[XİšXÓÛÏÈ›ÛÛK™[XİšXÔİ\ÏÈ›ÛÛKš[š]X[[XİšXÈÏÈ
+NÂˆBˆ™]\›ˆ[X™\Š›ÛÛKØ]\“™]ÈÏÈ›ÛÛKØ]\‘[™ÏÈ›ÛÛKØ]\“ÛÏÈ›ÛÛKØ]\”İ\ÏÈ›ÛÛKš[š]X[Ø]\ˆÏÈ
+NÂŸB‚™[˜İ[ÛˆÙ][ÛTİ\Y]\Š›ÛÛKÛÛ˜Xİ™]š[İ\Ô™XÙZ\Ù^JHÂˆÛÛœİ]\İØ[YPÛÛ˜XİH™]š[İ\Ô™XÙZ\Ë˜ÛÛ˜XİYOOHÛÛ˜XİËšYÈ™]š[İ\Ô™XÙZ\ˆ[ÂˆYˆ
+]\İØ[YPÛÛ˜Xİ
+HÂˆ™]\›ˆÙ^HOOH	Ù[XİšXÓÛ	ÂˆÈ[X™\Š]\İØ[YPÛÛ˜Xİ™[XİšXÓ™]ÈÏÈ]\İØ[YPÛÛ˜Xİ™[XİšXÑ[™ÏÈ
+Bˆˆ[X™\Š]\İØ[YPÛÛ˜XİØ]\“™]ÈÏÈ]\İØ[YPÛÛ˜XİØ]\‘[™ÏÈ
+NÂˆBˆÛÛœİÛÛ˜XİY]\”İ\HÙ]ÛÛ˜XİY]\”İ\
+ÛÛ˜XİÙ^JNÂˆYˆ
+ÛÛ˜XİY]\”İ\OOH[
+H™]\›ˆÛÛ˜XİY]\”İ\ÂˆYˆ
+™]š[İ\Ô™XÙZ\
+HÂˆ™]\›ˆÙ^HOOH	Ù[XİšXÓÛ	ÂˆÈ[X™\Š™]š[İ\Ô™XÙZ\™[XİšXÓ™]ÈÏÈ™]š[İ\Ô™XÙZ\™[XİšXÑ[™ÏÈ
+Bˆˆ[X™\Š™]š[İ\Ô™XÙZ\Ø]\“™]ÈÏÈ™]š[İ\Ô™XÙZ\Ø]\‘[™ÏÈ
+NÂˆBˆ™]\›ˆÙ]›ÛÛSY]\”İ\
+›ÛÛKÙ^JNÂŸB‚™[˜İ[ÛˆÙ]˜[œÙ™\š[[™ĞÛÛ^
+]KÛÛ˜Xİ[Û
+HÂˆÛÛœİØØİ\[Ûİ[HÙ]ÛÛ˜XİØØİ\[Ûİ[
+]KÛÛ˜Xİ
+NÂˆÛÛœİ˜[œÙ™\ˆH
+]Kœ›ÛÛU˜[œÙ™\œÈ×JK™š[™
+O‚ˆ\Õ˜[œÙ™\“Û›ÛÛPš[[™Ó[Û
+˜[œÙ™\‘]K[Û
+H	‰‚ˆ
+›ÛÛÛ˜XİYOOHÛÛ˜XİËšY›™]ĞÛÛ˜XİYOOHÛÛ˜XİËšY
+Bˆ
+NÂˆYˆ
+]˜[œÙ™\ŠH™]\›ˆÈ[ÙNˆ	Û›Ü›X[	Ë˜[œÙ™\ˆ[ØØİ\[Ûİ[NÂˆYˆ
+˜[œÙ™\‹›ÛÛÛ˜XİYOOHÛÛ˜XİËšY
+H™]\›ˆÈ[ÙNˆ	İ˜[œÙ™\—ÛÛÜ›ÛÛWÜÚÚ\	Ë˜[œÙ™\‹ØØİ\[Ûİ[NÂˆYˆ
+˜[œÙ™\‹›™]ĞÛÛ˜XİYOOHÛÛ˜XİËšY
+H™]\›ˆÈ[ÙNˆ	İ˜[œÙ™\—Û™]×Ü›ÛÛIË˜[œÙ™\‹ØØİ\[Ûİ[Û›ÛÛU][]NˆZ[˜[œÙ™\“Û›ÛÛU][]J]K˜[œÙ™\‹[Û
+HNÂˆ™]\›ˆÈ[ÙNˆ	Û›Ü›X[	Ë˜[œÙ™\ˆ[ØØİ\[Ûİ[NÂŸB‚™[˜İ[ÛˆÙ]™]ĞÛÛ˜Xİ\X[ÛÛ^
+ÛÛ˜Xİ[Û
+HÂˆYˆ
+XÛÛ˜XİËœİ\]H[Ûœ›ÛQ]JÛÛ˜Xİœİ\]JHOOH[Û
+H™]\›ˆ[ÂˆÛÛœİİ\HÛ[\]UĞš[[™Ó[Û
+ÛÛ˜Xİœİ\]K[Û
+NÂˆÛÛœİ[™Hš[[™Ó[Û[™
+[Û
+NÂˆÛÛœİÚ\™ÙQ^\ÈH[˜Û\Ú]™Q^\Ğ™]ÙY[Šİ\[™
+NÂˆÛÛœİ[Û^\ÈH^\Ò[š[[™Ó[Û
+[Û
+NÂˆYˆ
+XÚ\™ÙQ^\ÈÚ\™ÙQ^\ÈH[Û^\ÊH™]\›ˆ[Âˆ™]\›ˆÂˆ[ÙNˆ	Û™]×ØÛÛ˜XİÜ\X[Û[Û	Ëˆİ\]Nˆ›Ü›X]]R[œ]˜[YJİ\
+Kˆ[™]Nˆ›Ü›X]]R[œ]˜[YJ[™
+KˆÚ\™ÙQ^\Ëˆ[Û^\ÂˆNÂŸB‚™[˜İ[ÛˆÙ][ÛPš[[™ĞÛÛ^
+]KÛÛ˜Xİ[Û
+HÂˆÛÛœİ˜[œÙ™\ÛÛ^HÙ]˜[œÙ™\š[[™ĞÛÛ^
+]KÛÛ˜Xİ[Û
+NÂˆYˆ
+˜[œÙ™\ÛÛ^›[ÙHOOH	Û›Ü›X[	ÊH™]\›ˆ˜[œÙ™\ÛÛ^ÂˆÛÛœİ\X[ÛÛ^HÙ]™]ĞÛÛ˜Xİ\X[ÛÛ^
+ÛÛ˜Xİ[Û
+NÂˆYˆ
+\X[ÛÛ^
+HÂˆ™]\›ˆÂˆ‹‹œ\X[ÛÛ^ˆ˜[œÙ™\ˆ[ˆØØİ\[Ûİ[ˆ˜[œÙ™\ÛÛ^›ØØİ\[Ûİ[ˆNÂˆBˆ™]\›ˆ˜[œÙ™\ÛÛ^ÂŸB‚™[˜İ[Ûˆš[™˜[œÙ™\•\™Ù]›Ü“Û›ÛÛJ]KÛ›ÛÛRY[Û
+HÂˆÛÛœİ˜[œÙ™\ˆH
+]Kœ›ÛÛU˜[œÙ™\œÈ×JK™š[™
+O‚ˆ›Û›ÛÛRYOOHÛ›ÛÛRY	‰‚ˆ\Õ˜[œÙ™\“Û›ÛÛPš[[™Ó[Û
+˜[œÙ™\‘]K[Û
+Bˆ
+NÂˆYˆ
+]˜[œÙ™\ŠH™]\›ˆ[ÂˆÛÛœİÛÛ˜XİH
+]K˜ÛÛ˜XİÈ×JK™š[™
+ÈOˆËšYOOH˜[œÙ™\‹›™]ĞÛÛ˜XİY
+NÂˆÛÛœİ›ÛÛHH
+]Kœ›ÛÛ\È×JK™š[™
+ˆOˆ‹šYOOH˜[œÙ™\‹›™]Ô›ÛÛRY
+NÂˆ™]\›ˆÛÛ˜Xİ	‰ˆ›ÛÛHÈÈ˜[œÙ™\‹ÛÛ˜Xİ›ÛÛHHˆ[ÂŸB‚™[˜İ[ÛˆÙ]š[X›PÛÛ˜XİÑ›Ü“[Û
+]K[Û
+HÂˆÛÛœİXİ]™SY[X™\œÚ\ÛÛ˜XİYÈH™]ÈÙ]
+
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆKœİ]\ÈOOH	ØXİ]™IÊK›X\
+HOˆK˜ÛÛ˜XİY
+JNÂˆÛÛœİ›ÛÛ\ÕÚ]Xİ]™SY[X™\œÚ\H™]ÈÙ]
+
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆKœİ]\ÈOOH	ØXİ]™IÊK›X\
+HOˆKœ›ÛÛRY
+JNÂˆÛÛœİÛÛ˜XİÈH
+]K˜ÛÛ˜XİÈ×JK™š[\ŠÈOˆÂˆYˆ
+JËœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÊJH™]\›ˆ˜[ÙNÂˆYˆ
+›ÛÛ\ÕÚ]Xİ]™SY[X™\œÚ\š\ÊËœ›ÛÛRY
+JH™]\›ˆXİ]™SY[X™\œÚ\ÛÛ˜XİYËš\ÊËšY
+NÂˆ™]\›ˆYNÂˆJNÂˆÛÛœİRYH™]ÈX\
+ÛÛ˜XİË›X\
+ÈOˆØËšY×JJNÂˆ™]\›ˆË‹‹˜RY˜[Y\Ê
+WNÂŸB‚™[˜İ[ÛˆZ[˜[œÙ™\“Û›ÛÛU][]J]K˜[œÙ™\‹[Û
+HÂˆÛÛœİÛ›ÛÛHH
+]Kœ›ÛÛ\È×JK™š[™
+ˆOˆ‹šYOOH˜[œÙ™\‹›Û›ÛÛRY
+NÂˆYˆ
+[Û›ÛÛJH™]\›ˆ[ÂˆÛÛœİÛÛÛ˜XİH
+]K˜ÛÛ˜XİÈ×JK™š[™
+ÈOˆËšYOOH˜[œÙ™\‹›ÛÛÛ˜XİY
+NÂˆÛÛœİÛš[[™Ó[ÛH˜[œÙ™\‹›Ûš[[™Ó[Û[Ûœ›ÛQ]J˜[œÙ™\‹˜[œÙ™\‘]JH[ÛÂˆÛÛœİÛ›ÛÛT™XÙZ\H
+]Kœ™XÙZ\È×JK™š[™
+ˆO‚ˆ‹œ›ÛÛRYOOH˜[œÙ™\‹›Û›ÛÛRY	‰‚ˆ‹˜ÛÛ˜XİYOOH˜[œÙ™\‹›ÛÛÛ˜XİY	‰‚ˆ‹›[ÛOOHÛš[[™Ó[Û	‰‚ˆ‹\HOOH	Û[ÛIÂˆ
+NÂˆYˆ
+Û›ÛÛT™XÙZ\	‰ˆ[X™\ŠÛ›ÛÛT™XÙZ\œZY[[İ[
+HH[X™\ŠÛ›ÛÛT™XÙZ\İ[
+H	‰ˆ[X™\ŠÛ›ÛÛT™XÙZ\İ[
+Hˆ
+HÂˆ™]\›ˆ[ÂˆB‚ˆÛÛœİ˜[œÙ™\‘]HH\œÙQ]Q›^X›J˜[œÙ™\‹˜[œÙ™\‘]JNÂˆÛÛœİY˜][Ûİ^UÈH˜[œÙ™\‘]HÈY^\Ê˜[œÙ™\‘]KLJHˆ[ÂˆÛÛœİÛİ^Qœ›ÛT˜]ÈH˜[œÙ™\‹›Û›ÛÛTİ^Qœ›ÛHÛÛÛ˜XİËœİ\]Hš[[™Ó[Ûİ\
+Ûš[[™Ó[Û
+NÂˆÛÛœİÛİ^UÔ˜]ÈH˜[œÙ™\‹›Û›ÛÛTİ^UÈY˜][Ûİ^UÈ˜[œÙ™\‹˜[œÙ™\‘]Hš[[™Ó[Û[™
+Ûš[[™Ó[Û
+NÂˆÛÛœİÛİ^Qœ›ÛHHÛ[\]UĞš[[™Ó[Û
+Ûİ^Qœ›ÛT˜]ËÛš[[™Ó[Û
+Hš[[™Ó[Ûİ\
+Ûš[[™Ó[Û
+NÂˆÛÛœİÛİ^UÈHÛ[\]UĞš[[™Ó[Û
+Ûİ^UÔ˜]ËÛš[[™Ó[Û
+Hš[[™Ó[Û[™
+Ûš[[™Ó[Û
+NÂˆÛÛœİÛ›ÛÛQ^\ÈH[˜Û\Ú]™Q^\Ğ™]ÙY[ŠÛİ^Qœ›ÛKÛİ^UÊNÂˆÛÛœİÛ[Û^\ÈH^\Ò[š[[™Ó[Û
+Ûš[[™Ó[Û
+NÂˆÛÛœİÛ[ÛT™[H[X™\Š˜[œÙ™\‹›Û›ÛÛS[ÛT™[ÏÈ˜[œÙ™\‹›Û™[ÏÈÛÛÛ˜XİËœ™[ÏÈÛ›ÛÛKœ™[ÏÈ
+NÂˆÛÛœİÛ™[[[İ[H[X™\Š˜[œÙ™\‹›Û›ÛÛT™[[[İ[ÏÈX]œ›İ[™
+
+Û[ÛT™[ÈÛ[Û^\ÊH
+ˆÛ›ÛÛQ^\ÊJNÂˆÛÛœİÛØØİ\[Ûİ[H[X™\Š˜[œÙ™\‹›ØØİ\[Ûİ[Ù]ÛÛ˜XİØØİ\[Ûİ[
+]KÛÛÛ˜Xİ
+HJNÂˆÛÛœİÛ[ÛTÙ\šXÙQ™YHH[X™\Š˜[œÙ™\‹›Û›ÛÛTÙ\šXÙQ™YHÏÈš^YÙ\šXÙUİ[
+Û›ÛÛKÛØØİ\[Ûİ[
+JNÂˆÛÛœİÙ\šXÙS[ÙHH˜[œÙ™\‹›Û›ÛÛTÙ\šXÙS[ÙH	Ú[˜ÛYYÚ[—İ˜[œÙ™\—Ü™XÙZ\	ÎÂˆÛÛœİÛÙ\šXÙP[[İ[H[X™\Š˜[œÙ™\‹›Û›ÛÛTÙ\šXÙP[[İ[ÏÈ
+ˆÙ\šXÙS[ÙHOOH	Û[ÛIÂˆÈÛ[ÛTÙ\šXÙQ™YBˆˆÙ\šXÙS[ÙHOOH	ÙZ[IÂˆÈX]œ›İ[™
+
+Û[ÛTÙ\šXÙQ™YHÈÛ[Û^\ÊH
+ˆÛ›ÛÛQ^\ÊBˆˆˆ
+JNÂˆÛÛœİİ\œ™[Û›ÛÛT™XÙZ\H
+]Kœ™XÙZ\È×JK™š[™
+ˆO‚ˆ‹œ›ÛÛRYOOH˜[œÙ™\‹›Û›ÛÛRY	‰‚ˆ‹›[ÛOOHÛš[[™Ó[Û	‰‚ˆ‹\HOOH	Û[ÛIÂˆ
+NÂˆYˆ
+İ\œ™[Û›ÛÛT™XÙZ\
+HÂˆÛÛœİ[XİšXÓÛHÙ][XİšXÓÛ
+İ\œ™[Û›ÛÛT™XÙZ\
+NÂˆÛÛœİ[XİšXÓ™]ÈHÙ][XİšXÓ™]Êİ\œ™[Û›ÛÛT™XÙZ\
+NÂˆÛÛœİØ]\“ÛHÙ]Ø]\“Û
+İ\œ™[Û›ÛÛT™XÙZ\
+NÂˆÛÛœİØ]\“™]ÈHÙ]Ø]\“™]Êİ\œ™[Û›ÛÛT™XÙZ\
+NÂˆÛÛœİ[XİšXÕ\ÙYHX]œ›İ[™
+X]›X^
+[XİšXÓ™]ÈH[XİšXÓÛ
+H
+ˆL
+HÈLÂˆÛÛœİØ]\•\ÙYHX]œ›İ[™
+X]›X^
+Ø]\“™]ÈHØ]\“Û
+H
+ˆL
+HÈLÂˆÛÛœİ[XİšXĞ[[İ[H[XİšXÕ\ÙY
+ˆ[X™\ŠÛ›ÛÛK™[XİšXÔšXÙH
+NÂˆÛÛœİØ]\[[İ[HØ]\•\ÙY
+ˆ[X™\ŠÛ›ÛÛKØ]\”šXÙH
+NÂˆ™]\›ˆÂˆÛ›ÛÛRYˆ˜[œÙ™\‹›Û›ÛÛRYˆ˜[œÙ™\‘]Nˆ˜[œÙ™\‹˜[œÙ™\‘]Kˆ[XİšXÓÛˆ[XİšXÓ™]Ëˆ[XİšXÕ\ÙYˆ[XİšXĞ[[İ[ˆØ]\“ÛˆØ]\“™]ËˆØ]\•\ÙYˆØ]\[[İ[ˆÛš[[™Ó[ÛˆÛİ^Qœ›ÛNˆ›Ü›X]]R[œ]˜[YJÛİ^Qœ›ÛJKˆÛİ^UÎˆ›Ü›X]]R[œ]˜[YJÛİ^UÊKˆÛ›ÛÛQ^\ËˆÛ[Û^\ËˆÛ[ÛT™[ˆÛ™[[[İ[ˆÛ[ÛTÙ\šXÙQ™YKˆÛÙ\šXÙP[[İ[ˆÛÙ\šXÙS[ÙNˆÙ\šXÙS[ÙKˆİ[ˆÛ™[[[İ[
+ÈÛÙ\šXÙP[[İ[
+È[XİšXĞ[[İ[
+ÈØ]\[[İ[ˆNÂˆBˆÛÛœİ™]š[İ\Ô™XÙZ\HÙ]™]š[İ\Ô™XÙZ\T›ÛÛJ]Kœ™XÙZ\Ë˜[œÙ™\‹›Û›ÛÛRYÛš[[™Ó[Û
+NÂˆÛÛœİ[XİšXÓÛH™]š[İ\Ô™XÙZ\ˆÈ[X™\Š™]š[İ\Ô™XÙZ\™[XİšXÓ™]ÈÏÈ™]š[İ\Ô™XÙZ\™[XİšXÑ[™ÏÈ
+Bˆˆ[X™\ŠÛ›ÛÛK™[XİšXÓÛÏÈÛ›ÛÛK™[XİšXÔİ\ÏÈÛ›ÛÛKš[š]X[[XİšXÈÏÈ
+NÂˆÛÛœİ[XİšXÓ™]ÈH[X™\ŠÛ›ÛÛK™[XİšXÓ™]ÈÏÈÛ›ÛÛK™[XİšXÑ[™ÏÈ[XİšXÓÛ
+NÂˆÛÛœİØ]\“ÛH™]š[İ\Ô™XÙZ\ˆÈ[X™\Š™]š[İ\Ô™XÙZ\Ø]\“™]ÈÏÈ™]š[İ\Ô™XÙZ\Ø]\‘[™ÏÈ
+Bˆˆ[X™\ŠÛ›ÛÛKØ]\“ÛÏÈÛ›ÛÛKØ]\”İ\ÏÈÛ›ÛÛKš[š]X[Ø]\ˆÏÈ
+NÂˆÛÛœİØ]\“™]ÈH[X™\ŠÛ›ÛÛKØ]\“™]ÈÏÈÛ›ÛÛKØ]\‘[™ÏÈØ]\“Û
+NÂˆÛÛœİ[XİšXÕ\ÙYHX]œ›İ[™
+X]›X^
+[XİšXÓ™]ÈH[XİšXÓÛ
+H
+ˆL
+HÈLÂˆÛÛœİØ]\•\ÙYHX]œ›İ[™
+X]›X^
+Ø]\“™]ÈHØ]\“Û
+H
+ˆL
+HÈLÂˆÛÛœİ[XİšXĞ[[İ[H[XİšXÕ\ÙY
+ˆ[X™\ŠÛ›ÛÛK™[XİšXÔšXÙH
+NÂˆÛÛœİØ]\[[İ[HØ]\•\ÙY
+ˆ[X™\ŠÛ›ÛÛKØ]\”šXÙH
+NÂˆÛÛœİİ[HÛ™[[[İ[
+ÈÛÙ\šXÙP[[İ[
+È[XİšXĞ[[İ[
+ÈØ]\[[İ[ÂˆYˆ
+İ[H
+H™]\›ˆ[Âˆ™]\›ˆÂˆÛ›ÛÛRYˆ˜[œÙ™\‹›Û›ÛÛRYˆ˜[œÙ™\‘]Nˆ˜[œÙ™\‹˜[œÙ™\‘]KˆÛš[[™Ó[ÛˆÛİ^Qœ›ÛNˆ›Ü›X]]R[œ]˜[YJÛİ^Qœ›ÛJKˆÛİ^UÎˆ›Ü›X]]R[œ]˜[YJÛİ^UÊKˆÛ›ÛÛQ^\ËˆÛ[Û^\ËˆÛ[ÛT™[ˆÛ™[[[İ[ˆÛ[ÛTÙ\šXÙQ™YKˆÛÙ\šXÙP[[İ[ˆÛÙ\šXÙS[ÙNˆÙ\šXÙS[ÙKˆ[XİšXÓÛˆ[XİšXÓ™]Ëˆ[XİšXÕ\ÙYˆ[XİšXĞ[[İ[ˆØ]\“ÛˆØ]\“™]ËˆØ]\•\ÙYˆØ]\[[İ[ˆİ[ˆNÂŸB‚™[˜İ[ÛˆÜ™X]S[ÛT™XÙZ\
+›ÛÛKÛÛ˜Xİ™]š[İ\Ô™XÙZ\[Ûš[[™ĞÛÛ^HÈ[ÙNˆ	Û›Ü›X[	ÈJHÂˆÛÛœİ[XİšXÓÛHÙ][ÛTİ\Y]\Š›ÛÛKÛÛ˜Xİ™]š[İ\Ô™XÙZ\	Ù[XİšXÓÛ	ÊNÂˆÛÛœİØ]\“ÛHÙ][ÛTİ\Y]\Š›ÛÛKÛÛ˜Xİ™]š[İ\Ô™XÙZ\	İØ]\“Û	ÊNÂ‚ˆÛÛœİ\ÓÛ˜[œÙ™\”›ÛÛHHš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—ÛÛÜ›ÛÛIÈš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—ÛÛÜ›ÛÛWÜÚÚ\	ÎÂˆÛÛœİ\Ó™]Õ˜[œÙ™\”Ø[YS[ÛHš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—Û™]×Ü›ÛÛIÈ	‰ˆ[Ûœ›ÛQ]Jš[[™ĞÛÛ^˜[œÙ™\Ë˜[œÙ™\‘]JHOOH[ÛÂˆÛÛœİ\X[™]ĞÛÛ˜XİHš[[™ĞÛÛ^›[ÙHOOH	Û™]×ØÛÛ˜XİÜ\X[Û[Û	ÈÈš[[™ĞÛÛ^ˆ[ÂˆÛÛœİ™]Õ˜[œÙ™\”İ\HÛ[\]UĞš[[™Ó[Û
+š[[™ĞÛÛ^˜[œÙ™\Ë˜[œÙ™\‘]K[Û
+NÂˆÛÛœİ™]Õ˜[œÙ™\‘[™Hš[[™Ó[Û[™
+[Û
+NÂˆÛÛœİ[Û^\ÈH^\Ò[š[[™Ó[Û
+[Û
+NÂˆÛÛœİ™]Ô›ÛÛQ^\ÈH\Ó™]Õ˜[œÙ™\”Ø[YS[ÛˆÈ[˜Û\Ú]™Q^\Ğ™]ÙY[Š™]Õ˜[œÙ™\”İ\™]Õ˜[œÙ™\‘[™
+Bˆˆ\X[™]ĞÛÛ˜XİˆÈ\X[™]ĞÛÛ˜Xİ˜Ú\™ÙQ^\Âˆˆ[Û^\ÎÂˆÛÛœİ[ÛT™[H[X™\ŠÛÛ˜XİËœ™[›ÛÛKœ™[
+NÂˆÛÛœİ[ÛQš^YÙ\šXÙ\ÈHš^YÙ\šXÙUİ[
+›ÛÛKš[[™ĞÛÛ^›ØØİ\[Ûİ[
+NÂˆÛÛœİ™[H\ÓÛ˜[œÙ™\”›ÛÛHÈˆ
+\Ó™]Õ˜[œÙ™\”Ø[YS[Û\X[™]ĞÛÛ˜Xİ
+HÈX]œ›İ[™
+
+[ÛT™[È[Û^\ÊH
+ˆ™]Ô›ÛÛQ^\ÊHˆ[ÛT™[ÂˆÛÛœİš^YÙ\šXÙ\ÈH\ÓÛ˜[œÙ™\”›ÛÛHÈˆ
+\Ó™]Õ˜[œÙ™\”Ø[YS[Û\X[™]ĞÛÛ˜Xİ
+HÈX]œ›İ[™
+
+[ÛQš^YÙ\šXÙ\ÈÈ[Û^\ÊH
+ˆ™]Ô›ÛÛQ^\ÊHˆ[ÛQš^YÙ\šXÙ\ÎÂˆÛÛœİ˜[œÙ™\“Û][]HHš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—Û™]×Ü›ÛÛIÈÈš[[™ĞÛÛ^›Û›ÛÛU][]Hˆ[ÂˆÛÛœİİ\ˆH[X™\Š˜[œÙ™\“Û][]OËİ[
+NÂˆÛÛœİ˜[œÙ™\“›İHH\ÓÛ˜[œÙ™\”›ÛÛBˆÈ0ì›™ÈñjH1$pèÈÚ^xnàÛˆØ[™È	Øš[[™ĞÛÛ^˜[œÙ™\Ë›™]Ô›ÛÛRY	ÉßH›Û™È0è[™È	Û[ÛNˆÚ8nâHÚ8nä]1$ZxnáÛˆ±¬8næØËÚ0í™È0ë[šxnà[ˆ0ì›™È°è8nâØÚ¸néH0ì›™ÈñjK˜ˆˆš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—Û™]×Ü›ÛÛIÂˆÈ0ì›™ÈxnæÚHš8n«[ˆÚ0èXÚ8nêÈ	Øš[[™ĞÛÛ^˜[œÙ™\Ë›Û›ÛÛRY	ÉßNˆÚH0ëH0ì›™ÈñjHÚ1¬H[šğè[ˆ1$q¬8nèØÈ0èXÚšpê›™ËÚH0ëH0ì›™ÈxnáÛˆ8n¨ZH0ë[š[È0è[™ËÜ8n©Ûˆ0è[™È1¬1¨[™È8nê[™Ë˜ˆˆš[[™ĞÛÛ^›[ÙHOOH	Û™]×ØÛÛ˜XİÜ\X[Û[Û	ÂˆÈÚ0èXÚ¸n«İ1$xn©İHpêˆ8nêÈ	Ù›Ü›X]\Ü^Q]Jš[[™ĞÛÛ^œİ\]J_Kˆxnà[ˆ0ì›™È°è8nâØÚ¸néH0è[™È	Û[ÛH1$q¬8nèØÈ0ë[š[È™ğèH1$xn¯Ûˆ8n¯İ0è[™Ë˜ˆˆ•ZH0ì›™È[šğè[ˆ›Û™È°ì›™ÈH™ğèHønàÈ8nêÈ™ğèHš8n«[ˆxn¯İKˆ[ˆøn¨ÛH1¨[ˆHÂ‚ˆ™]\›ˆ™XØ[İ[]T™XÙZ\
+ÂˆYˆZY
+œ™XÙZ\ŠKˆ\Nˆ›[ÛH‹ˆ›ÛÛRYˆ›ÛÛKšYˆÛÛ˜XİYˆÛÛ˜XİËšYˆ‹ˆ[Ûˆ™[ˆš^YÙ\šXÙ\Ëˆ[XİšXÓÛˆ[XİšXÓ™]Îˆ[XİšXÓÛˆ[XİšXÕ\ÙYˆˆ[XİšXĞ[[İ[ˆˆØ]\“ÛˆØ]\“™]ÎˆØ]\“ÛˆØ]\•\ÙYˆˆØ]\[[İ[ˆˆİ\‹ˆİ\•\Nˆİ\ˆˆÈ	Ûİ\‰Èˆ	ÉËˆİ\“›İNˆ	ÉËˆİ[ˆ™[
+Èš^YÙ\šXÙ\È
+Èİ\‹ˆZY[[İ[ˆˆXˆ™[
+Èš^YÙ\šXÙ\È
+Èİ\‹ˆİ]\ÎˆÚ1¬H[šğè[ˆ‹ˆ›İNˆ˜[œÙ™\“›İKˆš[[™Ó[ÙNˆš[[™ĞÛÛ^›[ÙKˆ˜[œÙ™\’Yˆš[[™ĞÛÛ^˜[œÙ™\ËšY	ÉËˆİ\œ™[›ÛÛPÚ\™ÙQ^\Îˆ™]Ô›ÛÛQ^\Ëˆİ\œ™[›ÛÛS[Û^\Îˆ[Û^\Ëˆİ\œ™[›ÛÛS[ÛT™[ˆ[ÛT™[ˆİ\œ™[›ÛÛS[ÛTÙ\šXÙQ™YNˆ[ÛQš^YÙ\šXÙ\Ëˆİ\œ™[›ÛÛPÚ\™ÙQœ›ÛNˆ\X[™]ĞÛÛ˜XİËœİ\]H
+\Ó™]Õ˜[œÙ™\”Ø[YS[ÛÈ›Ü›X]]R[œ]˜[YJ™]Õ˜[œÙ™\”İ\
+Hˆ	ÉÊKˆİ\œ™[›ÛÛPÚ\™ÙUÎˆ\X[™]ĞÛÛ˜XİË™[™]H
+\Ó™]Õ˜[œÙ™\”Ø[YS[ÛÈ›Ü›X]]R[œ]˜[YJ™]Õ˜[œÙ™\‘[™
+Hˆ	ÉÊKˆ˜[œÙ™\“Û›ÛÛU][]Nˆ˜[œÙ™\“Û][]KˆÜ™X]Y]ˆ™]È]J
+KÒTÓÔİš[™Ê
+BˆK›ÛÛJNÂŸB‚™[˜İ[Ûˆ[œšXÚ™XÙZ\Ú]˜[œÙ™\•][]J™XÙZ\]JHÂˆYˆ
+\™XÙZ\™XÙZ\\HOOH	Û[ÛIÊH™]\›ˆ™XÙZ\ÂˆÛÛœİİ\œ™[^[Y[İ]HHÙ]™XÙZ\^[Y[İ]J™XÙZ\
+NÂˆYˆ
+İ\œ™[^[Y[İ]Kš\ÔZY[X™\Š™XÙZ\œZY[[İ[
+Hˆ™XÙZ\š\Ñš[˜[^™Y
+H™]\›ˆ™XÙZ\ÂˆÛÛœİÛÛ˜XİH
+]K˜ÛÛ˜XİÈ×JK™š[™
+ÈOˆËšYOOH™XÙZ\˜ÛÛ˜XİY
+NÂˆYˆ
+XÛÛ˜Xİ
+H™]\›ˆ™XÙZ\ÂˆÛÛœİš[[™ĞÛÛ^HÙ][ÛPš[[™ĞÛÛ^
+]KÛÛ˜Xİ™XÙZ\›[Û
+NÂˆÛÛœİ›ÛÛHH
+]Kœ›ÛÛ\È×JK™š[™
+ˆOˆ‹šYOOH™XÙZ\œ›ÛÛRY
+NÂˆÛÛœİ\Ó™]Õ˜[œÙ™\”Ø[YS[ÛHš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—Û™]×Ü›ÛÛIÈ	‰ˆ[Ûœ›ÛQ]Jš[[™ĞÛÛ^˜[œÙ™\Ë˜[œÙ™\‘]JHOOH™XÙZ\›[ÛÂˆÛÛœİ\Ô\X[™]ĞÛÛ˜XİHš[[™ĞÛÛ^›[ÙHOOH	Û™]×ØÛÛ˜XİÜ\X[Û[Û	ÎÂˆÛÛœİ[Û^\ÈH^\Ò[š[[™Ó[Û
+™XÙZ\›[Û
+NÂˆÛÛœİİ\œ™[›ÛÛPÚ\™ÙQ^\ÈH\Ó™]Õ˜[œÙ™\”Ø[YS[ÛˆÈ[˜Û\Ú]™Q^\Ğ™]ÙY[ŠÛ[\]UĞš[[™Ó[Û
+š[[™ĞÛÛ^˜[œÙ™\Ë˜[œÙ™\‘]K™XÙZ\›[Û
+Kš[[™Ó[Û[™
+™XÙZ\›[Û
+JBˆˆ\Ô\X[™]ĞÛÛ˜XİˆÈš[[™ĞÛÛ^˜Ú\™ÙQ^\Âˆˆ[X™\Š™XÙZ\˜İ\œ™[›ÛÛPÚ\™ÙQ^\È[Û^\ÊNÂˆÛÛœİ^XİY[ÛQš^YÙ\šXÙ\ÈHš^YÙ\šXÙUİ[
+›ÛÛKš[[™ĞÛÛ^›ØØİ\[Ûİ[
+NÂˆÛÛœİ^XİYš^YÙ\šXÙ\ÈH
+š[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—ÛÛÜ›ÛÛIÈš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—ÛÛÜ›ÛÛWÜÚÚ\	ÊBˆÈˆˆ
+\Ó™]Õ˜[œÙ™\”Ø[YS[Û\Ô\X[™]ĞÛÛ˜Xİ
+BˆÈX]œ›İ[™
+
+^XİY[ÛQš^YÙ\šXÙ\ÈÈ[Û^\ÊH
+ˆİ\œ™[›ÛÛPÚ\™ÙQ^\ÊBˆˆ^XİY[ÛQš^YÙ\šXÙ\ÎÂˆÛÛœİ^XİY[ÛT™[H[X™\ŠÛÛ˜XİËœ™[›ÛÛOËœ™[
+NÂˆÛÛœİ^XİY™[H
+š[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—ÛÛÜ›ÛÛIÈš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—ÛÛÜ›ÛÛWÜÚÚ\	ÊBˆÈˆˆ
+\Ó™]Õ˜[œÙ™\”Ø[YS[Û\Ô\X[™]ĞÛÛ˜Xİ
+BˆÈX]œ›İ[™
+
+^XİY[ÛT™[È[Û^\ÊH
+ˆİ\œ™[›ÛÛPÚ\™ÙQ^\ÊBˆˆ[X™\Š™XÙZ\œ™[
+NÂˆÛÛœİš^Y[HH^XİYš^YÙ\šXÙ\ÈH[X™\Š™XÙZ\™š^YÙ\šXÙ\È
+NÂˆÛÛœİ™[[HH^XİY™[H[X™\Š™XÙZ\œ™[
+NÂˆÛÛœİ˜[œÙ™\“Û][]HHš[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—Û™]×Ü›ÛÛIÈÈš[[™ĞÛÛ^›Û›ÛÛU][]Hˆ[ÂˆÛÛœİ^\İ[™Õ˜[œÙ™\•İ[H™XÙZ\˜[œÙ™\’YOOHš[[™ĞÛÛ^˜[œÙ™\ËšY	‰ˆ™XÙZ\˜[œÙ™\“Û›ÛÛU][]BˆÈ[X™\Š™XÙZ\˜[œÙ™\“Û›ÛÛU][]Kİ[
+BˆˆÂˆÛÛœİ˜[œÙ™\‘^˜HH˜[œÙ™\“Û][]HÈ[X™\Š˜[œÙ™\“Û][]Kİ[
+HH^\İ[™Õ˜[œÙ™\•İ[ˆÂˆÛÛœİ™YYÕ˜[œÙ™\“Y]Y]HH˜[œÙ™\“Û][]H	‰ˆ
+ˆ™XÙZ\˜[œÙ™\“Û›ÛÛU][]HOOH˜[œÙ™\“Û][]Hˆ\™XÙZ\˜[œÙ™\“Û›ÛÛU][]OË›Û›ÛÛQ^\Èˆ™XÙZ\˜[œÙ™\“Û›ÛÛU][]OË›Û™[[[İ[OOH˜[œÙ™\“Û][]K›Û™[[[İ[ˆ™XÙZ\˜[œÙ™\“Û›ÛÛU][]OË›ÛÙ\šXÙP[[İ[OOH˜[œÙ™\“Û][]K›ÛÙ\šXÙP[[İ[ˆ
+NÂˆYˆ
+™[[HOOH	‰ˆš^Y[HOOH	‰ˆ˜[œÙ™\‘^˜HOOH	‰ˆ[™YYÕ˜[œÙ™\“Y]Y]JH™]\›ˆ™XÙZ\ÂˆÛÛœİİ[H[X™\Š™XÙZ\İ[
+H
+È™[[H
+Èš^Y[H
+È˜[œÙ™\‘^˜NÂˆÛÛœİZY[[İ[H[X™\Š™XÙZ\œZY[[İ[
+NÂˆ™]\›ˆÂˆ‹‹œ™XÙZ\ˆ™[ˆ^XİY™[ˆš^YÙ\šXÙ\Îˆ^XİYš^YÙ\šXÙ\Ëˆİ\ˆ[X™\Š™XÙZ\›İ\ˆ
+H
+È˜[œÙ™\‘^˜Kˆİ[ˆXˆX]›X^
+İ[HZY[[İ[
+Kˆİ]\ÎˆZY[[İ[Hİ[	‰ˆİ[ˆÈ	ñ$0èÈ[šğè[‰ÈˆZY[[İ[ˆÈ	Ó¸nèÈxnæ]8n©Û‰Èˆ™XÙZ\œİ]\Ëˆš[[™Ó[ÙNˆš[[™ĞÛÛ^›[ÙKˆ˜[œÙ™\’Yˆš[[™ĞÛÛ^˜[œÙ™\ËšY™XÙZ\˜[œÙ™\’Y	ÉËˆİ\œ™[›ÛÛPÚ\™ÙQ^\Ëˆİ\œ™[›ÛÛS[Û^\Îˆ[Û^\Ëˆİ\œ™[›ÛÛS[ÛT™[ˆ^XİY[ÛT™[ˆİ\œ™[›ÛÛS[ÛTÙ\šXÙQ™YNˆ^XİY[ÛQš^YÙ\šXÙ\Ëˆİ\œ™[›ÛÛPÚ\™ÙQœ›ÛNˆš[[™ĞÛÛ^œİ\]H
+\Ó™]Õ˜[œÙ™\”Ø[YS[ÛÈ›Ü›X]]R[œ]˜[YJÛ[\]UĞš[[™Ó[Û
+š[[™ĞÛÛ^˜[œÙ™\Ë˜[œÙ™\‘]K™XÙZ\›[Û
+JHˆ™XÙZ\˜İ\œ™[›ÛÛPÚ\™ÙQœ›ÛH	ÉÊKˆİ\œ™[›ÛÛPÚ\™ÙUÎˆš[[™ĞÛÛ^™[™]H
+\Ó™]Õ˜[œÙ™\”Ø[YS[ÛÈ›Ü›X]]R[œ]˜[YJš[[™Ó[Û[™
+™XÙZ\›[Û
+JHˆ™XÙZ\˜İ\œ™[›ÛÛPÚ\™ÙUÈ	ÉÊKˆ˜[œÙ™\“Û›ÛÛU][]Nˆ˜[œÙ™\“Û][]H™XÙZ\˜[œÙ™\“Û›ÛÛU][]Kˆ›İNˆ™XÙZ\››İH
+\Ô\X[™]ĞÛÛ˜XİˆÈÚ0èXÚ¸n«İ1$xn©İHpêˆ8nêÈ	Ù›Ü›X]\Ü^Q]Jš[[™ĞÛÛ^œİ\]J_Kˆxnà[ˆ0ì›™È°è8nâØÚ¸néH0è[™È	Ü™XÙZ\›[ÛH1$q¬8nèØÈ0ë[š[È™ğèH1$xn¯Ûˆ8n¯İ0è[™Ë˜ˆˆ0ì›™ÈxnæÚHš8n«[ˆÚ0èXÚ8nêÈ	Øš[[™ĞÛÛ^˜[œÙ™\Ë›Û›ÛÛRY	ÉßNˆÚH0ëH0ì›™ÈñjHÚ1¬H[šğè[ˆ1$q¬8nèØÈ0èXÚšpê›™È›Û™Èxn¯İH°èK˜
+BˆNÂŸB‚™[˜İ[Ûˆ™XØ[İ[]T™XÙZ\
+™XÙZ\›ÛÛJHÂˆÛÛœİ[XİšXÓÛH[X™\Š™XÙZ\™[XİšXÓÛÏÈ™XÙZ\™[XİšXÔİ\ÏÈ
+NÂˆÛÛœİ[XİšXÓ™]ÈH[X™\Š™XÙZ\™[XİšXÓ™]ÈÏÈ™XÙZ\™[XİšXÑ[™ÏÈ[XİšXÓÛ
+NÂ‚ˆÛÛœİØ]\“ÛH[X™\Š™XÙZ\Ø]\“ÛÏÈ™XÙZ\Ø]\”İ\ÏÈ
+NÂˆÛÛœİØ]\“™]ÈH[X™\Š™XÙZ\Ø]\“™]ÈÏÈ™XÙZ\Ø]\‘[™ÏÈØ]\“Û
+NÂ‚ˆÛÛœİ[XİšXÕ\ÙYHX]›X^
+[XİšXÓ™]ÈH[XİšXÓÛ
+NÂˆÛÛœİØ]\•\ÙYHX]›X^
+Ø]\“™]ÈHØ]\“Û
+NÂ‚ˆËÈ›İ[™\ÙY˜[Y\ÈÈˆXÚ[X[XÙ\ÈÈ]›ÚY›Ø][™ÈÚ[\ÜİY\ÂˆÛÛœİ[XİšXÕ\ÙYš^YHX]œ›İ[™
+[XİšXÕ\ÙY
+ˆL
+HÈLÂˆÛÛœİØ]\•\ÙYš^YHX]œ›İ[™
+Ø]\•\ÙY
+ˆL
+HÈLÂ‚ˆÛÛœİ[XİšXĞ[[İ[H[XİšXÕ\ÙYš^Y
+ˆ[X™\Š›ÛÛK™[XİšXÔšXÙH
+NÂˆÛÛœİØ]\[[İ[HØ]\•\ÙYš^Y
+ˆ[X™\Š›ÛÛKØ]\”šXÙH
+NÂ‚ˆÛÛœİİ[Bˆ[X™\Š™XÙZ\œ™[
+H
+Âˆ[X™\Š™XÙZ\™š^YÙ\šXÙ\È
+H
+Âˆ[XİšXĞ[[İ[
+ÂˆØ]\[[İ[
+ÂˆÙ]š[X›Sİ\[[İ[
+™XÙZ\
+NÂ‚ˆÛÛœİZY[[İ[H[X™\Š™XÙZ\œZY[[İ[
+NÂˆÛÛœİXHX]›X^
+İ[HZY[[İ[
+NÂ‚ˆ]İ]\ÈHÚ1¬H[šğè[ˆÂˆYˆ
+ZY[[İ[Hİ[	‰ˆİ[ˆ
+Hİ]\ÈH±$0èÈ[šğè[ˆÂˆ[ÙHYˆ
+ZY[[İ[ˆ	‰ˆZY[[İ[İ[
+Hİ]\ÈH“¸nèÈxnæ]8n©ÛˆÂ‚ˆ™]\›ˆÂˆ‹‹œ™XÙZ\ˆ[XİšXÓÛˆ[XİšXÓ™]Ëˆ[XİšXÕ\ÙYˆ[XİšXÕ\ÙYš^Yˆ[XİšXĞ[[İ[ˆØ]\“ÛˆØ]\“™]ËˆØ]\•\ÙYˆØ]\•\ÙYš^YˆØ]\[[İ[ˆİ[ˆXˆİ]\ÂˆNÂŸB‚™[˜İ[ÛˆÙ]™XÙZ\^[Y[İ]J™XÙZ\
+HÂˆÛÛœİİ[H[X™\Š™XÙZ\Ëİ[
+NÂˆÛÛœİZY[[İ[H[X™\Š™XÙZ\ËœZY[[İ[
+NÂˆÛÛœİ^XÚ]Y\İY[YHH[X™\Š™XÙZ\Ë˜Y\İY[YP[[İ[
+NÂˆÛÛœİÛÚÜÓZÙU][]PÚXÚÛİ]Y\İY[Bˆ™XÙZ\Ë\HOOH	Û[ÛIÈ	‰‚ˆ™XÙZ\Ëš\Ñš[˜[^™Y	‰‚ˆZY[[İ[Hİ[	‰‚ˆİ[ˆ	‰‚ˆ[X™\Š™XÙZ\Ëœ™[
+HOOH	‰‚ˆ[X™\Š™XÙZ\Ë™š^YÙ\šXÙ\È
+HOOH	‰‚ˆ
+[X™\Š™XÙZ\Ë™[XİšXĞ[[İ[
+H
+È[X™\Š™XÙZ\ËØ]\[[İ[
+H
+È[X™\Š™XÙZ\Ë›İ\ˆ
+JHˆ	‰‚ˆ\™XÙZ\Ë˜Y\İY[ZY[[İ[ÂˆÛÛœİY\İY[YHH^XÚ]Y\İY[YHˆÈ^XÚ]Y\İY[YHˆÛÚÜÓZÙU][]PÚXÚÛİ]Y\İY[Èİ[ˆÂˆYˆ
+Y\İY[YHˆ
+HÂˆÛÛœİY\İY[ZY[[İ[H[X™\Š™XÙZ\Ë˜Y\İY[ZY[[İ[
+NÂˆÛÛœİY\İY[XHX]›X^
+Y\İY[YHHY\İY[ZY[[İ[
+NÂˆYˆ
+™XÙZ\Ëœİ]\ÈOOH	ñ$0èÈ8néŞIÊH™]\›ˆÈİ]\Îˆ	ñ$0èÈ8néŞIËXˆY\İY[XZY[[İ[ˆY\İY[ZY[[İ[˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YK\ÔZYˆ˜[ÙK\Ô\X[ˆ˜[ÙK\ĞY\İY[ˆYHNÂˆYˆ
+Y\İY[ZY[[İ[HY\İY[YJH™]\›ˆÈİ]\Îˆ	ñ$0èÈ[šğè[‰ËXˆZY[[İ[ˆY\İY[ZY[[İ[˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YK\ÔZYˆYK\Ô\X[ˆ˜[ÙK\ĞY\İY[ˆYHNÂˆYˆ
+Y\İY[ZY[[İ[ˆ
+H™]\›ˆÈİ]\Îˆ	Ó¸nèÈxnæ]8n©Û‰ËXˆY\İY[XZY[[İ[ˆY\İY[ZY[[İ[˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YK\ÔZYˆ˜[ÙK\Ô\X[ˆYK\ĞY\İY[ˆYHNÂˆ™]\›ˆÈİ]\Îˆ	ĞÚ1¬H[šğè[‰ËXˆY\İY[XZY[[İ[ˆ˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YK\ÔZYˆ˜[ÙK\Ô\X[ˆ˜[ÙK\ĞY\İY[ˆYHNÂˆBˆÛÛœİXHX]›X^
+İ[HZY[[İ[
+NÂˆYˆ
+™XÙZ\Ëœİ]\ÈOOH	ñ$0èÈ8néŞIÊH™]\›ˆÈİ]\Îˆ	ñ$0èÈ8néŞIËXZY[[İ[˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YNˆ\ÔZYˆ˜[ÙK\Ô\X[ˆ˜[ÙK\ĞY\İY[ˆ˜[ÙHNÂˆYˆ
+İ[ˆ	‰ˆZY[[İ[Hİ[
+H™]\›ˆÈİ]\Îˆ	ñ$0èÈ[šğè[‰ËXˆZY[[İ[˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YNˆ\ÔZYˆYK\Ô\X[ˆ˜[ÙK\ĞY\İY[ˆ˜[ÙHNÂˆYˆ
+ZY[[İ[ˆ
+H™]\›ˆÈİ]\Îˆ	Ó¸nèÈxnæ]8n©Û‰ËXZY[[İ[˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YNˆ\ÔZYˆ˜[ÙK\Ô\X[ˆYK\ĞY\İY[ˆ˜[ÙHNÂˆ™]\›ˆÈİ]\Îˆ	ĞÚ1¬H[šğè[‰ËXZY[[İ[˜\ÙTZY[[İ[ˆZY[[İ[Y\İY[YNˆ\ÔZYˆ˜[ÙK\Ô\X[ˆ˜[ÙK\ĞY\İY[ˆ˜[ÙHNÂŸB‚˜ÛÛœİÕT—Ô‘PÑRTÕTTÈHÂˆÈ˜[YNˆ	Ûİ\‰ËX™[ˆ	Ô8néH0ëHÚ0èXÉËXÛÛˆ	ø§¥IÈKˆÈ˜[YNˆ	Ù\ÜÚ]	ËX™[ˆ	Õxnà[ˆønãXÉËXÛÛˆ	ü'å$	ÈKˆÈ˜[YNˆ	Ù\ØÛİ[	ËX™[ˆ	ÑÚxn¨ÛH¸nêÉËXÛÛˆ	ø§¥‰ÈKˆÈ˜[YNˆ	Ü™\Z\‰ËX™[ˆ	Ô0ëHønëXHÚ8nëØIËXÛÛˆ	ü'æè;î#ÉÈKˆÈ˜[YNˆ	ØÛX[š[™ÉËX™[ˆ	Ô0ëH¸náÈÚ[š	ËXÛÛˆ	ü'éîIÈKˆÈ˜[YNˆ	ØÛÛ\[œØ][Û‰ËX™[ˆ	Ğ¸näÚH1¬8nç[™ÉËXÛÛˆ	ø¦¨;î#ÉÈB—NÂ‚™[˜İ[ÛˆÙ]İ\”™XÙZ\\J™XÙZ\
+HÂˆ™]\›ˆÕT—Ô‘PÑRTÕTTË™š[™
+][HOˆ][K˜[YHOOH™XÙZ\Ë›İ\•\JHÕT—Ô‘PÑRTÕTTÖÌNÂŸB‚™[˜İ[ÛˆÙ]İ\”™XÙZ\X™[
+™XÙZ\
+HÂˆÛÛœİ\HHÙ]İ\”™XÙZ\\J™XÙZ\
+NÂˆ™]\›ˆ	İ\KšXÛÛŸH	Ü™XÙZ\Ë›İ\“›İOËš[J
+H\K›X™[XÂŸB‚™[˜İ[Ûˆ\Ò[™›Ü›X][Û˜[\ÜÚ]™XÙZ\[™J™XÙZ\
+HÂˆ™]\›ˆ™XÙZ\Ë›İ\•\HOOH	Ù\ÜÚ]	ÎÂŸB‚™[˜İ[ÛˆÙ]š[X›Sİ\[[İ[
+™XÙZ\
+HÂˆ™]\›ˆ\Ò[™›Ü›X][Û˜[\ÜÚ]™XÙZ\[™J™XÙZ\
+HÈˆ[X™\Š™XÙZ\Ë›İ\ˆ
+NÂŸB‚™[˜İ[ÛˆÙ]™XÙZ\ÛÛ˜Xİ\ÜÚ]
+™XÙZ\ÛÛ˜Xİ
+HÂˆ™]\›ˆ[X™\ŠÛÛ˜XİË™\ÜÚ]ÏÈ™XÙZ\Ë˜ÛÛ˜Xİ\ÜÚ]ÏÈ
+NÂŸB‚™[˜İ[Ûˆ\
+
+HÂˆÛÛœİİ[›ØÚÙYÙ][›ØÚÙYHH\ÙTİ]J
+
+HOˆÙ\ÜÚ[Û”İÜ˜YÙK™Ù]][J	Ü›ÛÛWØ\İ[›ØÚÙY	ÊHOOH	İYIÊNÂˆYˆ
+][›ØÚÙY
+H™]\›ˆÙÚ[”ØÜ™Y[ˆÛ•[›ØÚÏ^Ê
+HOˆÙ][›ØÚÙY
+YJ_HÏÂˆ™]\›ˆ\XZ[ˆÏÂŸB‚™[˜İ[ÛˆÙÚ[”ØÜ™Y[ŠÈÛ•[›ØÚÈJHÂˆÛÛœİÜ[‹Ù][—HH\ÙTİ]J	ÉÊNÂˆÛÛœİØ]™Y[ˆHØY™T™XY
+S—ÒÑVK	ÌLŒÍ	ÊNÂˆÛÛœİ[™TİX›Z]H
+JHOˆÂˆKœ™]™[Y˜][
+
+NÂˆYˆ
+[ˆOOHØ]™Y[ŠHÂˆÙ\ÜÚ[Û”İÜ˜YÙKœÙ]][J	Ü›ÛÛWØ\İ[›ØÚÙY	Ë	İYIÊNÂˆÛ•[›ØÚÊ
+NÂˆH[ÙHÂˆ[\
+	ÓpèÈSˆÚ0í™ÈÚ0ë[š0èXÈIÊNÂˆÙ][Š	ÉÊNÂˆBˆNÂˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›ÙÚ[‹\ØÜ™Y[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH›ÙÚ[‹XØ\™\]ZYYÛ\ÜÈ‚ˆHİ[O^ŞÈ›ÛÚ^™Nˆ	Ì	ËX\™Ú[›İÛNˆ	Î	È_O¼'å$]xn¨Ûˆ0ïH0ì›™ÏÚO‚ˆÛ\ÜÓ˜[YOH›]]Yˆİ[O^ŞÈX\™Ú[›İÛNˆ	Ì	È_O•ZH0ì›™Èš8n«\pèÈSˆ1$xnàÈxn¯Ü8néXÏÜ‚ˆ›Ü›HÛ”İX›Z]^Ú[™TİX›Z]HÛ\ÜÓ˜[YOHœİXÚÈˆİ[O^ŞÈØ\ˆ	ÌMœ	È_O‚ˆ[œ]\OHœ\ÜİÛÜ™ˆ˜[YO^Ü[ŸHÛÚ[™ÙO^ÊJHOˆÙ][ŠK\™Ù]˜[YJ_HXÙZÛ\H“pèÈSˆˆ]]Ñ›Øİ\Èİ[O^ŞÈÚYˆ	ÌL	IË^[YÛˆ	ØÙ[\‰Ë›ÛÚ^™Nˆ	ÌŒ	ËZYÚˆ	ÍŒ	È_HÏ‚ˆ]Ûˆ\OHœİX›Z]ˆÛ\ÜÓ˜[YOHœš[X\KXˆÚYHˆİ[O^ŞÈZYÚˆ	ÍL	È_O“xnçÈÚ0ìØH8náÈ8nä[™ÏØ]Û‚ˆÙ›Ü›O‚ˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜İ[Ûˆš[Øİ[Y[[[Y[
+[[Y[Y]HH	Õ0èHxnáİIËYÙTÚ^™HH	ĞM	ÊHÂˆÛÛœİÛÛ[HØİ[Y[™Ù][[Y[RY
+[[Y[Y
+NÂˆYˆ
+XÛÛ[
+HÂˆ[\
+	ĞÚ1¬H0ëH8n©^H¸næZH[™È1$xnàÈ[‹‰ÊNÂˆ™]\›ÂˆB‚ˆÛÛœİYœ˜[YHHØİ[Y[˜Ü™X]Q[[Y[
+	ÚYœ˜[YIÊNÂˆYœ˜[YKœİ[KœÜÚ][ÛˆH	Ùš^Y	ÎÂˆYœ˜[YKœİ[KœšYÚH	Ì	ÎÂˆYœ˜[YKœİ[K˜›İÛHH	Ì	ÎÂˆYœ˜[YKœİ[KÚYH	Ì	ÎÂˆYœ˜[YKœİ[KšZYÚH	Ì	ÎÂˆYœ˜[YKœİ[K˜›Ü™\ˆH	Ì	ÎÂˆØİ[Y[˜›ÙK˜\[™Ú[
+Yœ˜[YJNÂ‚ˆÛÛœİØÈHYœ˜[YK˜ÛÛ[Ú[™İË™Øİ[Y[ÂˆØË›Ü[Š
+NÂˆØËÜš]Jˆ[‚ˆXY‚ˆ]O‰İ]_Oİ]O‚ˆİ[O‚ˆYÙHÈÚ^™Nˆ	ÜYÙTÚ^™_NÈX\™Ú[ˆL›[HM[NÈBˆ[›ÙHÈX\™Ú[ˆÈY[™ÎˆÈ˜XÚÙÜ›İ[™ˆÚ]NÈÛÛÜˆ›XÚÎÈBˆ›ÙHÈ›ÛY˜[Z[Nˆ•[Y\È™]È›ÛX[ˆ‹[Y\ËÙ\šYÈ›Û\Ú^™NˆLÜÈ[™KZZYÚˆKŒÎÈBˆ˜ÛÛ˜Xİ\\\‹ˆ˜\[™^XÛÛ[]ŒHÂˆÚYˆŒL[HZ[\Ü[ÂˆX^]ÚYˆ›Û™HZ[\Ü[ÂˆZ[‹ZZYÚˆÌÛ[HZ[\Ü[ÂˆX\™Ú[ˆ]]ÈZ[\Ü[ÂˆY[™Îˆ›[HŒ[H›[HZ[\Ü[Âˆ›Ş\Ú^š[™Îˆ›Ü™\‹X›ŞZ[\Ü[Âˆ›Ş\ÚYİÎˆ›Û™HZ[\Ü[Âˆ˜XÚÙÜ›İ[™ˆÚ]HZ[\Ü[ÂˆÛÛÜˆ›XÚÈZ[\Ü[Âˆ˜[œÙ›Ü›Nˆ›Û™HZ[\Ü[ÂˆBˆ˜ÛÛ˜XİZXY\‹]^È^X[YÛˆÙ[\ÈX\™Ú[‹X›İÛNˆNÈBˆHÈ›Û\Ú^™NˆNÈ^X[YÛˆÙ[\ÈX\™Ú[ˆLœÈBˆˆÈ›Û\Ú^™NˆM\È^X[YÛˆÙ[\ÈX\™Ú[ˆ\ÈBˆËÈ›Û\Ú^™NˆLÜÈX\™Ú[ˆL\Èœ™XZËXY\ˆ]›ÚYÈYÙKXœ™XZËXY\ˆ]›ÚYÈBˆÈX\™Ú[ˆÜÈÜœ[œÎˆÎÈÚYİÜÎˆÎÈBˆX›HÈÚYˆL	NÈ›Ü™\‹XÛÛ\ÙNˆÛÛ\ÙNÈX\™Ú[ˆÈYÙKXœ™XZËZ[œÚYNˆ]›ÚYÈœ™XZËZ[œÚYNˆ]›ÚYÈBˆÈ›Ü™\ˆ\ÛÛYÌLLNÈY[™ÎˆœÈ™\XØ[X[YÛˆÜÈBˆ˜\[™^\YÙHÈYÙKXœ™XZËX™Y›Ü™Nˆ[Ø^\ÎÈX\™Ú[‹]ÜˆZ[\Ü[È›Ü™\‹]ÜˆZ[\Ü[ÈY[™Ë]ÜˆL[HZ[\Ü[ÈBˆ˜\[™^\ÙXİ[ÛˆÈœ™XZËZ[œÚYNˆ]›ÚYÈYÙKXœ™XZËZ[œÚYNˆ]›ÚYÈBˆœÚYÛ˜]\™K\›İËˆ™ÜšYÈ\Ü^NˆÜšYÈÜšY][\]KXÛÛ[[œÎˆYœˆYœÈØ\ˆÍœÈ^X[YÛˆÙ[\ÈX\™Ú[‹]ÜˆNÈœ™XZËZ[œÚYNˆ]›ÚYÈYÙKXœ™XZËZ[œÚYNˆ]›ÚYÈBˆœÚYÛ˜]\™K\ÜXÙHÈZYÚˆNÈBˆ
+ˆÈ]ÙXšÚ]\š[XÛÛÜ‹XY\İˆ^XİZ[\Ü[Èš[XÛÛÜ‹XY\İˆ^XİZ[\Ü[ÈBˆÜİ[O‚ˆÚXY‚ˆ›ÙO‰ØÛÛ[›İ]\’SOØ›ÙO‚ˆÚ[‚ˆ
+NÂˆØË˜ÛÜÙJ
+NÂ‚ˆÙ][Y[İ]
+
+
+HOˆÂˆYœ˜[YK˜ÛÛ[Ú[™İË™›Øİ\Ê
+NÂˆYœ˜[YK˜ÛÛ[Ú[™İËœš[
+
+NÂˆÙ][Y[İ]
+
+
+HOˆØİ[Y[˜›ÙKœ™[[İ™PÚ[
+Yœ˜[YJKML
+NÂˆKL
+NÂŸB‚™[˜İ[ÛˆÛÛ˜Xİ™]šY]ÊÈÛÛ˜Xİ›ÛÛK[˜[Ë˜[šÒ[™›Ë™\Ü\HH	ÛXZ[‰ËÛÛÜÙHJHÂˆÛÛœİš[X\U[˜[H[˜[Ë™š[™
+Oˆœ›ÛHOOH	Üš[X\IÊH[˜[ÖÌHßNÂˆÛÛœİÚYÛ™Y^HH›Ü›X]ÛÛ˜Xİ]JÛÛ˜XİœÚYÛ™Y]JNÂˆÛÛœİİ\^HH›Ü›X]\Ú[™\ÜÑ]JÛÛ˜Xİœİ\]JNÂˆÛÛœİ[™^HH›Ü›X]\Ú[™\ÜÑ]JÛÛ˜Xİ™[™]JNÂˆÛÛœİ\˜][ÛˆHØ[İ[]T™[[\˜][ÛŠÛÛ˜Xİœİ\]KÛÛ˜Xİ™[™]JNÂˆÛÛœİ™[[[İ[H[X™\ŠÛÛ˜Xİœ™[›ÛÛKœ™[
+NÂˆÛÛœİ\ÜÚ][[İ[H[X™\ŠÛÛ˜Xİ™\ÜÚ]›ÛÛK™\ÜÚ]™[[[İ[
+NÂˆÛÛœİ[XİšXÔšXÙHH[X™\ŠÛÛ˜Xİ\›\ÏË™[XİšXÔšXÙH›ÛÛK™[XİšXÔšXÙHÎ
+NÂˆÛÛœİØ]\”šXÙHH[X™\ŠÛÛ˜Xİ\›\ÏËØ]\”šXÙH›ÛÛKØ]\”šXÙHÌŒ
+NÂˆÛÛœİ˜\ÙQš^YÙ\šXÙUİ[H[X™\Š›ÛÛKš[\›™]
+H
+È[X™\Š›ÛÛK˜ÛX[š[™È
+H
+È[X™\Š›ÛÛK™[]˜]Üˆ
+H
+È[X™\Š›ÛÛK›][™H
+NÂˆÛÛœİØØİ\[Ûİ[HX]›X^
+K[˜[Ë›[™İJNÂˆÛÛœİ\YYš^YÙ\šXÙUİ[Hš^YÙ\šXÙUİ[
+›ÛÛKØØİ\[Ûİ[
+NÂˆÛÛœİš^YÙ\šXÙQ\ØÛİ[HX]›X^
+˜\ÙQš^YÙ\šXÙUİ[H\YYš^YÙ\šXÙUİ[
+NÂˆÛÛœİ\ÓXZ[ˆH\HOOH	ÛXZ[‰ÎÂˆÛÛœİ\Ó\]ZY][ÛˆH\HOOH	Û\]ZY][Û‰ÎÂˆÛÛœİ\Ô™[™]Ø[H\HOOH	Ü™[™]Ø[	ÎÂ‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›[Ù[ˆÛÛXÚÏ^ÛÛÛÜÙ_O‚ˆ]ˆÛ\ÜÓ˜[YOH™]Z[[[Ù[]Œˆˆİ[O^ŞÈX^ÚYˆ	ÎML	È_HÛÛXÚÏ^ÙHOˆKœİÜ›ÜYØ][ÛŠ
+_O‚ˆ]ˆÛ\ÜÓ˜[YOH›[Ù[ZXY\ˆ›Ë\š[‚ˆ]‚ˆˆİ[O^ŞÈX\™Ú[ˆ_OÚ\Ó\]ZY][ÛˆÈ	Ğšpê›ˆ¸n¨Ûˆ8n©]ğè[‰Èˆ\Ô™[™]Ø[È	Ô8néH8néXÈÚXH8n¨[‰Èˆ	Ò8nèÜ1$xnäÛ™Èpê‰ßHÜ›ÛÛKšYOÚ‚ˆÛ\ÜÓ˜[YOH›]]YÛX[•0èHxnáİH1$xn©ŞH1$xnéÈLˆ1$xnà]HÚøn¨Ûˆ	ˆÈ8néH8néXÈ
+Ú8nåHM
+OÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜‹YÜ›İ\‚ˆ]ÛˆÛ\ÜÓ˜[YOHœš[X\KXˆˆÛÛXÚÏ^Ê
+HOˆš[Øİ[Y[[[Y[
+	ØÛÛ˜Xİ\™]šY]Ë\\\‰Ë	Ú\Ô™[™]Ø[È	Ô8néH8néXÈÚXH8n¨[‰Èˆ\Ó\]ZY][ÛˆÈ	Ğšpê›ˆ¸n¨Ûˆ8n©]ğè[‰Èˆ	Ò8nèÜ1$xnäÛ™Èpê‰ßH	Ü›ÛÛKšYX
+_O¼'åª;î#È[ˆ0èHxnáİOØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YOHœÙXÛÛ™\KXˆˆÛÛXÚÏ^ÛÛÛÜÙ_O±$0ìÛ™ÏØ]Û‚ˆÙ]‚ˆÙ]‚ˆ]ˆYH˜ÛÛ˜Xİ\™]šY]Ë\\\ˆˆÛ\ÜÓ˜[YOH˜ÛÛ˜Xİ\\\ˆ‚ˆÊ\ÓXZ[ˆ\Ô™[™]Ø[
+H	‰ˆ
+ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH˜ÛÛ˜XİZXY\‹]^‚ˆOønæ‘È0äH0àÈ8næHÒ8néˆ‘Ò1*H’xná•SOÚO‚ˆ±$8næXÈ8n«\8 $È8nìHÈ8 $È8n¨[š0î˜ÏÚ‚ˆİ[O^ŞÈ›Ûİ[Nˆ	Ú][XÉÈ_O’0è¸næZK™ğèHÜÚYÛ™Y^_OÜ‚ˆÙ]‚ˆHİ[O^ŞÈ^[YÛˆ	ØÙ[\‰ËX\™Ú[ˆ	ÌÌŒ	È_O’8nè”1$8nä“‘Èpâˆ0ä“‘ÏÚO‚ˆÚ\ÓXZ[ˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜ÛÛ˜Xİ\ÙXİ[Ûˆ‚ˆ‹Hñ ÛˆønêH¸næHxn«]0è›ˆønìHønäHLKÌŒMKÔRLÈ™ğèHÌLKÌŒMNÏÜ‚ˆ‹Hñ ÛˆønêHxn«]1¬1¨[™Èxn¨ZHønäHÍ‹ÌŒKÔRLH™ğèHMÌ‹ÌŒNÏÜ‚ˆ‹Hñ ÛˆønêHšHøn©İH°èønìH8nãØHxn«[ˆønéØHğèXÈ°ê›‹Ü‚ˆİ[O^ŞÈX\™Ú[•Üˆ	ÌL	È_O’0íH˜^K™ğèHÜÚYÛ™Y^_KÚ0î›™È0íHønäÛNÜ‚ˆÙ]‚ˆ
+_Bˆ]ˆÛ\ÜÓ˜[YOH˜ÛÛ˜Xİ\ÙXİ[Ûˆ‚ˆÏ°â“ˆÒÈpâˆ
+°ê›ˆJOÚÏ‚ˆ°èˆ‘xná“H8nâˆ°ã’ØÜ‚ˆĞĞÑønäNˆŒNLMLLOØˆ	›˜œÜÉ›˜œÜÉ›˜œÜÈ™ğèHøn©\ˆŒËÌÌŒŒOØÜ‚ˆ•8n¨ZNˆønéXÈøn¨Ûšğè]]xn¨Ûˆ0ïH0èšÚ0ë[š¸nàH¸n«]8nìH0èÈ8næZOØÜ‚ˆ”ñ$Ö˜[ÎˆŒM‹ŒŒKŒMŒLÏØÜ‚ˆ•0èHÚøn¨Ûˆ™ğè›ˆ0è™ÎˆØ˜[šÒ[™›Ë˜˜[šÓ˜[Y_HHØ˜[šÒ[™›Ë˜XØÛİ[›ßHHØ˜[šÒ[™›Ë˜XØÛİ[˜[Y_OØÜ‚ˆÏ°â“ˆpâˆ
+°ê›ˆŠOÚÏ‚ˆ°å™ËĞ°èˆÜš[X\U[˜[›˜[Y_OØÜ‚ˆĞĞÑønäNˆÜš[X\U[˜[˜ØØÙ	Ë‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‰ßOØˆ	›˜œÜÉ›˜œÜÉ›˜œÜÈ™ğèHøn©\ˆÜš[X\U[˜[˜ØØÙ]H	Ë‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‰ßOØÜ‚ˆñ¨H]X[ˆøn©\ˆÜš[X\U[˜[˜ØØÙXÙH	Ë‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‰ßOØÜ‚ˆ“±¨ZH1$ÕˆÜš[X\U[˜[˜Y™\ÜÈ	Ë‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‰ßOØÜ‚ˆ±$8nâØHÚ8nâHpê›ˆ8náËÔñ$Ö˜[ÎˆÜš[X\U[˜[œÛ™H	Ë‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‰ßOØÜ‚ˆİ[O^ŞÈX\™Ú[•Üˆ	ÌL	È_O°ê›ˆH°è°ê›ˆˆØ]H1$pèHønãZHÚ[™È0èğèXÈ°ê›ˆ‹Ü‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH›XZ[‹X\XÛ\È‚ˆÏ±$xnàHKˆ0àHøn¨“ˆpâˆ°àxnéÈ1$0ãPÒønë8né‘ÏÚÏ‚ˆŒKŒKˆ°ê›ˆHÚÈ°ê›ˆˆpêˆ0ì›™ÈønäHÜ›ÛÛKšYOØˆ8n¨ZHønäH™ğèXÚK™ğíHMŒˆÚ1¬1¨[™È1$0ëš1¬8nç[™ÈÚ1¬1¨[™È1$0ëš0è¸næZH
+Ø]H1$pèHønãZH8 '0ì›™Èpê¸ 'JH1$xnàÈ0èH±¨ZH8nçËÜ‚ˆŒKŒ‹ˆønäH™ñ¬8nçZH8nçÈ8näZH1$XNˆÈ™ñ¬8nçZKÜ0ì›™Ëˆ¸n¯İH0ê›H™ñ¬8nçZK°ê›ˆˆ8n¨ÚH°è[È±¬8næØÈ°è1$q¬8nèØÈ°ê›ˆH1$xnäÛ™È0ïH¸n¬[™È[ˆš8n«Û‹İ± Ûˆ¸n¨ÛÈÚ0èXÚ8nçÈ]pèHÈ™ğèHøn¯H0ë[š0ê›HLŒ1$xnäÛ™ËÛ™ñ¬8nçZH°è°ê›ˆˆÚ8nâİHÚH0ëH8n¨]0èšÚ0ë[š¸n¯İHÚ0èXÚÚ1¬HÚZH°è[È8n¨[H°îˆ¸n¯İH8nçÈ8¢iLMH™ğèKÜ‚ˆŒKŒËˆ°ê›ˆHØ[Høn¯İ0ì›™ÈpêˆxnæXÈ]^xnà[ˆønçÈ8nëİKÜønëH8né[™È8nèÜ0è\ønéØH°ê›ˆNÈ¸n¯İH0è]Ú[š˜[šÚ8n©\pê›ˆ]X[ˆ0èHøn¨ÛˆÚÈpê‹°ê›ˆHÚ8nâİH°èXÚšxnáÛH±¬8næØÈ0è\xn«]Ü‚ˆŒKˆxnåÚH0ì›™È1$q¬8nèØÈ¸näH°ëH8näZH1$XHˆ
+ZJHHpè^Kˆ±¬8nç[™È8nèÜğìÈH8nêHË°ê›ˆˆ8nìHønëZH™ÛğèKˆ8n©]øn¨ÈH1$xnàÈ8n¨ZH8n©Û™ÈH8n¨ÚH1$q Û™ÈğïHšxnàÛˆønäKÛøn¨ZHH¸næÚH°ê›ˆKˆÚH^H1$xnåZHK°ê›ˆˆ8n¨ÚH0í™È°è[Èøn«\š8n«]±¬8næØÈÚH1$q¬HH°èÈønëZKÜ‚ˆŒKKˆÚ0í™È1$xnàÈ]XH1$pê›H1$xnäZH¸næÚHHÚ0í™ÈxnæXÈñ¬0è›ˆ›Û™Èğî[™È0ì˜Hš0èÜ‚ˆŒK‹ˆ¸n¯İH0è]xnáÛˆšH8n¨[HğèXÈ]^H1$xnâÛšKK°ê›ˆHğìÈ]^xnà[ˆpêHøn©İHHÚ^xnàÛˆH™Ø^H°è0è\8né[™ÈxnêXÈ8n¨]ÌŒ1$xnäÛ™ÈÚÈxnåÚHKÛxnåÚH8n©Ûˆ
+øn­ØÈxnåÚH1$pê›JHšH8n¨[KÜ‚ˆŒKËˆš8n¬[H1$xn¨ÛH¸n¨ÛÈĞĞÈ8n¨ZH0ì˜Hš0è°ê›ˆHøn©[H^xnáİ1$xnäZHøn¨XÈxnãZHøn¨ZHHpè^H1$ZxnáÛ‹ŞH1$xn¨\1$ZxnáÛ‹ÜØÛÛİ\ˆ1$ZxnáÛˆ°è[‹8n«ØË\]^H¸nçZHønéØHğèXÈ1¬1¨[™ÈxnáÛˆ°èH›Û™ÈxnãZHÚH¸nìXÈ0ì˜Hš0è
+0ì›™Ë0èš[™Ëøn©İH[™ËÚHønîHxn«]°èÚH1$xnàÈKÚH¸nìXÈÚ[™ÊKˆ°ê›ˆH1$q¬8nèØÈ]^xnà[ˆ™øn«İ™İxnäÛ‹pêHøn©İH8nêÛ™Èøn¨XËÙHÚ^xnàÛˆ™Ø^NÈšH8n¨[H¸nâÈ8n¨]8nêÈÌŒ8 $ÈLŒ1$xnäÛ™ËÛ8n©Û‹0èZH8n¨[HğìÈ8nàÈÚ8n©[H8nê]]^xnà[ˆønëZHHøn­ØÈÚ8n©[H8nê]8nèÜ1$xnäÛ™ËˆxnãZH¸néÚH›Ëxnáİ8n¨ZH0è]Ú[šÈøn¨XÈ°èZH]^H1$xnâÛšÈ°ê›ˆˆ8nìHÚ8nâİH°è¸näÚH1¬8nç[™ËÜ‚ˆÏ±$xnàH‹ˆ°àˆÒPSÈ°àxná“ˆ¸n¨‘ÏÚÏ‚ˆŒ‹ŒKˆ™ğèHğïH8nèÜ1$xnäÛ™ÎˆÜÚYÛ™Y^_OØ‹ˆ™ğèH°èˆÚX[È8nìHÚxn¯Û‹İ8nìXÈ8n¯ÎˆÜİ\^_OØ‹Ü‚ˆŒ‹Œ‹ˆZH°ê›ˆ8n«\8néH8néXÈH8 $Èšpê›ˆ¸n¨Ûˆ°èˆÚX[ÈğêH8n¨ÛšİšY[ËÚH°íH8nêÛ™Èxn¯İ¸nâË0ëš¸n¨[™Èxn¯İ¸nâËxnáÛˆ¸n¨[™È0ì›™ËÚ8nâHønäH1$ZxnáÛ‹Û±¬8næØÈ1$xn©İHønìËønäHÚ0ëHÚ0ìØKİ8n®Ëİ°è›ˆ^H1$pèÈ°èˆÚX[ËÜ‚ˆŒ‹ŒËˆønàÈ8nêÈ8nçZH1$ZxnàÛH°èˆÚX[È8nìXÈ8n¯È[È8néH8néXÈK°ê›ˆˆğìÈğèˆ]^xnà[ˆønëH8né[™È0ì›™Èpêˆ[È8nèÜ1$xnäÛ™ËÜ‚ˆÏ±$xnàHËˆ8nçH8n¨ˆpâÚÏ‚ˆŒËŒKˆ8nçZH8n¨[ˆpêˆÙ\˜][ÛŸOØ‹Ü‚ˆŒËŒ‹ˆ8nçZH8n¨[ˆ1$q¬8nèØÈ0ë[š8nêÈ™ğèHÜİ\^_OØˆ1$xn¯Ûˆ8n¯İ™ğèHÙ[™^_OØ‹ˆ¸n¯İH™ğèH°èˆÚX[È8nìXÈ8n¯ÈÚ0èXÈ™ğèH¸n«İ1$xn©İHpê‹ZH°ê›ˆÚHš8n«[ˆ¸n¬[™È8néH8néXÈHøn­ØÈ[ˆš8n«Ûˆ0èXÈš8n«[‹Ü‚ˆŒËŒËˆ8n¯İ8nçZH8n¨[ˆpê‹8nèÜ1$xnäÛ™È8nìH1$xnæ[™ÈÚXH8n¨[ˆ[È0è[™È¸næÚH1$Zxnà]HÚøn¨ÛˆÚ0í™È1$xnåZK¸nêÈÚHxnæ]°ê›ˆ0í™È°è[ÈÚ8n©[H8nê]±¬8næØÈ0ë]š8n©]Ì™ğèH¸n¬[™È± Ûˆ¸n¨Û‹İ[ˆš8n«Ûˆ
+˜[ËÔÓTÊKÜ‚ˆÏ±$xnàHˆxnàˆ1$8n­•ønãÏÚÏ‚ˆŒKˆxnêXÈ1$xn­İønãXÎˆÙ›Ü›X][Û™^J\ÜÚ][[İ[
+_OØˆ
+¸n¬[™ÈÚ8nëÎˆÛ[X™\•ÕÛÜ™Ê\ÜÚ][[İ[
+_OØŠK¸næ\™Ø^HÚHğïHøn­ØÈ[È8nãØHxn«[ˆ[šğè[ˆønéØHZH°ê›‹Ü‚ˆŒ‹ˆÚ0í™È0î[™ÈønãXÈ1$xnàÈ¸nêÈxnà[ˆpêˆ¸nêÈÚHZH°ê›ˆ1$xnäÛ™È0ïH¸n¬[™È± Ûˆ¸n¨Û‹İ[ˆš8n«Û‹Ü‚ˆŒËˆ8nçZH8n¨[ˆpêˆ8näZHxnàİH°è8nëH0ïHxnà[ˆ1$xn­İønãXÈÚHÚ8n©[H8nê]±¬8næØÈ8n¨[ØÜ‚ˆŒËŒKˆ°ê›ˆˆØ[Høn¯İ8nçZHÚX[ˆpêˆ8näZHxnàİH0èŒLˆ
+q¬8nçZHZJH0è[™Èpê›ˆ8néXÏØ‹0ë[š8nêÈ™ğèH°ê›ˆH°èˆÚX[È0ì›™ÈÚÈ°ê›ˆˆ[È8nèÜ1$xnäÛ™È°èKÜ‚ˆŒËŒ‹ˆ±¬8nç[™È8nèÜ°ê›ˆˆ8nìH0ïH¸n¨È0ì›™Ë™ønêÛ™Èpêˆøn­ØÈ1$q¨[ˆ1¬1¨[™ÈÚ8n©[H8nê]8nèÜ1$xnäÛ™È±¬8næØÈÚH1$xnéÈLˆ
+q¬8nçZHZJH0è[™È°ë™İ^pê›ˆš0è›ˆxnæXÈ¸nàH°ê›ˆ‹0ë1$q¬8nèØÈ0èXÈ1$xnâÛš0èšH8n¨[HØ[Høn¯İ¸nàH8nçZH8n¨[ˆpêˆ8näZHxnàİKˆÚH1$pìËğèˆ¸næHønäHxnà[ˆ1$xn­İønãXÈxnæXÈ¸nàH°ê›ˆH°è°ê›ˆHÚ0í™ÈğìÈ™Ú1*XH¸néHğèˆ¸n¨ÈÚÈ°ê›ˆØ‹ønàÈøn¨È±¬8nç[™È8nèÜ°ê›ˆˆ1$pèÈ0í™È°è[È±¬8næØÈ0ë]š8n©]Ì™ğèKÜ‚ˆ•šxnáØÈ0í™È°è[È±¬8næØÈÚ8nâHš8n¬[H8nìXÈxnáÛˆ™Ú1*XH¸néH0í™È°è[ÈÚHÚ8n©[H8nê]8nèÜ1$xnäÛ™È°èšÚ0í™È0èH0è]Ú[š]^xnà[ˆ1$q¬8nèØÈğèˆ¸n¨Èxnà[ˆ1$xn­İønãXÏØˆønéØH°ê›ˆˆ›Û™È±¬8nç[™È8nèÜ°èKÜ‚ˆŒËŒËˆ™ÛğèHšxnáØÈÚ0í™È1$q¬8nèØÈğèˆ¸n¨Èxnà[ˆ1$xn­İønãXË°ê›ˆˆ¸nªÛˆğìÈ°èXÚšxnáÛH[šğè[ˆ1$xn©ŞH1$xnéÈxnà[ˆpêˆ0ì›™Ëxnà[ˆ1$ZxnáÛ‹±¬8næØË8nâØÚ¸néH°èğèXÈÚøn¨Ûˆğí™È¸nèÈÚ0èXÈ0è]Ú[š1$xn¯Ûˆ8nçZH1$ZxnàÛH°èˆÚX[È8nìXÈ8n¯ÎÈ1$xnäÛ™È8nçZH¸näÚH1¬8nç[™ÈÚH0ëHønëXHÚ8nëØKÚ8n«ØÈ8néXÈğèXÈ1¬8nãÛ™ÈÈ8nåÚHønéØH°ê›ˆˆğèH˜Kˆ±¬8nç[™È8nèÜğèXÈÚøn¨Ûˆ8n¨ÚH[šğè[ˆ°èxnáİ8n¨ZH8nìXÈ8n¯È±¬8nèİ]pèHønäHxnà[ˆ1$xn­İønãXÈ0ë°ê›ˆˆ8n¨ÚH[šğè[ˆ8n©ÛˆÚ0ê›š8náØÚğì›ˆxn¯İHÚÈ°ê›ˆKÜ‚ˆŒËˆ]^H1$xnâÛšÚ0í™Èğèˆ¸n¨Èxnà[ˆ1$xn­İønãXÈ8n¨ZHÚøn¨ÛˆŒËŒˆÚ0í™È0è\8né[™È›Û™ÈğèXÈ±¬8nç[™È8nèÜØ]NÜ‚ˆ˜JHZH°ê›ˆğìÈ8nãØHxn«[ˆ¸n¬[™È± Ûˆ¸n¨Ûˆ¸nàHšxnáØÈÚ8n©[H8nê]8nèÜ1$xnäÛ™È°èğèˆ¸n¨Èxnà[ˆ1$xn­İønãXÎÏÜ‚ˆ˜ŠH°ê›ˆˆÚ8n©[H8nê]8nèÜ1$xnäÛ™ÈÈ°ê›ˆHšH8n¨[H™Úpê›H¸nã[™È™Ú1*XH¸néH[È8nèÜ1$xnäÛ™Èøn­ØÈxnæXÈ±¬8nç[™È8nèÜ°ê›ˆˆğìÈ]^xnà[ˆ1$q¨[ˆ1¬1¨[™ÈÚ8n©[H8nê]8nèÜ1$xnäÛ™È[È]^H1$xnâÛš0è\xn«]ÏÜ‚ˆ˜ÊH8n¨ŞH˜HønìHÚxnáÛˆ¸n©]Ú8n¨ÈÚ0è[™ÈÚxn¯ÛˆxnéXÈ1$pëXÚpêˆ0ì›™ÈÚ0í™È8nàÈxn¯Ü8néXÈ8nìXÈxnáÛˆ°èZH°ê›ˆğìÈ± Ûˆ¸n¨Ûˆ0èXÈš8n«[ˆøn­ØÈñ¨H]X[ˆğìÈ8nª[H]^xnà[ˆ0èXÈ1$xnâÛšÏÜ‚ˆ™
+HğèXÈ±¬8nç[™È8nèÜÚ0èXÈÈZH°ê›ˆ8nä[™Èš8n©]¸n¬[™È± Ûˆ¸n¨Û‹Ü‚ˆ•›Û™ÈğèXÈ±¬8nç[™È8nèÜ°ê›‹°ê›ˆHğèˆ¸n¨È8n©Ûˆxnà[ˆ1$xn­İønãXÈğì›ˆ8n¨ZHÚÈ°ê›ˆˆØ]HÚHÚ8n©]H¸nêÈğèXÈÚøn¨Ûˆğí™È¸nèËÚH0ëHønëXHÚ8nëØH°è™Ú1*XH¸néH0èHÚ0ë[š8nèÜ8náÈ›Û™È8nçZH8n¨[ˆŒÈ™ğèH0èHšxnáØÏØˆønàÈ8nêÈ™ğèHZH°ê›ˆğèˆ8n©]°èˆÚX[È°è1$xnäZHÛğè]ğí™È¸nèËÜ‚ˆŒËKˆ±¬8nç[™È8nèÜ°ê›ˆˆÚ8n©[H8nê]8nèÜ1$xnäÛ™ÈØ]HÚH1$pèÈpêˆ1$xnéÈLˆ0è[™Ë°ê›ˆˆ8n¨ÚH0í™È°è[ÈÚÈ°ê›ˆH±¬8næØÈ0ë]š8n©]Ì™ğèH¸n¬[™È± Ûˆ¸n¨Ûˆøn­ØÈ[ˆš8n«Ûˆ[È1¬1¨[™È8nêXÈpê›ˆ8n¨XÈ1$pèÈ8nãØHxn«[‹ˆØ]HÚHğèˆ8n©]šxnáØÈ°èˆÚX[È0ì›™È°è[šğè[ˆ1$xn©ŞH1$xnéÈğèXÈ™Ú1*XH¸néK°ê›ˆHğèˆ¸n¨È8n©Ûˆxnà[ˆ1$xn­İønãXÈğì›ˆ8n¨ZHÚÈ°ê›ˆˆ[ÈÚøn¨ÛˆønéØH8nèÜ1$xnäÛ™ËÜ‚ˆˆÚH¸n¨È0ì›™ËZH°ê›ˆ8n«\špê›ˆ¸n¨ÛˆÚxnàÛH˜HxnáÛˆ¸n¨[™Ëˆ°ê›ˆHÚ8nâH1$q¬8nèØÈÚ8n©]H¸nêÈønãXÈ1$xnäZH¸næÚHğí™È¸nèË1¬8nãÛ™ÈÈ8nåÚH°ê›ˆˆøn­ØÈÚH0ëHğìÈ¸n¨Û™Èğê‹Ú0ìØH1$q¨[‹ØÚ8nê[™È8nêÈ8nèÜ8náËˆ°ê›ˆHğèˆønãXÈ›Û™ÈÈ
+¸n¨ŞJH™ğèH0èHšxnáØÈønàÈ8nêÈÚHš8n«[ˆ1$xnéÈÚ0ëHÚ0ìØKİ8n®Ë°èˆÚX[ÈÛ™È°è]^xn¯İğè[ˆğí™È¸nèÈ¸næÚH°ê›ˆ‹Ü‚ˆÏ±$xnàHKˆÒpàHpâˆ°à0ãH8nâÒ¸néÚÏ‚ˆKŒKˆxnà[ˆpêˆÙ›Ü›X][Û™^J™[[[İ[
+_OØ‹İ0è[™È
+¸n¬[™ÈÚ8nëÎˆÛ[X™\•ÕÛÜ™Ê™[[[İ[
+_OØŠKÜ‚ˆKŒ‹ˆ0ëH8nâØÚ¸néHÚ1¬HønäÛH›Û™Èxnà[ˆpê‹ˆ8nå[™È0ëH8nâØÚ¸néHønäH1$xnâÛšønäXÎˆÙ›Ü›X][Û™^J˜\ÙQš^YÙ\šXÙUİ[
+_OØ‹İ0è[™Ëˆ±¬8nç[™È8nèÜ°ê›ˆˆ8nçÈxnæ]pëš›Û™È0ì›™È1$q¬8nèØÈÚxn¨ÛHL	H0ëH8nâØÚ¸néHønäH1$xnâÛšÈ8nêÈˆ™ñ¬8nçZH¸nçÈ0ê›ˆ0è\8né[™È1$xnéÈ0ëH8nâØÚ¸néHønäH1$xnâÛšÜ‚ˆKŒËˆxnêXÈ0ëH8nâØÚ¸néHønäH1$xnâÛš1$X[™È0è\8né[™ÈÚÈ8nèÜ1$xnäÛ™È°èNˆÙ›Ü›X][Û™^J\YYš^YÙ\šXÙUİ[
+_OØ‹İ0è[™È[ÈønäH™ñ¬8nçZH8nçÈxnáÛˆ8n¨ZH0èÛØØİ\[Ûİ[OØˆ™ñ¬8nçZ^Ùš^YÙ\šXÙQ\ØÛİ[ˆÈ‹1$pèÈÚxn¨ÛHÙ›Ü›X][Û™^Jš^YÙ\šXÙQ\ØÛİ[
+_OØ‹İ0è[™ËÏˆˆ‹ÏŸOÜ‚ˆ‹H1$xnáÛˆÙ›Ü›X][Û™^J[XİšXÔšXÙJ_OØ‹ÚÕÚ[ÈÚ8nâHønäHğí™È1¨H
+ÚH1$xn©İKØİxnäZHønìÈ›Û™Èxn¯İHJKÜ‚ˆ‹H±¬8næØÎˆÙ›Ü›X][Û™^JØ]\”šXÙJ_OØ‹Ûp¬Ë[ÈÚ8nâHønäHğí™È1¨H
+ÚH1$xn©İKØİxnäZHønìÈ›Û™Èxn¯İHJKÜ‚ˆ‹Hxn¨[™È[\›™]ˆÙ›Ü›X][Û™^J›ÛÛKš[\›™]
+_OØ‹Ü0ì›™Ëİ0è[™ËÜ‚ˆ‹H¸náÈÚ[š°èXÈ	ˆ8nâØÚ¸néHÚ[™ÎˆÙ›Ü›X][Û™^J›ÛÛK˜ÛX[š[™Ê_OØ‹Ü0ì›™Ëİ0è[™ËÜ‚ˆ‹H0ëH¸n¨ÛÈ°ë[™Èpè^NˆÙ›Ü›X][Û™^J›ÛÛK™[]˜]ÜŠ_OØ‹Ü0ì›™Ëİ0è[™ËÜ‚ˆ‹H0ëHønëH8né[™Èpè^HÚxn­İÚ[™ÎˆÙ›Ü›X][Û™^J›ÛÛK›][™J_OØ‹Ü0ì›™Ëİ0è[™ËÜ‚ˆKˆÚH1$q¨[ˆÚpèH1$xn©İH°èËønäH™ñ¬8nçZH8nçÈøn­ØÈ0ëH8nâØÚ¸néH^H1$xnåZK°ê›ˆH°è[È±¬8næØÈ0ë]š8n©]MH™ğèH°èønëZH¸n¨Û™È0ë[šğêHñ ÛˆønêKØÚ8nê[™È8nêÈ¸n¯İHğìËÜ‚ˆÏ±$xnàH‹ˆ1«ñ¨‘È8nêÈ°à8n¨ˆS’ğàSÚÏ‚ˆ‹ŒKˆønìÈ[šğè[ˆH
+xnæ]
+H0è[™ËÛ8n©Û‹Ü‚ˆ‹Œ‹ˆ8n¨[ˆ[šğè[ˆ8nä[™Èš8n©]ˆÚ8n«[Hš8n©]™ğèHLønéØH0è[™Èpê‹Ü‚ˆ‹ŒËˆ0ëš8nêXÎˆxnà[ˆxn­İøn­ØÈÚ^xnàÛˆÚøn¨Ûˆ“‘°èÈ0èHÚøn¨Ûˆ°ê›ˆNÈ[šğè[ˆ1$q¬8nèØÈÛÚH0èğèˆ0èšÚHxnà[ˆÚHğìÈ°èÈ0èHÚøn¨Ûˆ°ê›ˆKÜ‚ˆ‹ˆ¸nèÈ]pèH8n¨[ˆ	ˆÚ8n¯È0èNÜ‚ˆ‹H]pèH8n¨[ˆÉÏ‰ßLÈ™ğèNˆ8n¨]LŒ1$KÚønìÎÏÜ‚ˆ‹HØ]H1$pìËxnåÚHˆ™ğèH]pèH8n¨[ˆønæ[™È0ê›HLŒ1$K8näZH1$XHLŒ1$KÚønìÎÏÜ‚ˆ‹H8nå[™È8n¨]Ú0í™È]pèHH0è[™Èxnà[ˆpê‹ÚønìËÜ‚ˆ‹H]pèH8n¨[ˆ1$xnéÈL™ğèHønàÈ8nêÈ8n¨[‹°ê›ˆHğìÈ]^xnà[ˆ1$q¨[ˆ1¬1¨[™ÈÚ8n©[H8nê]8nèÜ1$xnäÛ™È
+1$xnà]HJHØ]HÚHønëZH0í™È°è[ÈÚ8n©[H8nê]8näZHxnàİHH™ğèKÜ‚ˆ‹H°ê›ˆHÚ0í™È0è\8né[™ÈšxnáÛˆ0è\øn«İ1$ZxnáÛ‹øn«İ±¬8næØËšpê›HÛ™È0ì›™Ë0ìØH°è›ˆ^H1$xnàÈñ¬8nè[™ÈÚ8n¯ËÜ‚ˆÏ±$xnàHËˆUVxnàˆ°à‘Ò1*H¸né°â“ˆOÚÏ‚ˆËŒKˆ]^xnà[ˆpêHøn©İH°ê›ˆˆ[šğè[ˆ1$xnéË1$pî›™È8n¨[ÈpêHøn©İH¸näÚH1¬8nç[™È1¬8nãÛ™ÈÈ8nåÚH°ê›ˆ‹ˆ°èÈ0ì›™ÈŒ8 $ÌŒŒ°è[È±¬8næØÈ8¢iLÚxnçH1$xnàÈÚxnàÛH˜KÜønëXHÚ8nëØNÈ±¬8nç[™È8nèÜÚ8nª[ˆøn©\
+Ú0è^H¸nåK°ìˆ¸nâK™İ^HxnàÛx )ŠK1$q¬8nèØÈ°èÈ™Ø^H°è0í™È°è[ÈØ]KˆÚ8n©[H8nê]8nèÜ1$xnäÛ™È[È1$xnà]HHÚH°ê›ˆˆšH8n¨[KÜ‚ˆËŒ‹ˆ™Ú1*XH¸néNˆ°èˆÚX[È1$pî›™È8n¨[‹1$pî›™ÈxnáÛˆ¸n¨[™ÎÈ1$xn¨ÛH¸n¨ÛÈšxnáØÈÚÈpêˆ8nèÜ0è\ˆønëXHÚ8nëØHønâÜ8nçZH1¬8nãÛ™ÈxnæXÈÚ0í™ÈÚX[ˆÚ[™Ëˆ1$8n¨ÛH¸n¨ÛÈ]^xnà[ˆønëH8né[™Èpê›ˆ8néXË[ˆğè‹špê›™È1¬ÈÚ0í™È0è›H8n¨[H0èHøn¨Û‹ˆ8nåÈ¸nèÈÚZH°è[È8n¨[H°î‹ˆ0í™È°è[È±¬8næØÈ8¢iLÌ™ğèH¸n¯İH]xnä[ˆ1$Zxnà]HÚ8nâ[šÚpèHpê‹Û¸næZH]^Høn­ØÈÚ8n©[H8nê]ˆ¸n¨ÛÈxn«]ĞĞÑønäH1$ZxnáÛˆøn¨ZK8nëÈxnáİH°è›ˆ^KÜ‚ˆÏ±$xnàHˆUVxnàˆ°à‘Ò1*H¸né°â“ˆÚÏ‚ˆŒKˆ]^xnà[ˆš8n«[ˆ°èˆÚX[È1$pî›™È8nçZHÚX[‹ÚxnáÛˆ¸n¨[™ÎÈønëH8né[™È0ì›™Èpêˆ1$xnàÈ8nçÎÈpêHøn©İH°ê›ˆHønëXHÚ8nëØHønìHønäHÚ0í™ÈÈ8nåÚHpëšÈ1$q¬8nèØÈÚXH8n¨[ˆ[È1$xnà]HÎÈ1$q¬8nèØÈğèˆønãXÈ[È1$xnà]HÈ0è[È8nèH0èHøn¨ÛˆğèHš0è›ˆÚHÚ8n©[H8nê]Ü‚ˆŒ‹ˆ™Ú1*XH¸néNˆ[šğè[ˆ1$xnéË1$pî›™È8n¨[ˆxnà[ˆpêˆ°è8nâØÚ¸néKˆønëH8né[™È1$pî›™ÈxnéXÈ1$pëXÚÈÚ0í™È0î[™È0èH±¨ZHÚ[šØ[šÚÈ8n«\øn¯İ0è™Ëøn­ØÈxnéXÈ1$pëXÚ°èZH0è\xn«]ˆ¸n¨ÛÈ]xn¨Ûˆ0èHøn¨ÛÈ¸näÚH1¬8nç[™È1¬8nãÛ™ÈÈ8nåÚHpëšˆÚ0í™È1$xnéXÈ0èHøn¯İøn©]HÚHÚ1¬H1$q¬8nèØÈ1$xnäÛ™È0ïKˆ¸n¨È0ì›™È1$pî›™È™İ^pê›ˆ¸n¨[™Ëˆİ[™Èøn©\8näÈñ¨H
+ĞĞÑÚ8næHÚxn¯İJH›Û™ÈÚxnçH1$xnàÈÚZH°è[È8n¨[H°î‹Ü‚ˆÏ±$xnàHKˆÒPH8n¨ˆ8 $ÈÒ8n©H8nê8nè”1$8nä“‘ÏÚÏ‚ˆKŒKˆ8nèÜ1$xnäÛ™ÈÚ8n©[H8nê]ÚH8n¯İ8n¨[ˆ°èğìÈ0í™È°è[ÈÚ8n©[H8nê]±¬8næØÈ0ë]š8n©]Ì™ğèH[È1$xnà]HÎÈ¸n¯İHÚ0í™ËÚXH8n¨[ˆ[È0è[™ËÜ‚ˆKŒ‹ˆ8nèÜ1$xnäÛ™ÈÚ8n©[H8nê]±¬8næØÈ8n¨[ˆ¸n¯İHñ Ûˆš0è1¬8nãÛ™È¸n­Û™ÈÈ¸n©]Ú8n¨ÈÚ0è[™È
+8nãØHøn¨[‹pê›ˆZK8nâØÚ¸náÛšñ¬8nè[™ÈÚ8n¯Èš0è±¬8næØø )ŠHÚxn¯Ûˆ°ê›ˆˆÚ0í™È8nàÈxn¯Ü8néXÈ8nçÈ°ëš1¬8nç[™ËÜ‚ˆKŒËˆxnæ]°ê›ˆšH8n¨[H8nèÜ1$xnäÛ™Ë°ê›ˆğì›ˆ8n¨ZHğìÈ]^xnà[ˆ1$q¨[ˆ1¬1¨[™ÈÚ8n©[H8nê]Ø]HÚH0í™È°è[È°êH°íH0ïHÎÈ°ê›ˆšH8n¨[H¸näÚH1¬8nç[™ÈÚÈ°ê›ˆğì›ˆ8n¨ZHønäHxnà[ˆ1¬1¨[™È1$q¬1¨[™Èxnà[ˆønãXËÜ‚ˆKˆ¸n¯İHğèXÈ°ê›ˆÚ8n©[H8nê]±¬8næØÈ8n¨[ˆÚ0í™ÈxnæXÈKŒx $ÎKŒË°ê›ˆ1$q¨[ˆ1¬1¨[™È8n¨ÚH¸näÚH1¬8nç[™ÈønäHxnà[ˆ1¬1¨[™È1$q¬1¨[™Èxnà[ˆønãXËÜ‚ˆKKˆ±¬8nç[™È8nèÜ°ê›ˆˆ]xnä[ˆØ[™Èš1¬8nèÛ™È8nèÜ1$xnäÛ™Îˆ8n¨ÚH1$pèÈ8nçÈ8¢iLÈ0è[™Ë°è[È±¬8næØÈŒ8 $ÌÌ™ğèK1$q¬8nèØÈ°ê›ˆH1$xnäÛ™È0ïNÈ0ëHØ[™Èš1¬8nèÛ™ÎˆŒŒ1$KÜ‚ˆÏ±$xnàHLˆ¸n¨“Èxn«	ˆ8nëˆxná•HKÕ°àÏÚÏ‚ˆŒLŒKˆ°ê›ˆHÚ0í™È1$q¬8nèØÈ8nìH0ïHHÚ^xnàÛ‹İHÚxnëÈ0èHøn¨ÛˆønéØH°ê›ˆ‹ˆÚ8nâH8nëH0ïH›Û™È±¬8nç[™È8nèÜÚ8nª[ˆøn©\øn­ØÈÚH°ê›ˆˆ¸nãÈ8n¨ZH0èHøn¨ÛˆØ]H8nçZH8n¨[ˆ0í™È°è[ËÜ‚ˆŒLŒ‹ˆ°ê›ˆHÚ8nâHH8n«\°è›ˆ^H1$xnàÈ]xn¨Ûˆ0ïH˜Kİ°èÎÈÚ0í™È0î[™ÈÚÈxnéXÈ1$pëXÚÚ0èXËˆ0ìØH8nëÈxnáİHÚHÚ8n©[H8nê]8nèÜ1$xnäÛ™ËÜ‚ˆÏ±$xnàHLKˆÒxn¨’HUVxn¯•S’Ò8n©ÚÏ‚ˆ’ÚH0è]Ú[š¸n©]1$xnäÛ™Èpê›ˆ]X[ˆ8nèÜ1$xnäÛ™ËğèXÈ°ê›ˆ±¬8næØÈ8n¯İ1¬1¨[™È1¬8nèÛ™Ëˆ¸n¯İH1¬1¨[™È1¬8nèÛ™ÈÚ0í™È0èš˜[šÚ8n©\øn¯HÈ0ì˜H0è[ˆš0è›ˆ0è›ˆğìÈ8nª[H]^xnà[ˆÚxn¨ÚH]^xn¯İˆ8nèÜ1$xnäÛ™È°èxnãZH˜[šÚ8n©\0è]Ú[š1$q¬8nèØÈ1$Zxnà]HÚ8nâ[š¸nçÚH0è\xn«]šxnáİ˜[KÜ‚ˆÏ±$xnàHL‹ˆ1$xnàHÒøn¨“ˆÒS‘ÏÚÏ‚ˆ’8nèÜ1$xnäÛ™ÈğìÈxnáİH8nìXÈ8nêÈ™ğèHğïKˆxnãZHønëXH1$xnåZH8n¨ÚH8n«\¸n¬[™È± Ûˆ¸n¨Û‹ˆ8nèÜ1$xnäÛ™È8n«\ˆ¸n¨ÛˆğìÈÚpèH¸nâÈ0è\0ïHš1¬š]KÜ‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÚYÛ˜]\™K\›İÈ‚ˆ]°â“ˆÒÈpâˆ
+°ê›ˆJOØÜ]ˆÛ\ÜÓ˜[YOHœÚYÛ˜]\™K\ÜXÙHÙ]‘xná“H8nâˆ°ã’ØÜÙ]‚ˆ]°â“ˆpâˆ
+°ê›ˆŠOØÜ]ˆÛ\ÜÓ˜[YOHœÚYÛ˜]\™K\ÜXÙHÙ]Üš[X\U[˜[›˜[Y_OØÜÙ]‚ˆÙ]‚ˆÏ‚ˆ
+_BˆÚ\ÓXZ[ˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜\[™^XÛÛZ[™\ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH˜\[™^\YÙH‚ˆHİ[O^ŞÈ^[YÛˆ	ØÙ[\‰Ë›ÛÚ^™Nˆ	ÌN	Ë›ÛÙZYÚˆ	Ø›Û	È_O”8né8néÈH8 $È’pâ“ˆ¸n¨“ˆ°àˆÒPSÏÚO‚ˆ“™ğèHğïH8nèÜ1$xnäÛ™ÎˆÜÚYÛ™Y^_OØÈ™ğèH°èˆÚX[ÎˆÜİ\^_OØÈ0ì›™ÈønäNˆÜ›ÛÛKšYOØÜ‚ˆÚ8nâHønäH1$ZxnáÛˆñjNˆÜ›ÛÛK™[XİšXÓÛ›ÛÛK™[XİšXÔİ\›ÛÛKš[š]X[[XİšXÈ	Ë‹‹‹‹‹‹‰ßOØˆÕÚÈÚ8nâHønäH±¬8næØÈñjNˆÜ›ÛÛKØ]\“Û›ÛÛKØ]\”İ\›ÛÛKš[š]X[Ø]\ˆ	Ë‹‹‹‹‹‹‰ßOØˆp¬ÏÜ‚ˆ’ZH°ê›ˆ8nä[™Èš8n©]Ú8né\8n¨ÛšÜ]X^HšY[ÈxnáÛˆ¸n¨[™È0ì›™Ëxn¯İ¸nâËğí™È1¨H1$ZxnáÛ‹Û±¬8næØÈ°è1¬HğêHšpê›ˆ¸n¨Ûˆ°èKˆ8n¨›šİšY[È0èñ ÛˆønêH1$xnäZHÚxn¯İHÚH¸n¨È0ì›™È°èğèˆønãXËÜ‚ˆX›HÛ\ÜÓ˜[YOH˜ÛÛ˜Xİ]X›H‚ˆXY‚ˆ”Õİ‘S’xnéÈxn¯•¸nâİ”ønä1«ønè“‘Ïİ’xná“ˆ¸n¨‘Ïİİ‚ˆİXY‚ˆ›ÙO‚ˆÖÂˆ	ñ$xnà]H0ì˜H
+È1$xnà]HÚxnàÛ‰Ë	ÑÚq¬8nç[™ÉË	Õ8néÈ]xn©Ûˆ0è[ÉË	ĞÚ1 Û‰Ë	ÑØIË	ÑønäZIË	ñ$8náÛIË	ÔÛÙ˜IË	Ğ°èˆ°è	Ëˆ	Ğ°èˆ˜[™È1$ZxnàÛH
+ÈÚ8n¯ÉË	Ğ°ìÛ™È1$ZxnáÛˆÚxn¯İHğè[™ÉË	Ò0îpîZIË	Õ8néÈ8n¨[š	Ë	Ô°êH¸n¨ÚIË	Ó[Ù[HÚKQšIËˆ	Õ˜[š™[È1¬8nç[™ÉË	Óxn­İ¸n¨H0ì›™È1$xnæXÉË	ĞÚ0ëHÚ0ìØH0ì›™ÉË	Ññ¬1¨[™ÈÛÚIË	Ğ°ëš°ìÛ™È8n¨[š	Ë	Ó]˜X›ÉÂˆK›X\
+
+][KJHOˆ
+ˆˆÙ^O^Ú_O‚ˆİ[O^ŞÈ^[YÛˆ	ØÙ[\‰È_OÚH
+È_Oİ‚ˆÚ][_Oİ‚ˆİ[O^ŞÈ^[YÛˆ	ØÙ[\‰È_OŒOİ‚ˆ¸¦$8nä]	›˜œÜÈ8¦$¸n©ŞKŞ1¬8næØÈ	›˜œÜÈ8¦$øn©ÛˆÚxnàÛH˜H	›˜œÜÈ8¦$8nãÛ™È	›˜œÜÈÚHÚ0îˆ‹‹‹‹‹‹‹‹‹‹‹İ‚ˆİ‚ˆ
+J_Bˆİ›ÙO‚ˆİX›O‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH˜\[™^\YÙH‚ˆHİ[O^ŞÈ^[YÛˆ	ØÙ[\‰Ë›ÛÚ^™Nˆ	ÌN	Ë›ÛÙZYÚˆ	Ø›Û	È_O”8né8néÈÈ8 $È¸næHUVH0äH’0àÚO‚ˆ]ˆİ[O^ŞÈ›ÛÚ^™Nˆ	ÌL\	Ë[™RZYÚˆ	ÌK	È_O‚ˆÖÂˆÉÌKˆpè›ˆ8néÈ0è\xn«]	Ë	Ó™Úpê›Høn©[H1$pè[šš]KønçH¸n¨XËxn¨ZH0è›KXH0îK0è™È¸nëÈøn­ØÈønëH8né[™ÈÚ8n©]øn©[H°èğèXÈ0èššHšH8n¨[H0è\xn«]Ú0èXË‰×KˆÉÌ‹ˆĞĞÉË	Ğøn©HVxná•1$8näHøn¨ÈH1$xná“‹[ˆøn­ØÈ8n«ØË\]^HH1$ZxnáÛˆ›Û™ÈxnãZHÚH¸nìXÈ0ì˜Hš0è˜[ÈønäÛH0ì›™È8nçË0èš[™Ëøn©İH[™ËÚH1$xnàÈH°èÚH¸nìXÈÚ[™Ë‰×KˆÉÌËˆÚZH°è[È8n¨[H°î‰Ë	Ğİ[™Èøn©\Úxn©^H8nçH›Û™ÈÚxnçHønàÈ8nêÈÚH°èÈ8nçÈ1$xnàÈ°ê›ˆH8nåÈ¸nèÈ0èH8néÈ8néXÈÚZH°è[È8n¨[H°îˆ[È]^H1$xnâÛš‰×KˆÉÍˆğè]±¬8næØÉË	ÒÚ0í™È1$xnåH°èXË8nêXÈ1 Ûˆ8nêØK0ìØË8n©İHxnèHøn­ØÈ¸n«]ønê[™Èxnä[™È¸näÛˆøn©İK]˜X›ËÚ8n«]H¸nëXH°èğè]ğè‹‰×KˆÉÍKˆ¸náÈÚ[š	Ë	ÒÚ0í™È1$xnàÈ°èXÈ8nçÈ0èš[™Ëøn©İH[™Èøn­ØÈÚH¸nìXÈÚ[™Ëˆ¸nãÈ°èXÈ1$pî›™È±¨ZH]^H1$xnâÛš°èÚxnëÈğëˆ¸náÈÚ[š0ì›™È8nçËÚHÚ[šøn¨]Ú[™Ë‰×KˆÉÍ‹ˆxn¯Û™È8näÛ‰Ë	ÑÚxnëÈ¸n«]8nìH›Û™ÈÚ[™ÈÚxnçHŒŒ8 $ÌŒˆ8n«İpè^HHÚH°èÈš0è˜[ˆ1$pê›K8n¨[ˆÚ8n¯È°ìÚHÚ^xnáÛˆ8næÛ‹xnçÈš8n¨XËğê[È1$xnäÈøn­ØÈğèHxn¯Û™È8näÛˆØ]HŒŒÌ‰×KˆÉÍËˆ˜H°èÉË	ñ$0ìÛ™ÈønëXHønå[™ËØønëXHÚ0ë[šønª[ˆ8n«[‹Ú0í™ÈxnçÈønëXHÚÈ™ñ¬8nçZH8n¨KˆÚxnçHxn¯ÜÚ0èXÚ0í™È1¬8nç[™È8nêÈŒ8 $ÌŒŒÌÈÚ0èXÚ8nçÈ8n¨ZH]XH1$pê›H8n¨ÚH°è[È±¬8næØÈ°è1$q¬8nèØÈ°ê›ˆH1$xnäÛ™È0ïK‰×KˆÉÎˆøn¯İøn©]IË	ÒÚ0í™È8nìH0ïHÚØ[‹1$xnéXË¸n¯K0è[‹ønëXHÚ8nëØHøn­ØÈ^H1$xnåZHøn¯İøn©]H1¬8nç[™Ë¸n©Û‹ğè‹ønëXK8náÈ8nä[™È1$ZxnáÛˆ±¬8næØÈÚHÚ1¬H1$q¬8nèØÈ°ê›ˆH1$xnäÛ™È0ïK‰×KˆÉÎKˆ¸näÚH1¬8nç[™ÉË	ĞÚ8nâİH°èXÚšxnáÛH¸näÚH1¬8nç[™Èøn­ØÈ[šğè[ˆÚH0ëHønëXHÚ8nëØH1$xnäZH¸næÚH1¬8nãÛ™Ëxn©]pè]0èHøn¨Û‹xn¯İ¸nâÈÈ8nåÚHønéØHpëšøn­ØÈÚ0èXÚønéØHpëšğèH˜K‰×KˆÉÌLˆ0èHøn¨Û‰Ë	Õ8nìH¸n¨ÛÈ]xn¨Ûˆ0èHøn¨ÛˆğèHš0è›‹xnà[ˆ¸n¨XËÚxn©^H8nçH°è1¬1¨[™ÈxnáÛ‹ˆ°ê›ˆHÚ0í™ÈÚ8nâİH°èXÚšxnáÛH1$xnäZH¸næÚHxn©]pè]È°ê›ˆˆÚ0í™ÈÚ0ìØHønëXHøn­ØÈ8nìH]xn¨Ûˆ0ïHñ¨Hİxn©]‰×KˆÉÌLKˆ[™È8nìXÉË	ÒÚ0í™È8n©^KønëH8né[™Èøn­ØÈHÚ^xnàÛˆ0èHøn¨ÛˆønéØH™ñ¬8nçZHÚ0èXÈÚHÚ1¬H1$q¬8nèØÈ1$xnäÛ™È0ïKˆxnãZH˜[šÚ8n©\0è]Ú[š8n¨ÚH°è[È™Ø^HÚÈ°ê›ˆH1$xnàÈ8näZH8nèÜ8nëH0ïK‰×KˆÉÌL‹ˆ¸n«]píIË	ÒÚ0í™ÈpíH1$xnæ[™È¸n«]ğèHxn©]¸náÈÚ[šxn¯Û™È8näÛ‹pîZHøn­ØÈ™İ^Hñ¨Hxn©][ˆğè‹ˆ±¬8nç[™È8nèÜğìÈ¸n«]píH8n¨ÚH1$q¬8nèØÈ°ê›ˆH1$xnäÛ™È0ïH±¬8næØÈ¸n¬[™È[ˆš8n«Û‹İ± Ûˆ¸n¨Û‹‰×KˆÉÌLËˆÚ[šØ[š	Ë	ÒÚ0í™ÈønëH8né[™È0ì›™È0èH±¨ZHÚ[šØ[šÚÈ0è™Ë8n«\øn¯İ0è™È0ìØK]™\İ™X[H°è[ˆ0è™ÈğèH8n¨Ûš1¬8nçÛ™Èñ¬0è›ˆøn­ØÈxnéXÈ1$pëXÚ°èZH0è\xn«]‰×KˆÉÌMˆ¸n«[ˆÚ^xnàÛ‰Ë	ÒÚ0í™ÈÚ8nçÈ]pèH8n¨ÚH[™Èpè^KÚ0í™Èğê[È0êˆ¸n«]¸n­Û™ÈğèH1¬8nãÛ™Èğè‹1¬8nç[™ËønëXHøn­ØÈxn¯İ¸nâÈÚ[™ËˆÚHÚ^xnàÛˆ1$xnäÈ8næÛˆ8n¨ÚH°è[È±¬8næØÈÚÈ°ê›ˆK‰×KˆÉÌMKˆønîHxn«]	Ë	ÒÚ0í™È8nìH0ïH°èÈ0ì›™ÈønîHxn«]8néÈ1$ZxnáÛ‹ÚHpè^H±¨[KpèZKÚÈøn­ØÈÚH¸nìXÈğìÈšxnàÛˆøn©[KˆÚ0í™È8nìH0ïH1$xn©]H¸näZKønëXHÚ8nëØH1$ZxnáÛˆ±¬8næØÈ›Û™È0ì˜Hš0è‰×KˆÉÌM‹ˆÚ0èXÚ	Ë	Õxn¯ÜÚ0èXÚ›Û™ÈÚ[™ÈÚxnçHŒ8 $ÌŒŒÌˆÚ0èXÚ8nçÈ8n¨ZH]XH1$pê›H8n¨ÚH°è[È±¬8næØÈ°è1$q¬8nèØÈ°ê›ˆH1$xnäÛ™È0ïNÈ°ê›ˆˆÚ8nâİH°èXÚšxnáÛH¸nàH0èššK0èHøn¨Ûˆ°è[ˆš[špê›ˆ]X[ˆ1$xn¯ÛˆÚ0èXÚønéØHpëš‰×KˆÉÌMËˆ8nçˆÚ0ê\	Ë	ÒÚ0í™ÈÚÈpêˆ8n¨ZKÚ^xnàÛˆš1¬8nèÛ™ËÚÈ™ñ¬8nçZHÚ0èXÈ8nçÈÚ0ê\øn­ØÈ^H1$xnåZH™ñ¬8nçZH8nçÈÚHÚ1¬HğìÈÚ8n©\xn«[ˆønéØH°ê›ˆH°èÚ1¬H¸nåHİ[™È0í™È[ˆñ¬°î‹‰×KˆÉÌNˆØ[Høn¯İ	Ë	Õpè›ˆ8néÈ™Úpê›H0î˜È¸næZH]^H0ì˜Hš0è8nèÜ1$xnäÛ™Èpêˆ0ì›™È°èğèXÈ0í™È°è[È]xn¨Ûˆ0ïH8nèÜ0ïHønéØH°ê›ˆKˆ0èZH8n¨[Hšxnà]H8n©Ûˆøn­ØÈšH8n¨[H™Úpê›H¸nã[™ÈğìÈ8nàÈ¸nâÈÚ8n©[H8nê]8nèÜ1$xnäÛ™È[È8nãØHxn«[‹‰×BˆK›X\
+
+İ]KÛÛ[KY
+HOˆ
+ˆÙ^O^ÚYHİ[O^ŞÈX\™Ú[›İÛNˆ	ÌÜ	È_Oİ]_NØˆØÛÛ[OÜ‚ˆ
+J_BˆÙ]‚ˆÈİ[O^ŞÈ›ÛÚ^™Nˆ	ÌM	Ë›ÛÙZYÚˆ	Ø›Û	ËX\™Ú[•Üˆ	ÌM\	È_OÒ8n¯ˆ0àH8në8n¨ÚÏ‚ˆX›HÛ\ÜÓ˜[YOH˜ÛÛ˜Xİ]X›Hˆİ[O^ŞÈ›ÛÚ^™Nˆ	ÌL	È_O‚ˆXY‚ˆˆİ[O^ŞÈ˜XÚÙÜ›İ[™ˆ	ÈÙŒŒŒ	È_O’0à’’H’H8n¨Oİ“xnêÈ8n¨
+“±$
+Oİİ‚ˆİXY‚ˆ›ÙO‚ˆÖÂˆÉÔøn¨XÈKÜ[ˆ1$ZxnáÛˆ›Û™È0ì›™ËÚ0èš[™ÉË	ÍLŒÛ8n©Û‰×KˆÉñ$8nàÈHÚ0í™ÈÚZH°è[ËÜ]XH1$pê›H
+HÚ0èXÚ
+IË	ÌÌŒŞKñ$pê›I×KˆÉÕ¸nê]°èXÈ¸nêØH°èÚK°ê[H°èXÈ]XHønëXHønåIË	ÌŒŒÛ8n©Û‰×KˆÉÑğèH8n«ØÈønä[™È
+1$xnåH8nêXÈ1 Û‹0ìØË‹‹ŠIË	ÌŒŒ
+È0ëHønëXI×KˆÉÑğèH8näÛˆ0èÈØ]HŒŒ	Ë	ÌLŒHÌŒÛ8n©Û‰×KˆÉĞøn¨ÚH8n¨[È
+ÚØ[‹1$xnéXË‹‹ŠHÚ0í™È0ê\	Ë	ÍLŒÛ8n©Û‰×BˆK›X\
+
+][KY
+HOˆ
+ˆˆÙ^O^ÚYO‚ˆÚ][VÌ_Oİ‚ˆİ[O^ŞÈ^[YÛˆ	ÜšYÚ	È_OÚ][VÌW_Oİ‚ˆİ‚ˆ
+J_Bˆİ›ÙO‚ˆİX›O‚ˆ]ˆİ[O^ŞÈX\™Ú[•Üˆ	ÌŒ	Ë^[YÛˆ	ÜšYÚ	È_O‚ˆ±$8n¨Hxná“ˆ‘ñ«ønçHpâˆĞSHøn¯•ØÜ‚ˆ]ˆÛ\ÜÓ˜[YOHœÚYÛ˜]\™K\ÜXÙHˆİ[O^ŞÈZYÚˆ	ÍL	È_OÙ]‚ˆÜš[X\U[˜[›˜[Y_OØÜ‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+_BˆÚ\Ó\]ZY][Ûˆ	‰ˆ™\Ü	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›\]ZY][Û‹YØİ[Y[‚ˆ]ˆÛ\ÜÓ˜[YOH˜ÛÛ˜XİZXY\‹]^‚ˆOønæ‘È0äH0àÈ8næHÒ8néˆ‘Ò1*H’xná•SOÚO‚ˆ±$8næXÈ8n«\8 $È8nìHÈ8 $È8n¨[š0î˜ÏÚ‚ˆÙ]‚ˆHİ[O^ŞÈ^[YÛˆ	ØÙ[\‰ËX\™Ú[ˆ	ÌÌ	È_O”8né8néÈˆ8 $È’pâ“ˆ¸n¨“ˆÒxnà“HHÒH¸n¨ˆ0ä“‘ÏÚO‚ˆ’0íH˜^K™ğèHÙ›Ü›X]\Ü^Q]J™\Ü˜XİX[[™]J_KÚ0î›™È0íHxn¯Ûˆ0èšÚ8nä]8nã[ˆ1$ZHÚÈ0ì›™ÈÜ›ÛÛKšYOØÜ‚ˆX›HÛ\ÜÓ˜[YOH˜ÛÛ˜Xİ]X›Hˆİ[O^ŞÈX\™Ú[ˆ	ÌŒ	È_O‚ˆ›ÙO‚ˆÚ8nâHønäH1$ZxnáÛˆxnæÚNˆÜ™\Ü™[XİšXÓ™]È™\Ü™[XİšXÑ[™OØˆÕÚİÚ8nâHønäH±¬8næØÈxnæÚNˆÜ™\ÜØ]\“™]È™\ÜØ]\‘[™OØˆp¬Ïİİ‚ˆ”0è]Ú[š1$ZxnáÛˆÜ™\Ü™[XİšXÕ\ÙYHÕÚHÙ›Ü›X][Û™^J™\Ü™[XİšXĞ[[İ[
+_OØİ”0è]Ú[š±¬8næØÎˆÜ™\ÜØ]\•\ÙYHp¬ÈHÙ›Ü›X][Û™^J™\ÜØ]\[[İ[
+_OØİİ‚ˆİ›ÙO‚ˆİX›O‚ˆÈİ[O^ŞÈ›ÛÚ^™Nˆ	ÌMœ	Ë›ÛÙZYÚˆ	Ø›Û	È_O”UVxn¯•ğàSˆğå‘È¸nèÚÏ‚ˆ]ˆÛ\ÜÓ˜[YOHœİXÚÈˆİ[O^ŞÈØ\ˆ	Í\	È_O‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[•xnà[ˆ0ì›™È0è]Ú[š
+Ü™\Üœ›ÛÛPÚ\™ÙQ^\ÈH™ğèJOÜÜ[Ù›Ü›X][Û™^J™\Üœ›Ü˜]Y™[
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[‘8nâØÚ¸néH0è]Ú[š
+Ü™\Üœ›ÛÛPÚ\™ÙQ^\ÈH™ğèJOÜÜ[Ù›Ü›X][Û™^J™\Üœ›Ü˜]Yš^YÙ\šXÙ\È
+_OØÙ]‚ˆÜ™\ÜœÙ][Y[[ÙHOOH	Ü™\ZYÛ[ÛÜ™Y[™Ù\ÜÚ]	È	‰ˆ
+ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[•xnà[ˆ0ì›™È1$pèÈH0è[™È°èOÜÜ[Ù›Ü›X][Û™^J™\Üœ™\ZY™[ZY
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[‘8nâØÚ¸néH1$pèÈH0è[™È°èOÜÜ[Ù›Ü›X][Û™^J™\Üœ™\ZYš^YÙ\šXÙ\ÔZY
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[’ğèˆxnà[ˆ0ì›™ÈÚ1¬HønëH8né[™ÏÜÜ[Ù›Ü›X][Û™^J™\Üœ™\ZY[\ÙY™[™Y[™
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[’ğèˆ8nâØÚ¸néHÚ1¬HønëH8né[™ÏÜÜ[Ù›Ü›X][Û™^J™\Üœ™\ZY[\ÙYÙ\šXÙ\Ô™Y[™
+_OØÙ]‚ˆÏ‚ˆ
+_Bˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[•xnà[ˆ1$ZxnáÛÜÜ[Ù›Ü›X][Û™^J™\Ü™[XİšXĞ[[İ[
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[•xnà[ˆ±¬8næØÏÜÜ[Ù›Ü›X][Û™^J™\ÜØ]\[[İ[
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[”0ëHÚ0èXÏÜÜ[Ù›Ü›X][Û™^J[X™\Š™\Ü[œZY™[
+H
+È[X™\Š™\Ü˜ÛX[š[™Ñ™YH
+H
+È[X™\Š™\Ü™[XYÙQ™YH
+H
+È[X™\Š™\Ü›İ\‘™YH
+J_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[•8nå[™È0è]Ú[šÜÜ[Ù›Ü›X][Û™^J™\Üİ[[˜İ\œ™Y
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈÜ[•xnà[ˆønãXÈ1$xnäZH¸nêÏÜÜ[Ù›Ü›X][Û™^J™\Ü™\ÜÚ]\ÙY
+_OØÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]K\›İÈˆİ[O^ŞÈ›Ü™\•Üˆ	ÌœÛÛYÌ	ËY[™ÕÜˆ	ÌL	ËX\™Ú[•Üˆ	ÌL	Ë\Ü^Nˆ	Ù›^	Ë\İYPÛÛ[ˆ	ÜÜXÙKX™]ÙY[‰È_O‚ˆÜ[ˆİ[O^ŞÈ›ÛÚ^™Nˆ	ÌMœ	È_O’øn¯•Uxn¨ˆ8n©ğàSØÜÜ[‚ˆÜ™\Ü›]\İÛÛXİˆÈˆİ[O^ŞÈ›ÛÚ^™Nˆ	ÌŒ	ËÛÛÜˆ	İ˜\ŠKY[™Ù\ŠIÈ_O’Ú0èXÚ¸n¨È0ê›NˆÙ›Ü›X][Û™^J™\Ü›]\İÛÛXİ
+_OØˆˆˆİ[O^ŞÈ›ÛÚ^™Nˆ	ÌŒ	ËÛÛÜˆ	İ˜\ŠK\İXØÙ\ÜÊIÈ_OÚ8néÈš0èğèˆÙ›Ü›X][Û™^J™\Ü›]\İ™Y[™
+_OØŸBˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÚYÛ˜]\™K\›İÈ‚ˆ]°â“ˆÒÈpâØÜ]ˆÛ\ÜÓ˜[YOHœÚYÛ˜]\™K\ÜXÙHÙ]‘xná“H8nâˆ°ã’ØÜÙ]‚ˆ]°â“ˆpâØÜ]ˆÛ\ÜÓ˜[YOHœÚYÛ˜]\™K\ÜXÙHÙ]Üš[X\U[˜[›˜[Y_OØÜÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+_BˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+NÂŸB‚™[˜İ[Ûˆ\XZ[Š
+HÂˆÛÛœİÙ]KÙ]]WHH\ÙTİ]J
+
+HOˆÂˆÛÛœİØYYHØY™T™XY
+ÕÔQÑWÒÑVKQUSÑUJNÂˆ™]\›ˆÂˆ‹‹‘QUSÑUKˆ‹‹›ØYYˆİ\Y\œÎˆ
+ØYYœİ\Y\œÈ	‰ˆØYYœİ\Y\œË›[™İˆŒ
+HˆÈØYYœİ\Y\œË›X\
+ÈOˆÂˆÛÛœİYˆHQUSÑUKœİ\Y\œË™š[™
+OˆšYOOHËšY
+NÂˆ™]\›ˆYˆÈÈ‹‹™Y‹‹‹œËY˜][Ø]YÛÜNˆË™Y˜][Ø]YÛÜHY‹™Y˜][Ø]YÛÜHHˆÎÂˆJBˆˆQUSÑUKœİ\Y\œËˆ^[œÙPØ]YÛÜšY\ÎˆØYY™^[œÙPØ]YÛÜšY\ÈQUSÑUK™^[œÙPØ]YÛÜšY\Ëˆ^[œÙT^[Y[ÎˆØYY™^[œÙT^[Y[È×KˆÛÛ˜Xİ™[™]Ø[ÎˆØYY˜ÛÛ˜Xİ™[™]Ø[È×Kˆ›ÛÛU˜[œÙ™\œÎˆØYYœ›ÛÛU˜[œÙ™\œÈ×KˆNÂˆJNÂˆÛÛœİØ˜[šÒ[™›ËÙ]˜[šÒ[™›×HH\ÙTİ]J
+
+HOˆÂˆÛÛœİØ]™YHØY™T™XY
+S’×ÒÑVKQUSĞS’ÊNÂˆËÈ™\XÙHHÛ[[ÈXØÛİ[Ú[H™\Ù\š[™È[H™X[XØÛİ[ÛÛ™šYİ\™YHH\Ù\‹‚ˆYˆ
+\Ø]™YË˜XØÛİ[›ÈØ]™Y˜XØÛİ[›ÈOOH	ÌLŒÍMÎIÊH™]\›ˆQUSĞS’ÎÂˆ™]\›ˆÈ‹‹‘QUSĞS’Ë‹‹œØ]™YNÂˆJNÂˆÛÛœİİX‹Ù]X—HH\ÙTİ]J	Ù\Ú›Ø\™	ÊNÂˆÛÛœİÜ]Y\KÙ]]Y\WHH\ÙTİ]J	ÉÊNÂˆÛÛœİÜ^[Y[š[\œËÙ]^[Y[š[\œ×HH\ÙTİ]J[
+NÂˆÛÛœİÜÙ[XİY›ÛÛKÙ]Ù[XİY›ÛÛWHH\ÙTİ]J[
+NÂˆÛÛœİÙ]Z[[˜[Ù]]Z[[˜[HH\ÙTİ]J[
+NÂˆÛÛœİÛ™]Ô™[[›ÛÛKÙ]™]Ô™[[›ÛÛWHH\ÙTİ]J[
+NÂˆÛÛœİØY[™Ô›ÛÛ[X]KÙ]Y[™Ô›ÛÛ[X]WHH\ÙTİ]J[
+NÂˆÛÛœİÜÙ][™Ô›ÛÛKÙ]Ù][™Ô›ÛÛWHH\ÙTİ]J[
+NÂˆÛÛœİİ˜[œÙ™\œš[™ĞÛÛ˜XİÙ]˜[œÙ™\œš[™ĞÛÛ˜XİHH\ÙTİ]J[
+NÂˆÛÛœİİšY]Ú[™ĞÛÛ˜XİÙ]šY]Ú[™ĞÛÛ˜XİHH\ÙTİ]J[
+NÂˆÛÛœİÜ™[™]Ú[™ĞÛÛ˜XİÙ]™[™]Ú[™ĞÛÛ˜XİHH\ÙTİ]J[
+NÂˆÛÛœİİšY]Ú[™Ğ\[™^Ù]šY]Ú[™Ğ\[™^HH\ÙTİ]J[
+NÂˆÛÛœİİšY]Ú[™Ô™XÙZ\Ù]šY]Ú[™Ô™XÙZ\HH\ÙTİ]J[
+NÂˆÛÛœİÜš[[™Ô™XÙZ\ËÙ]š[[™Ô™XÙZ\×HH\ÙTİ]J[
+NÂˆÛÛœİÜ^[Y[™XÙZ\Ù]^[Y[™XÙZ\HH\ÙTİ]J[
+NÂˆÛÛœİÙY][™Õ[˜[Ù]Y][™Õ[˜[HH\ÙTİ]J[
+NÂˆÛÛœİÙY][™ĞÛÛ˜XİÙ]Y][™ĞÛÛ˜XİHH\ÙTİ]J[
+NÂˆÛÛœİİšY]Ú[™Ñ^[œÙKÙ]šY]Ú[™Ñ^[œÙWHH\ÙTİ]J[
+NÂˆÛÛœİÙY][™Ñ^[œÙKÙ]Y][™Ñ^[œÙWHH\ÙTİ]J[
+NÂˆÛÛœİØY[™Ñ^[œÙKÙ]Y[™Ñ^[œÙWHH\ÙTİ]J˜[ÙJNÂˆÛÛœİÙ^[œÙQ›Øİ\Ñš[\‹Ù]^[œÙQ›Øİ\Ñš[\—HH\ÙTİ]J[
+NÂˆÛÛœİİšY]Ú[™Ôİ\Y\‹Ù]šY]Ú[™Ôİ\Y\—HH\ÙTİ]J[
+NÂˆÛÛœİÙY][™Ôİ\Y\‹Ù]Y][™Ôİ\Y\—HH\ÙTİ]J[
+NÂˆÛÛœİØY[™Ôİ\Y\‹Ù]Y[™Ôİ\Y\—HH\ÙTİ]J˜[ÙJNÂˆÛÛœİÜ›ÛÛSÜÓ[Ù[Ù]›ÛÛSÜÓ[Ù[HH\ÙTİ]J[
+NÂˆÛÛœİÚ\ÔŞ[˜Ú[™ËÙ]\ÔŞ[˜Ú[™×HH\ÙTİ]J˜[ÙJNÂˆÛÛœİÚ\ÓØYYÛİYÙ]\ÓØYYÛİYHH\ÙTİ]J˜[ÙJNÂˆÛÛœİØÛİY[˜X›YÙ]ÛİY[˜X›YHH\ÙTİ]J˜[ÙJNÂˆÛÛœİÛ\İŞ[˜ÙYÙ]\İŞ[˜ÙYHH\ÙTİ]J[
+NÂˆÛÛœİš[R[œ]™YˆH™XXİ\ÙT™YŠ[
+NÂˆÛÛœİÛİY˜Z[\™T™YˆH™XXİ\ÙT™YŠ
+NÂ‚ˆËÈ[š]X[™]Úœ›ÛHÛİYˆ\ÙQY™™Xİ
+
+
+HOˆÂˆ\Ş[˜È[˜İ[Ûˆ[š]ÛİY
+
+HÂˆÛÛœİÛÛ›Û\ˆH™]ÈX›ÜÛÛ›Û\Š
+NÂˆÛÛœİ[Y[İ]HÙ][Y[İ]
+
+
+HOˆÛÛ›Û\‹˜X›Ü
+
+K
+NÂˆHÂˆÛÛœİ™\ÈH]ØZ]™]Ú
+	ËØ\KÙ]IËÈÚYÛ˜[ˆÛÛ›Û\‹œÚYÛ˜[JNÂˆYˆ
+\™\Ë›ÚÊHÂˆÛÛœİ›ÙHH]ØZ]™\Ë^
+
+K˜Ø]Ú
+
+
+HOˆ	ÉÊNÂˆ›İÈ™]È\œ›ÜŠÑUØ\KÙ]H	Ü™\Ëœİ]\ßNˆ	Ø›ÙKœÛXÙJ
+H™\Ëœİ]\Õ^X
+NÂˆBˆÛÛœİÛİY]HH]ØZ]™\ËšœÛÛŠ
+NÂˆYˆ
+ÛİY]H	‰ˆXÛİY]K™\œ›Üˆ	‰ˆ\œ˜^Kš\Ğ\œ˜^JÛİY]Kœ›ÛÛ\ÊJHÂˆËÈÛİY\È]]Üš]]]™HY\ˆHİXØÙ\ÜÙ[™]ÚˆÚÛÜÚ[™ÈH™]Ù\‚ˆËÈØØ[[Y\İ[\Ø[ˆ™\İ\œ™Xİ™XÛÜ™È]Ù\™H[[[Û˜[H[]YˆËÈÜˆ™\İÜ™Y\™XİHÛˆHÙ\™\‹‚ˆÙ]]J™]ˆOˆ
+Âˆ‹‹œ™]‹ˆ‹‹˜ÛİY]Kˆİ\Y\œÎˆÛİY]Kœİ\Y\œÈ™]‹œİ\Y\œÈ×Kˆ^[œÙPØ]YÛÜšY\ÎˆÛİY]K™^[œÙPØ]YÛÜšY\È™]‹™^[œÙPØ]YÛÜšY\ÈQUSÑUK™^[œÙPØ]YÛÜšY\Ëˆ^[œÙT^[Y[ÎˆÛİY]K™^[œÙT^[Y[È™]‹™^[œÙT^[Y[È×KˆÛÛ˜Xİ™[™]Ø[ÎˆÛİY]K˜ÛÛ˜Xİ™[™]Ø[È™]‹˜ÛÛ˜Xİ™[™]Ø[È×Kˆ›ÛÛU˜[œÙ™\œÎˆÛİY]Kœ›ÛÛU˜[œÙ™\œÈ™]‹œ›ÛÛU˜[œÙ™\œÈ×KˆJJNÂˆÙ]\İŞ[˜ÙY
+™]È]J
+JNÂˆÙ]ÛİY[˜X›Y
+YJNÂˆBˆHØ]Ú
+\œŠHÂˆÙ]ÛİY[˜X›Y
+˜[ÙJNÂˆÛÛœÛÛKš[™›ÊÛİYŞ[˜È[˜Xİ]™NÈ\Ú[™ÈØØ[İÜ˜YÙHÛ›Kˆ‹\œË›Y\ÜØYÙH\œŠNÂˆHš[˜[HÂˆÛX\•[Y[İ]
+[Y[İ]
+NÂˆÙ]\ÓØYYÛİY
+YJNÂˆBˆBˆ[š]ÛİY
+
+NÂˆK×JNÂ‚ˆËÈÛİYŞ[˜ÈÙÚXÈ
+X›İ[˜ÙY
+Bˆ\ÙQY™™Xİ
+
+
+HOˆÂˆÛÛœİ[Y\ˆHÙ][Y[İ]
+
+
+HOˆÂˆØØ[İÜ˜YÙKœÙ]][JÕÔQÑWÒÑVK”ÓÓ‹œİš[™ÚYJ]JJNÂˆYˆ
+Y]H]HOOHQUSÑUHZ\ÓØYYÛİYXÛİY[˜X›Y
+H™]\›ÂˆˆÛÛœİÛÛ›Û\ˆH™]ÈX›ÜÛÛ›Û\Š
+NÂˆÛÛœİ[Y[İ]HÙ][Y[İ]
+
+
+HOˆÛÛ›Û\‹˜X›Ü
+
+K
+NÂˆÙ]\ÔŞ[˜Ú[™ÊYJNÂˆ™]Ú
+	ËØ\KÙ]IËÂˆY]Ùˆ	ÔÔÕ	ËˆXY\œÎˆÈ	ĞÛÛ[U\IÎˆ	Ø\XØ][Û‹ÚœÛÛ‰ÈKˆ›ÙNˆ”ÓÓ‹œİš[™ÚYJÈ\Nˆ	Ù[ÜŞ[˜ÉË^[ØYˆ]HJKˆÚYÛ˜[ˆÛÛ›Û\‹œÚYÛ˜[ˆJBˆ[Š\Ş[˜È™\ÈOˆÂˆYˆ
+™\Ë›ÚÊHÂˆÛİY˜Z[\™T™Y‹˜İ\œ™[HÂˆÙ]\İŞ[˜ÙY
+™]È]J
+JNÂˆH[ÙHÂˆÛÛœİ\œ‘]HH]ØZ]™\ËšœÛÛŠ
+K˜Ø]Ú
+\Ş[˜È
+
+HOˆ
+È˜]Îˆ]ØZ]™\Ë^
+
+K˜Ø]Ú
+
+
+HOˆ	ÉÊHJJNÂˆÛİY˜Z[\™T™Y‹˜İ\œ™[
+ÏHNÂˆÛÛœÛÛKš[™›ÊÛİYŞ[˜È˜Z[Y
+	Ü™\Ëœİ]\ßJNÈØØ[]HØ\ÈØ]™Y˜\œ‘]JNÂˆYˆ
+™\Ëœİ]\ÈHLÛİY˜Z[\™T™Y‹˜İ\œ™[HŠHÂˆÙ]ÛİY[˜X›Y
+˜[ÙJNÂˆBˆBˆÛX\•[Y[İ]
+[Y[İ]
+NÂˆÙ]\ÔŞ[˜Ú[™Ê˜[ÙJNÂˆJBˆ˜Ø]Ú
+\œˆOˆÂˆÛX\•[Y[İ]
+[Y[İ]
+NÂˆÛİY˜Z[\™T™Y‹˜İ\œ™[
+ÏHNÂˆÙ]\ÔŞ[˜Ú[™Ê˜[ÙJNÂˆÛÛœÛÛKš[™›ÊÛİYŞ[˜È[˜]˜Z[X›NÈØØ[]HØ\ÈØ]™Yˆ‹\œË›Y\ÜØYÙH\œŠNÂˆÙ]ÛİY[˜X›Y
+˜[ÙJNÂˆJNÂˆKŒ
+NÂ‚ˆ™]\›ˆ
+
+HOˆÛX\•[Y[İ]
+[Y\ŠNÂˆKÙ]K\ÓØYYÛİYÛİY[˜X›YJNÂˆ\ÙQY™™Xİ
+
+
+HOˆÂˆYˆ
+Y]HY]K˜ÛÛ˜XİÈY]K›Y[X™\œÚ\ÊH™]\›Âˆˆ]Ú[™ÙYH˜[ÙNÂˆËÈKˆ[œİ\™HY[X™\œÚ\ÈŞ[˜ÈÚ]ÛÛ˜Xİİ]\ÂˆÛÛœİ\]YY[X™\œÚ\ÈH]K›Y[X™\œÚ\Ë›X\
+HOˆÂˆÛÛœİÛÛ˜XİH]K˜ÛÛ˜XİË™š[™
+ÈOˆËšYOOHK˜ÛÛ˜XİY
+NÂˆYˆ
+XÛÛ˜XİÛÛ˜Xİœİ]\ÈOOH	Ù[™Y	ÈÛÛ˜Xİœİ]\ÈOOH	ØØ[˜Ù[Y	ÊHÂˆYˆ
+Kœİ]\ÈOOH	ØXİ]™IÊHÂˆÚ[™ÙYHYNÂˆ™]\›ˆÈ‹‹›Kİ]\Îˆ	Ù[™Y	ÈNÂˆBˆBˆ™]\›ˆNÂˆJNÂ‚ˆYˆ
+Ú[™ÙY
+HÂˆÙ]]J™]ˆOˆ
+È‹‹œ™]‹Y[X™\œÚ\Îˆ\]YY[X™\œÚ\ÈJJNÂˆBˆKÙ]OË˜ÛÛ˜XİË]OË›Y[X™\œÚ\×JNÂ‚ˆ\ÙQY™™Xİ
+
+
+HOˆÈØØ[İÜ˜YÙKœÙ]][JÕÔQÑWÒÑVK”ÓÓ‹œİš[™ÚYJ]JJNÈKÙ]WJNÂˆ\ÙQY™™Xİ
+
+
+HOˆÈØØ[İÜ˜YÙKœÙ]][JS’×ÒÑVK”ÓÓ‹œİš[™ÚYJ˜[šÒ[™›ÊJNÈKØ˜[šÒ[™›×JNÂ‚ˆÛÛœİš[\™Y[˜[ÈH\ÙSY[[Ê
+
+HOˆÂˆÛÛœİHH]Y\KÓİÙ\Ø\ÙJ
+NÂˆ™]\›ˆ
+]K[˜[È×JK™š[\ŠOˆ›˜[YKÓİÙ\Ø\ÙJ
+Kš[˜ÛY\ÊJH
+œÛ™H	‰ˆœÛ™Kš[˜ÛY\ÊJJH
+˜ØØÙ	‰ˆ˜ØØÙš[˜ÛY\ÊJJJNÂˆKÙ]K[˜[Ë]Y\WJNÂ‚ˆÛÛœİÛÛ™š\›Q[™Ù\ˆH
+]KÛÛœÙ\]Y[˜ÙJHOˆÂˆYˆ
+]Ú[™İË˜ÛÛ™š\›J	İ]_W—‰ØÛÛœÙ\]Y[˜Ù_X
+JH™]\›ˆ˜[ÙNÂˆ™]\›ˆÚ[™İË˜ÛÛ™š\›J	Ö0èXÈš8n«[ˆ8n©Ûˆˆ[È0èXÈ°èHøn¯H1$q¬8nèØÈÚH°èÈ8nëÈxnáİH0ì›™Ëˆ¸n¨[ˆÚ8n«ØÈÚ8n«Ûˆxn¯Ü8néXÏÉÊNÂˆNÂ‚ˆ[˜İ[Ûˆ[™PXİ[ÛŠ\K›ÛÛSÜ•[˜[
+HÂˆYˆ
+\HOOH	ØYİ[˜[	ÊHÂˆYˆ
+\›ÛÛSÜ•[˜[ËšY
+HÂˆ[\
+	ÕZH0ì›™ÈÚ8nã[ˆ0ì›™ÈønéH8nàÈ1$xnàÈ0ê›HÚ0èXÚpê‹‰ÊNÂˆ™]\›ÂˆBˆÛÛœİ›ÛÛHH]Kœ›ÛÛ\Ë™š[™
+ˆOˆ‹šYOOH›ÛÛSÜ•[˜[šY
+NÂˆYˆ
+\›ÛÛJHÂˆ[\
+	ÒÚ0í™È0ëH8n©^H0ì›™Èøn©Ûˆ8n¨[È8nèÜ1$xnäÛ™Ë‰ÊNÂˆ™]\›ÂˆBˆÛÛœİ›ÛÛTİ]\ÈHÙ]›ÛÛTİ]\Ò[™›Ê]K›ÛÛKšY
+NÂˆYˆ
+›ÛÛTİ]\Ë›İÛ™\“ØØİ\YY
+HÂˆ[\
+	Ô0ì›™ÈÚ8néÈš0è8nçÈÚ0í™Èøn©Ûˆ8n¨[È8nèÜ1$xnäÛ™Èpê‹‰ÊNÂˆ™]\›ÂˆBˆYˆ
+›ÛÛTİ]\Ë˜ÛÛ˜Xİ	‰ˆÉØXİ]™IË	Û›İXÙIË	Û[İš[™×Ûİ]	×Kš[˜ÛY\Ê›ÛÛTİ]\Ë˜ÛÛ˜Xİœİ]\ÊJHÂˆ[\
+0ì›™È	Ü›ÛÛKšYH1$X[™ÈğìÈ8nèÜ1$xnäÛ™ÈxnáİH8nìXËˆZH0ì›™È8n©]ğè[‹Úøn¯İ0î˜È8nèÜ1$xnäÛ™ÈxnáÛˆ8n¨ZH±¬8næØÈÚH8n¨[È8nèÜ1$xnäÛ™ÈxnæÚK˜
+NÂˆ™]\›ÂˆBˆÙ]™]Ô™[[›ÛÛJ›ÛÛJNÂˆH[ÙHYˆ
+\HOOH	ØYÜ›ÛÛ[X]IÊHÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[ËšY›ÛÛSÜ•[˜[Ëœ›ÛÛRYÂˆÛÛœİ›ÛÛHH]Kœ›ÛÛ\Ë™š[™
+ˆOˆ‹šYOOH›ÛÛRY
+NÂˆÛÛœİXİ]™PÛÛ˜XİH›ÛÛSÜ•[˜[Ë˜ÛÛ˜XİYˆÈ]K˜ÛÛ˜XİË™š[™
+ÈOˆËšYOOH›ÛÛSÜ•[˜[˜ÛÛ˜XİY
+Bˆˆ]K˜ÛÛ˜XİË™š[™
+ÈOˆËœ›ÛÛRYOOH›ÛÛRY	‰ˆÉØXİ]™IË	Û›İXÙIË	Û[İš[™×Ûİ]	×Kš[˜ÛY\ÊËœİ]\ÊJNÂˆYˆ
+\›ÛÛHXXİ]™PÛÛ˜Xİ
+HÂˆ[\
+	Ô0ì›™Èøn©ÛˆğìÈ8nèÜ1$xnäÛ™ÈxnáİH8nìXÈ±¬8næØÈÚH0ê›H™ñ¬8nçZH8nçÈğî[™Ë‰ÊNÂˆ™]\›ÂˆBˆÙ]Y[™Ô›ÛÛ[X]JÈ›ÛÛKÛÛ˜XİˆXİ]™PÛÛ˜XİJNÂˆH[ÙHYˆ
+\HOOH	Û›İXÙIÊHÂˆYˆ
+Ú[™İË˜ÛÛ™š\›J0èXÈš8n«[ˆ°è[ÈÚ^xnàÛˆÚÈ0ì›™È	Ü›ÛÛSÜ•[˜[šYO×—”0ì›™Èøn¯H1$q¬8nèØÈ1$q¬H°èÈ¸n¨[™È0èZHøn«Ü¸nä[™È1$xnàÈ[È0íZHğí™È¸nèÈ°è8nâØÚÚxnàÛH0ì›™Ë˜
+JH\]PÛÛ˜Xİİ]\Ê›ÛÛSÜ•[˜[šY	Û›İXÙIÊNÂˆH[ÙHYˆ
+\HOOH	ØØ[˜Ù[Û›İXÙIÊHÂˆYˆ
+Ú[™İË˜ÛÛ™š\›J8néŞH°è[ÈÚ^xnàÛˆ0ì›™È	Ü›ÛÛSÜ•[˜[šYOØ
+JH\]PÛÛ˜Xİİ]\Ê›ÛÛSÜ•[˜[šY	ØXİ]™IÊNÂˆH[ÙHYˆ
+\HOOH	Û[İš[™×Ûİ]	ÊHÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[šY›ÛÛSÜ•[˜[œ›ÛÛRYÂˆÛÛœİ›ÛÛHH]Kœ›ÛÛ\Ë™š[™
+ˆOˆ‹šYOOH›ÛÛRY
+NÂˆÛÛœİXİ]™PÛÛ˜XİH›ÛÛSÜ•[˜[˜ÛÛ˜XİYˆÈ]K˜ÛÛ˜XİË™š[™
+ÈOˆËšYOOH›ÛÛSÜ•[˜[˜ÛÛ˜XİY
+BˆˆÙ]İ\œ™[ÛÛ˜Xİ›Ü”›ÛÛJ]K›ÛÛRY
+NÂˆYˆ
+Xİ]™PÛÛ˜Xİ	‰ˆÛÛ™š\›Q[™Ù\Šˆ¸n¨[ˆÚ8n«ØÈÚ8n«Ûˆ]xnä[ˆ8n©]ğè[‹Úøn¯İ0î˜Èpêˆ0ì›™È	Ü›ÛÛRYOØˆ	Ò8náÈ8nä[™Èøn¯HÚ8nä]ğí™È¸nèËøn«\š8n«]¸n¨[™È0èZH8nèÜ1$xnäÛ™Ëøn¯İ0î˜Èñ¬°îˆ°èÚH8nâØÚønëH¸n¨È0ì›™Ë‰Âˆ
+JHÙ]Ù][™Ô›ÛÛJÈ›ÛÛKÛÛ˜XİˆXİ]™PÛÛ˜XİJNÂˆH[ÙHYˆ
+\HOOH	İšY]×ØÛÛ˜Xİ	ÊHÂˆÛÛœİ›ÛÛQ›ÜÛÛ˜XİH›ÛÛSÜ•[˜[Ëœ›ÛÛRYÈ]Kœ›ÛÛ\Ë™š[™
+ˆOˆ‹šYOOH›ÛÛSÜ•[˜[œ›ÛÛRY
+Hˆ]Kœ›ÛÛ\Ë™š[™
+ˆOˆ‹šYOOH›ÛÛSÜ•[˜[ËšY
+NÂˆYˆ
+\ÓİÛ™\“ØØİ\YY›ÛÛJ›ÛÛQ›ÜÛÛ˜Xİ
+JHÂˆ[\
+	Ô0ì›™ÈÚ8néÈš0è8nçÈÚ0í™Èøn©Ûˆ8nèÜ1$xnäÛ™Ë‰ÊNÂˆ™]\›ÂˆBˆÛÛœİ[˜[Y[X™\œÚ\H›ÛÛSÜ•[˜[	‰ˆ\›ÛÛSÜ•[˜[œ›ÛÛRYˆÈ
+]K›Y[X™\œÚ\È×JK™š[™
+HOˆK[˜[YOOH›ÛÛSÜ•[˜[šY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊBˆˆ[ÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[œ›ÛÛRY[˜[Y[X™\œÚ\Ëœ›ÛÛRY›ÛÛSÜ•[˜[šYÂˆÛÛœİÛÛ˜XİYH›ÛÛSÜ•[˜[˜ÛÛ˜XİY[˜[Y[X™\œÚ\Ë˜ÛÛ˜XİYÂˆÛÛœİ\™Ù]ÛÛ˜XİHÛÛ˜XİYˆÈ]K˜ÛÛ˜XİË™š[™
+ÈOˆËšYOOHÛÛ˜XİY
+Bˆˆ]K˜ÛÛ˜XİË™š[™
+ÈOˆËœ›ÛÛRYOOH›ÛÛRY	‰ˆ
+Ëœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÈËœİ]\ÈOOH	Û[İš[™×Ûİ]	ÊJNÂˆˆYˆ
+\™Ù]ÛÛ˜Xİ
+HÙ]šY]Ú[™ĞÛÛ˜Xİ
+ÈÛÛ˜Xİˆ\™Ù]ÛÛ˜Xİ›ÛÛNˆ]Kœ›ÛÛ\Ë™š[™
+ˆOˆ‹šYOOH\™Ù]ÛÛ˜Xİœ›ÛÛRY
+K\Nˆ	ÛXZ[‰ÈJNÂˆ[ÙH[\
+	ÒÚ0í™È0ëH8n©^H8nèÜ1$xnäÛ™È0îH8nèÜ‰ÊNÂˆH[ÙHYˆ
+\HOOH	ÙY]ØÛÛ˜Xİ	ÊHÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[šY›ÛÛSÜ•[˜[œ›ÛÛRYÂˆÛÛœİÛÛ˜XİYH›ÛÛSÜ•[˜[˜ÛÛ˜XİYÂˆÛÛœİ\™Ù]ÛÛ˜XİHÛÛ˜XİYˆÈ]K˜ÛÛ˜XİË™š[™
+ÈOˆËšYOOHÛÛ˜XİY
+Bˆˆ]K˜ÛÛ˜XİË™š[™
+ÈOˆËœ›ÛÛRYOOH›ÛÛRY	‰ˆ
+Ëœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÈËœİ]\ÈOOH	Û[İš[™×Ûİ]	ÊJNÂˆˆYˆ
+\™Ù]ÛÛ˜Xİ
+HÙ]Y][™ĞÛÛ˜Xİ
+\™Ù]ÛÛ˜Xİ
+NÂˆ[ÙH[\
+	ÒÚ0í™È0ëH8n©^H8nèÜ1$xnäÛ™È0îH8nèÜ‰ÊNÂˆH[ÙHYˆ
+\HOOH	İšY]×Ú\İÜIÊHÂˆÙ]XŠ	Ü™[[Ú\İÜIÊNÂˆÙ]]Y\J	Ü›ÛÛSÜ•[˜[šYX
+NÂˆH[ÙHYˆ
+\HOOH	İšY]×Ü^[Y[ÉÊHÂˆÙ]XŠ	Ü^[Y[Ú\İÜIÊNÂˆÙ]]Y\J	Ü›ÛÛSÜ•[˜[šYX
+NÂˆH[ÙHYˆ
+\HOOH	İšY]×Ü\‰ÊHÂˆÙ]šY]Ú[™Ô™XÙZ\
+›ÛÛSÜ•[˜[
+NÂˆH[ÙHYˆ
+\HOOH	Ü^WÜ™XÙZ\	ÊHÂˆÙ]^[Y[™XÙZ\
+›ÛÛSÜ•[˜[
+NÂˆH[ÙHYˆ
+\HOOH	Ù]Z[İ[˜[	ÊHÂˆÙ]]Z[[˜[
+›ÛÛSÜ•[˜[
+NÂˆH[ÙHYˆ
+\HOOH	ÙY]İ[˜[	ÊHÂˆÛÛœİXİ]™SY[X™\œÚ\ÈH
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆK[˜[YOOH›ÛÛSÜ•[˜[šY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊNÂˆÛÛœİ\™Ù]Y[X™\œÚ\HXİ]™SY[X™\œÚ\Ë™š[™
+HOˆK˜ÛÛ˜XİYOOH›ÛÛSÜ•[˜[˜ÛÛ˜XİY
+BˆXİ]™SY[X™\œÚ\Ë™š[™
+HOˆKœ›ÛÛRYOOH›ÛÛSÜ•[˜[œ›ÛÛRY
+BˆXİ]™SY[X™\œÚ\ÖÌNÂˆÙ]Y][™Õ[˜[
+Âˆ‹‹œ›ÛÛSÜ•[˜[ˆ›ÛNˆ\™Ù]Y[X™\œÚ\Ëœ›ÛH›ÛÛSÜ•[˜[œ›ÛH	ÜÙXÛÛ™\IËˆY[X™\œÚ\Yˆ\™Ù]Y[X™\œÚ\ËšY›ÛÛSÜ•[˜[›Y[X™\œÚ\Y	ÉËˆÛÛ˜XİYˆ\™Ù]Y[X™\œÚ\Ë˜ÛÛ˜XİY›ÛÛSÜ•[˜[˜ÛÛ˜XİY	ÉËˆ›ÛÛRYˆ\™Ù]Y[X™\œÚ\Ëœ›ÛÛRY›ÛÛSÜ•[˜[œ›ÛÛRY	ÉÂˆJNÂˆH[ÙHYˆ
+\HOOH	ÛX]™WÜ›ÛÛ[X]IÊHÂˆÛÛœİY[X™\œÚ\YH›ÛÛSÜ•[˜[›Y[X™\œÚ\YÂˆÛÛœİ[˜[˜[YHH›ÛÛSÜ•[˜[›˜[YH	Û™ñ¬8nçZH8nçÈğî[™ÉÎÂˆÛÛœİ[˜[YH›ÛÛSÜ•[˜[šYÂˆÛÛœİY[X™\œÚ\H
+]K›Y[X™\œÚ\È×JK™š[™
+HOˆKšYOOHY[X™\œÚ\Y
+NÂˆYˆ
+[Y[X™\œÚ\Y[X™\œÚ\œ›ÛHOOH	Üš[X\IÊHÂˆ[\
+	ĞÚ8nâHğìÈ8nàÈÚ^xnàÛˆ1$ZHšpê›™È¸næÚH™ñ¬8nçZH8nçÈğî[™Ëˆ™ñ¬8nçZH1$xnê[™È0ê›ˆøn©Ûˆ0î[™ÈxnäÛ™È¸n¨È0ì›™Èøn­ØÈ1$xnåZH™ñ¬8nçZH1$xn¨ZHxnáÛ‹‰ÊNÂˆ™]\›ÂˆBˆÛÛœİY˜][]HH™]È]J
+KÒTÓÔİš[™Ê
+KœÛXÙJL
+NÂˆÛÛœİY]HHÚ[™İËœ›Û\
+š8n«\™ğèH	İ[˜[˜[Y_HÚ^xnàÛˆ1$ZH
+VVVKSSKQ
+N˜Y˜][]JNÂˆYˆ
+[Y]JH™]\›ÂˆYˆ
+\\œÙQ]Q›^X›JY]JJHÂˆ[\
+	Ó™ğèHÚ^xnàÛˆ1$ZHÚ0í™È8nèÜ8náË‰ÊNÂˆ™]\›ÂˆBˆYˆ
+]Ú[™İË˜ÛÛ™š\›J0èXÈš8n«[ˆ	İ[˜[˜[Y_HÚ^xnàÛˆ1$ZHÚ8nãÚH0ì›™È	ÛY[X™\œÚ\œ›ÛÛRYH™ğèH	Ù›Ü›X]\Ü^Q]JY]J_OØ
+JH™]\›ÂˆÙ]]JÛOˆÂˆÛÛœİ\]YY[X™\œÚ\ÈH
+Û›Y[X™\œÚ\È×JK›X\
+HO‚ˆKšYOOHY[X™\œÚ\YÈÈ‹‹›Kİ]\Îˆ	Ù[™Y	ËY]HHˆBˆ
+NÂˆÛÛœİİ[Xİ]™Q[Ù]Ú\™HH\]YY[X™\œÚ\ËœÛÛYJHOˆK[˜[YOOH[˜[Y	‰ˆKœİ]\ÈOOH	ØXİ]™IÊNÂˆÛÛœİ\]Y[˜[ÈH
+Û[˜[È×JK›X\
+OˆÂˆYˆ
+šYOOH[˜[Y
+H™]\›ˆÂˆ™]\›ˆÂˆ‹‹ˆİ]\Îˆİ[Xİ]™Q[Ù]Ú\™HÈ
+œİ]\È	ØXİ]™IÊHˆ	Û[İ™YÛİ]	Ëˆ\İ›ÛÛRYˆY[X™\œÚ\œ›ÛÛRYˆš[™Ù\œš[İ]\Îˆ™š[™Ù\œš[ÛÙHÈ	Ğøn©Ûˆ0ìØIÈˆ
+™š[™Ù\œš[İ]\È	ĞÚ1¬H1$q Û™ÈğïIÊBˆNÂˆJNÂˆ™]\›ˆÈ‹‹›ÛY[X™\œÚ\Îˆ\]YY[X™\œÚ\Ë[˜[Îˆ\]Y[˜[ÈNÂˆJNÂˆÛÛœİ[˜[H
+]K[˜[È×JK™š[™
+OˆšYOOH[˜[Y
+NÂˆ[\
+1$0èÈÚHš8n«[ˆ	İ[˜[˜[Y_HÚ^xnàÛˆ1$ZK‰İ[˜[Ë™š[™Ù\œš[ÛÙHÈ“š8n«ØÈYZ[ˆøn©Ûˆ0ìØH°è›ˆ^H	İ[˜[™š[™Ù\œš[ÛÙ_K˜ˆ	ÉßX
+NÂˆH[ÙHYˆ
+\HOOH	Ü™[™]×ØÛÛ˜Xİ	ÊHÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[šY›ÛÛSÜ•[˜[œ›ÛÛRYÂˆÛÛœİXİ]™PÛÛ˜XİH›ÛÛSÜ•[˜[˜ÛÛ˜XİYˆÈ]K˜ÛÛ˜XİË™š[™
+ÈOˆËšYOOH›ÛÛSÜ•[˜[˜ÛÛ˜XİY
+BˆˆÙ]İ\œ™[ÛÛ˜Xİ›Ü”›ÛÛJ]K›ÛÛRY
+NÂˆYˆ
+Xİ]™PÛÛ˜Xİ
+HÙ]™[™]Ú[™ĞÛÛ˜Xİ
+Xİ]™PÛÛ˜Xİ
+NÂˆH[ÙHYˆ
+\HOOH	Üš[Ø\[™^	ÊHÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[šY›ÛÛSÜ•[˜[œ›ÛÛRYÂˆÛÛœİÛÛ˜XİYH›ÛÛSÜ•[˜[˜ÛÛ˜XİYÂˆÛÛœİ\™Ù]ÛÛ˜XİHÛÛ˜XİYˆÈ]K˜ÛÛ˜XİË™š[™
+ÈOˆËšYOOHÛÛ˜XİY
+Bˆˆ]K˜ÛÛ˜XİË™š[™
+ÈOˆËœ›ÛÛRYOOH›ÛÛRY	‰ˆ
+Ëœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÈËœİ]\ÈOOH	Û[İš[™×Ûİ]	ÊJNÂˆYˆ
+]\™Ù]ÛÛ˜Xİ
+HÂˆ[\
+	ÒÚ0í™È0ëH8n©^H8nèÜ1$xnäÛ™È0îH8nèÜ‰ÊNÂˆ™]\›ÂˆBˆÛÛœİ™[™]Ø[›İÜÈHÂˆ‹‹Š]K˜ÛÛ˜Xİ™[™]Ø[È×JKˆ‹‹Š\™Ù]ÛÛ˜Xİœ™[™]Ø[\İÜH×JBˆBˆ™š[\ŠˆOˆ‹˜ÛÛ˜XİYOOH\™Ù]ÛÛ˜XİšY
+Bˆ™š[\Š
+‹Y\œŠHOˆ\œ‹™š[™[™^
+OˆšYOOH‹šY
+HOOHY
+BˆœÛÜ
+
+KŠHOˆ™]È]J‹˜Ü™X]Y]‹œÚYÛ™Y]H
+HH™]È]JK˜Ü™X]Y]KœÚYÛ™Y]H
+JNÂˆÛÛœİ™[™]Ø[H™[™]Ø[›İÜÖÌNÂˆYˆ
+\™[™]Ø[
+HÂˆ[\
+	Ò8nèÜ1$xnäÛ™È°èHÚ1¬HğìÈ8néH8néXÈÚXH8n¨[ˆ1$xnàÈ[‹‰ÊNÂˆ™]\›ÂˆBˆÛÛœİÛ™[H™[™]Ø[›Û™[ÏÈ\™Ù]ÛÛ˜Xİœ™[ÂˆÛÛœİÛ\ÜÚ]H™[™]Ø[›Û\ÜÚ]ÏÈ\™Ù]ÛÛ˜Xİ™\ÜÚ]ÂˆÛÛœİ™]Ô™[H™[™]Ø[›™]Ô™[ÏÈ\™Ù]ÛÛ˜Xİœ™[ÂˆÛÛœİ™]Ñ\ÜÚ]H™[™]Ø[›™]Ñ\ÜÚ]ÏÈ\™Ù]ÛÛ˜Xİ™\ÜÚ]ÂˆÛÛœİÛ[™]HH™[™]Ø[›Û[™]H\™Ù]ÛÛ˜Xİœ™]š[İ\Ñ[™]H\™Ù]ÛÛ˜Xİ™[™]NÂˆÛÛœİ\[™^ÛÛ˜XİHÂˆ‹‹\™Ù]ÛÛ˜Xİˆ[™]NˆÛ[™]Kˆ™[ˆÛ™[ˆ\ÜÚ]ˆÛ\ÜÚ]ˆNÂˆÛÛœİ›Ü›HHÂˆÚYÛ™Y]Nˆ›Ü›X]]Q›Ü’[œ]
+™[™]Ø[œÚYÛ™Y]H™[™]Ø[˜Ü™X]Y]™]È]J
+KÒTÓÔİš[™Ê
+JKˆ™]Ôİ\]Nˆ™[™]Ø[›™]Ôİ\]H
+\Õ˜[Y\Ú[™\ÜÑ]JÛ[™]JHÈY^\ÕÑ]JÛ[™]KJHˆ	ÉÊKˆ™]Ñ[™]Nˆ™[™]Ø[›™]Ñ[™]H\™Ù]ÛÛ˜Xİ™[™]KˆÙY\šXÚ[™Îˆ[X™\Š™]Ô™[
+HOOH[X™\ŠÛ™[
+H	‰ˆ[X™\Š™]Ñ\ÜÚ]
+HOOH[X™\ŠÛ\ÜÚ]
+Kˆ™]Ô™[ˆ™]Ñ\ÜÚ]ˆ›İNˆ™[™]Ø[››İH	ÉÂˆNÂˆÙ]šY]Ú[™Ğ\[™^
+ÈÛÛ˜Xİˆ\[™^ÛÛ˜Xİ›Ü›HJNÂˆH[ÙHYˆ
+\HOOH	İ˜[œÙ™\—Ü›ÛÛIÊHÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[šY›ÛÛSÜ•[˜[œ›ÛÛRYÂˆÛÛœİXİ]™PÛÛ˜XİH]K˜ÛÛ˜XİË™š[™
+ÈOˆËœ›ÛÛRYOOH›ÛÛRY	‰ˆ
+Ëœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÊJNÂˆYˆ
+Xİ]™PÛÛ˜Xİ	‰ˆÚ[™İË˜ÛÛ™š\›J1$8nåZH0ì›™ÈÚÈ	Ü›ÛÛRYO×—’8náÈ8nä[™Èøn¯Høn¯İ0î˜È8nèÜ1$xnäÛ™È0ì›™ÈñjK8n¨[È8nèÜ1$xnäÛ™È0ì›™ÈxnæÚH°èÚH8nâØÚønëHÚ^xnàÛˆ0ì›™Ë˜
+JHÙ]˜[œÙ™\œš[™ĞÛÛ˜Xİ
+Xİ]™PÛÛ˜Xİ
+NÂˆH[ÙHYˆ
+\HOOH	ØYØ\ÜÙ]	ÊHÂˆÙ]›ÛÛSÜÓ[Ù[
+È\Nˆ	Ø\ÜÙ]	Ë›ÛÛNˆ›ÛÛSÜ•[˜[JNÂˆH[ÙHYˆ
+\HOOH	ØYÛXZ[[˜[˜ÙIÊHÂˆÙ]›ÛÛSÜÓ[Ù[
+È\Nˆ	ÛXZ[[˜[˜ÙIË›ÛÛNˆ›ÛÛSÜ•[˜[JNÂˆH[ÙHYˆ
+\HOOH	ØYÙš[IÊHÂˆÙ]›ÛÛSÜÓ[Ù[
+È\Nˆ	Ùš[IË›ÛÛNˆ›ÛÛSÜ•[˜[JNÂˆH[ÙHYˆ
+\HOOH	Ü™XÛÜ™ÛY]\‰ÊHÂˆÙ]›ÛÛSÜÓ[Ù[
+È\Nˆ	ÛY]\‰Ë›ÛÛNˆ›ÛÛSÜ•[˜[JNÂˆH[ÙHYˆ
+\HOOH	İšY]×İ[˜[ÉÊHÂˆÙ]]Y\J	Ü›ÛÛSÜ•[˜[šYX
+NÂˆÙ]XŠ	İ[˜[ÉÊNÂˆH[ÙHYˆ
+\HOOH	İšY]×Ü›ÛÛIÊHÂˆÛÛœİ›ÛÛHH]Kœ›ÛÛ\Ë™š[™
+ˆOˆ‹šYOOH›ÛÛSÜ•[˜[šY‹šYOOH›ÛÛSÜ•[˜[œ›ÛÛRY
+NÂˆYˆ
+›ÛÛJHÙ]Ù[XİY›ÛÛJ›ÛÛJNÂˆH[ÙHYˆ
+\HOOH	ØÜ™X]WÜ™XÙZ\Ø[	ÊHÂˆÙ]XŠ	Ü™XÙZ\ÉÊNÂˆËÈšYÙÙ\ˆ˜]ÚÜ™X]HÙÚXÈYˆ™YYY]›Üˆ›İÈ\İ˜]šYØ][Ûˆ\Èš[™BˆH[ÙHYˆ
+\HOOH	İšY]×Ü^[Y[×Ø[	ÊHÂˆÙ]XŠ	Ü^[Y[Ú\İÜIÊNÂˆÙ]]Y\J	ÉÊNÂˆH[ÙHYˆ
+\HOOH	ØYÛ™]×Ü™[[	ÊHÂˆÙ]XŠ	Ü›ÛÛ\ÉÊNÂˆÙ]]Y\J	ÉÊNÂˆH[ÙHYˆ
+\HOOH	Ù^ÜÚœÛÛ‰ÊHÂˆÛÛœİ›ØˆH™]È›ØŠÒ”ÓÓ‹œİš[™ÚYJ]K[ŠWKÈ\Nˆ	Ø\XØ][Û‹ÚœÛÛ‰ÈJNÂˆÛÛœİ\›HT“˜Ü™X]SØš™XİT“
+›ØŠNÂˆÛÛœİHHØİ[Y[˜Ü™X]Q[[Y[
+	ØIÊNÂˆKš™YˆH\›ÂˆK™İÛ›ØYH›ÛÛWÛX[˜YÙ\—Ø˜XÚİ\ÉÛ™]È]J
+KÒTÓÔİš[™Ê
+KœÛXÙJL
+_KšœÛÛ˜ÂˆK˜ÛXÚÊ
+NÂˆH[ÙHYˆ
+\HOOH	Ú[\ÜÚœÛÛ‰ÊHÂˆš[R[œ]™Y‹˜İ\œ™[˜ÛXÚÊ
+NÂˆH[ÙHYˆ
+\HOOH	Ù^ÜÛXÙ[œÙWÜ]\ÉÊHÂˆHÂˆÛÛœİ›İÜÈH
+]K[˜[È×JK›X\
+OˆÂˆÛÛœİY[X™\œÚ\H
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆK[˜[YOOHšY	‰ˆÉØXİ]™IË	Û›İXÙI×Kš[˜ÛY\ÊKœİ]\ÊJKœÛÜ
+
+KŠHOˆİš[™Ê‹š›Ú[™Y]H	ÉÊK›ØØ[PÛÛ\\™Jİš[™ÊKš›Ú[™Y]H	ÉÊJJVÌNÂˆ™]\›ˆÂˆ	Ô0ì›™ÉÎˆY[X™\œÚ\Ëœ›ÛÛRY›\İ›ÛÛRY	ÉËˆ	Ò8nãH0ê›‰Îˆ›˜[YH	ÉËˆ	Ôñ$	ÎˆœÛ™H	ÉËˆ	ĞšxnàÛˆÚxnàÛHÛğè]	Îˆ›XÙ[œÙT]H™ZXÛH	ÉËˆ	Óøn¨ZHIÎˆ™ZXÛU\H	ÉËˆ	Õ¸n¨[™È0èZHpê‰ÎˆY[X™\œÚ\Ëœİ]\ÈOOH	Û›İXÙIÈÈ	Ôøn«Ü¸nçZIÈˆY[X™\œÚ\È	ñ$[™È8nçÉÈˆ	ñ$0èÈ¸nçZIËˆ	ÑÚHÚ0î‰Îˆ››İH	ÉÂˆNÂˆJK™š[\Š›İÈOˆ›İÖÉĞšxnàÛˆÚxnàÛHÛğè]	×JNÂˆ›İÜËœÛÜ
+
+KŠHOˆİš[™ÊVÉÔ0ì›™É×JK›ØØ[PÛÛ\\™Jİš[™Ê–ÉÔ0ì›™É×JK	İšIËÈ[Y\šXÎˆYHJHİš[™ÊVÉĞšxnàÛˆÚxnàÛHÛğè]	×JK›ØØ[PÛÛ\\™Jİš[™Ê–ÉĞšxnàÛˆÚxnàÛHÛğè]	×JJJNÂˆÛÛœİØˆHÖ][Ë˜›ÛÚ×Û™]Ê
+NÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+›İÜË›[™İÈ›İÜÈˆŞÈ	Õ0í™È°è[ÉÎˆ	ĞÚ1¬HğìÈ™ñ¬8nçZHpêˆ°èÈ1$q¬8nèØÈøn«\š8n«]šxnàÛˆÚxnàÛHÛğè]‰ÈWJK	ĞšY[ˆÚY[HÛØ]IÊNÂˆÖÜš]Qš[JØ‹˜[ËXØ[ËXšY[‹ZÚY[K\ÛØ]IÛ™]È]J
+KÒTÓÔİš[™Ê
+KœÛXÙJL
+_KŞ
+NÂˆ[\
+1$0èÈxn©]°è[Èğè[È	Ü›İÜË›[™İHHpè^K˜
+NÂˆHØ]Ú
+\œŠHÂˆÛÛœÛÛK™\œ›ÜŠ\œŠNÂˆ[\
+	ÒÚ0í™È8nàÈxn©]°è[Èğè[ÈšxnàÛˆÚxnàÛHÛğè]ˆZH0ì›™È8nëH8n¨ZK‰ÊNÂˆBˆH[ÙHYˆ
+\HOOH	Ù^ÜÙ^Ù[	ÊHÂˆHÂˆÛÛœİØˆHÖ][Ë˜›ÛÚ×Û™]Ê
+NÂˆÛÛœİ›İÈH™]È]J
+NÂˆÛÛœİ]TİˆH›İËÒTÓÔİš[™Ê
+KœÛXÙJL
+NÂˆÛÛœİİ]ÈHÙ]\Ú›Ø\™İ]Ê]KÙ]İ\œ™[[ÛX™[
+
+JNÂ‚ˆËÈKˆÚY]Û™È]X[‚ˆÛÛœİİ™\šY]Ñ]HHÂˆÉĞÚ8nâHpêIË	ÑÚpèH¸nâÉ×KˆÉÕ8nå[™ÈønäH0ì›™ÉËİ]Ëİ[›ÛÛ\×KˆÉÔ0ì›™È1$X[™È8nçÉËİ]Ë›ØØİ\YY›ÛÛ\×KˆÉÔ0ì›™È¸nä[™ÉËİ]Ë˜XØ[›ÛÛ\×KˆÉÔ0ì›™È°è[ÈÚ^xnàÛ‰Ëİ]Ë››İYZ[™Ó[İ™Sİ]›[™İKˆÉÕ8nå[™È™ñ¬8nçZH1$X[™È8nçÉËİ]Ë˜İ\œ™[[˜[×KˆÉÕ8nå[™Èxn¯İHIË]Kœ™XÙZ\Ë›[™İKˆÉÕ8nå[™È8n¨ÚHIËİ]Ëİ[X
+È]Kœ™XÙZ\Ëœ™YXÙJ
+ËŠHOˆÈ
+È
+‹œZY[[İ[
+K
+WKˆÉÕ8nå[™È1$pèÈIË]Kœ™XÙZ\Ëœ™YXÙJ
+ËŠHOˆÈ
+È
+‹œZY[[İ[
+K
+WKˆÉÕ8nå[™Èğì›ˆ¸nèÉËİ]Ëİ[XKˆÉÓ™ğèHxn©]8nëÈxnáİIË›İËÓØØ[Q]Tİš[™Ê	İšKU“‰ÊWBˆNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][Ë˜[ØWİ×ÜÚY]
+İ™\šY]Ñ]JK•Û™È]X[ˆŠNÂ‚ˆËÈ‹ˆÚY]Û™ÂˆÛÛœİ›ÛÛ\Ñ]HH]Kœ›ÛÛ\Ë›X\
+ˆOˆÂˆÛÛœİİ]\Ò[™›ÈHÙ]›ÛÛTİ]\Ò[™›Ê]K‹šY
+NÂˆÛÛœİÛÛ˜XİHİ]\Ò[™›Ë˜ÛÛ˜XİÂˆÛÛœİ[˜[HÛÛ˜XİÈÙ]š[X\U[˜[PÛÛ˜Xİ
+]KÛÛ˜XİšY
+Hˆ[ÂˆÛÛœİY[X™\Ûİ[H
+]K›Y[X™\œÚ\È×JK™š[\ŠHOˆKœ›ÛÛRYOOH‹šY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊK›[™İÂˆ™]\›ˆÂˆ	ÓpèÈ0ì›™ÉÎˆ‹šYˆ	Õ¸n¨[™È0èZIÎˆİ]\Ò[™›Ë›X™[ˆ	Ó™ñ¬8nçZH1$xnê[™È0ê›ˆxnáÛˆ8n¨ZIÎˆ[˜[È[˜[›˜[YHˆ	ÉËˆ	ÔønäH™ñ¬8nçZH1$X[™È8nçÉÎˆY[X™\Ûİ[ˆ	ÑÚpèHpêˆxn­ØÈ1$xnâÛš	Îˆ‹œ™[ˆ	Õxnà[ˆønãXÈxn­ØÈ1$xnâÛš	Îˆ‹™\ÜÚ]ˆ	Ô0ëH¸náÈÚ[š	Îˆ‹˜ÛX[š[™Èˆ	Ô0ëH[™Èpè^IÎˆ‹™[]˜]Üˆˆ	Ô0ëHÚxn­İ	Îˆ‹›][™Hˆ	Ò[\›™]	Îˆ‹š[\›™]ˆ	ñ$1¨[ˆÚpèH1$ZxnáÛ‰Îˆ‹™[XİšXÔšXÙKˆ	ñ$1¨[ˆÚpèH±¬8næØÉÎˆ‹Ø]\”šXÙKˆ	Ó™ğèH8n¯İ8n¨[ˆ1$xnáÛˆ8n¨ZIÎˆÛÛ˜XİÈ
+ÛÛ˜Xİ™[™]H	ÉÊHˆ	ÉËˆ	ÑÚHÚ0î‰Îˆ‹››İH	ÉÂˆNÂˆJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+›ÛÛ\Ñ]JK”Û™ÈŠNÂ‚ˆËÈËˆÚY]™İ[ÚHYHY[ˆZBˆÛÛœİİ\œ™[[˜[Ñ]HH]K[˜[Ë™š[\ŠOˆ
+]K›Y[X™\œÚ\È×JKœÛÛYJHOˆK[˜[YOOHšY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊJK›X\
+OˆÂˆÛÛœİHH]K›Y[X™\œÚ\Ë™š[™
+HOˆK[˜[YOOHšY	‰ˆKœİ]\ÈOOH	ØXİ]™IÊNÂˆ™]\›ˆÂˆ	ÓpèÈ™ñ¬8nçZHpê‰ÎˆšYˆ	Ô0ì›™ÉÎˆHÈKœ›ÛÛRYˆ	ÉËˆ	Ò8nãH0ê›‰Îˆ›˜[YKˆ	Õ˜ZH°ì‰ÎˆOËœ›ÛHOOH	Üš[X\IÈÈ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰Èˆ	Ó™ñ¬8nçZH8nçÈğî[™ÉËˆ	Ôñ$	ÎˆœÛ™Kˆ	ĞĞĞÑ	Îˆ˜ØØÙˆ	ĞšxnàÛˆønäHIÎˆ›XÙ[œÙT]H	ÉËˆ	ÓpèÈ°è›ˆ^IÎˆ™š[™Ù\œš[ÛÙH	ÉËˆ	Õ¸n¨[™È0èZH°è›ˆ^IÎˆ™š[™Ù\œš[İ]\È	ÉËˆ	ñ$8nâØHÚ8nâIÎˆ˜Y™\ÜÈ	ÉËˆ	Ó™ğèH°èÉÎˆHÈ
+Kš›Ú[™Y]H	ÉÊHˆ	ÉËˆ	Õ¸n¨[™È0èZIÎˆ	ñ$[™È8nçÉËˆ	ÑÚHÚ0î‰Îˆ››İH	ÉÂˆNÂˆJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+İ\œ™[[˜[Ñ]JK“™İ[ÚHYHY[ˆZHŠNÂ‚ˆËÈˆÚY]ÜÛ™ÈY[ˆZBˆÛÛœİİ\œ™[ÛÛ˜XİÑ]HH]K˜ÛÛ˜XİË™š[\ŠÈOˆÉØXİ]™IË	Û›İXÙIË	Û[İš[™×Ûİ]	×Kš[˜ÛY\ÊËœİ]\ÊJK›X\
+ÈOˆÂˆÛÛœİ[˜[HÙ]š[X\U[˜[PÛÛ˜Xİ
+]KËšY
+NÂˆ™]\›ˆÂˆ	ÓpèÈ8nèÜ1$xnäÛ™ÉÎˆËšYˆ	Ô0ì›™ÉÎˆËœ›ÛÛRYˆ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰Îˆ[˜[È[˜[›˜[YHˆ	ÉËˆ	Ôñ$	Îˆ[˜[È[˜[œÛ™Hˆ	ÉËˆ	Ó™ğèHğïIÎˆËœÚYÛ™Y]H	ÉËˆ	Ó™ğèH¸n«İ1$xn©İIÎˆËœİ\]H	ÉËˆ	Ó™ğèH8n¯İ8n¨[‰ÎˆË™[™]H	ÉËˆ	ÑÚpèHpê‰ÎˆËœ™[ˆ	Õxnà[ˆønãXÉÎˆË™\ÜÚ]ˆ	Õ¸n¨[™È0èZIÎˆËœİ]\ÈOOH	ØXİ]™IÈÈ	ñ$[™ÈxnáİH8nìXÉÈˆËœİ]\ÈOOH	Û›İXÙIÈÈ	Ğ°è[ÈÚ^xnàÛ‰Èˆ	ñ$[™È8n©]ğè[‰Ëˆ	Ó™ğèH°è[ÈÚ^xnàÛ‰ÎˆË››İXÙQ]H	ÉËˆ	Ó™ğèH8nìHÚxn¯Ûˆ8nã[‰ÎˆË™^XİY[İ™Sİ]]H	ÉËˆ	ÑÚHÚ0î‰ÎˆË››İH	ÉÂˆNÂˆJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+İ\œ™[ÛÛ˜XİÑ]JK’ÜÛ™ÈY[ˆZHŠNÂ‚ˆËÈKˆÚY]XÚİHÜÛ™ÂˆÛÛœİ\İÛÛ˜XİÑ]HH]K˜ÛÛ˜XİË™š[\ŠÈOˆËœİ]\ÈOOH	Ù[™Y	ÊK›X\
+ÈOˆÂˆÛÛœİ[˜[HÙ]š[X\U[˜[PÛÛ˜Xİ
+]KËšY
+NÂˆ™]\›ˆÂˆ	ÓpèÈ8nèÜ1$xnäÛ™ÉÎˆËšYˆ	Ô0ì›™ÉÎˆËœ›ÛÛRYˆ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰Îˆ[˜[È[˜[›˜[YHˆ	ÉËˆ	Ó™ğèH¸n«İ1$xn©İIÎˆËœİ\]H	ÉËˆ	Ó™ğèH8n¯İ8n¨[ˆ8nìHÚxn¯Û‰ÎˆË™[™]H	ÉËˆ	Ó™ğèHøn¯İ0î˜È8nìXÈ8n¯ÉÎˆË˜XİX[[™]H	ÉËˆ	ÑÚpèHpê‰ÎˆËœ™[ˆ	Õxnà[ˆønãXÉÎˆË™\ÜÚ]ˆ	Õ¸n¨[™È0èZIÎˆ	ñ$0èÈøn¯İ0î˜ÉËˆ	ÑÚHÚ0î‰ÎˆË››İH	ÉÂˆNÂˆJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+\İÛÛ˜XİÑ]JK“XÚİHÜÛ™ÈŠNÂ‚ˆËÈ‹ˆÚY]Y]H[™ÂˆÛÛœİ[ÛT™XÙZ\Ñ]HH]Kœ™XÙZ\Ë™š[\ŠˆOˆ‹\HOOH	Û[ÛIÊK›X\
+ˆOˆÂˆÛÛœİ[˜[HÙ][˜[›Ü”™XÙZ\
+]KŠNÂˆ™]\›ˆÂˆ	ÓpèÈxn¯İIÎˆ‹šYˆ	Õ0è[™ÉÎˆ‹›[Ûˆ	Ô0ì›™ÉÎˆ‹œ›ÛÛRYˆ	ÓpèÈ8nèÜ1$xnäÛ™ÉÎˆ‹˜ÛÛ˜XİYˆ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰Îˆ[˜[È[˜[›˜[YHˆ	ÉËˆ	Õxnà[ˆ0ì›™ÉÎˆ‹œ™[ˆ	Ñ8nâØÚ¸néHønäH1$xnâÛš	Îˆ‹™š^YÙ\šXÙ\Ëˆ	ñ$xnáÛˆñjIÎˆÙ][XİšXÓÛ
+ŠKˆ	ñ$xnáÛˆxnæÚIÎˆÙ][XİšXÓ™]ÊŠKˆ	ñ$xnáÛˆ0î[™ÉÎˆ‹™[XİšXÕ\ÙYˆ	ñ$1¨[ˆÚpèH1$ZxnáÛ‰Îˆ‹™[XİšXÔšXÙH
+]Kœ›ÛÛ\Ë™š[™
+›HOˆ›KšYOOH‹œ›ÛÛRY
+OË™[XİšXÔšXÙJKˆ	Õxnà[ˆ1$ZxnáÛ‰Îˆ‹™[XİšXĞ[[İ[ˆ	Ó±¬8næØÈñjIÎˆÙ]Ø]\“Û
+ŠKˆ	Ó±¬8næØÈxnæÚIÎˆÙ]Ø]\“™]ÊŠKˆ	Ó±¬8næØÈ0î[™ÉÎˆ‹Ø]\•\ÙYˆ	ñ$1¨[ˆÚpèH±¬8næØÉÎˆ‹Ø]\”šXÙH
+]Kœ›ÛÛ\Ë™š[™
+›HOˆ›KšYOOH‹œ›ÛÛRY
+OËØ]\”šXÙJKˆ	Õxnà[ˆ±¬8næØÉÎˆ‹Ø]\[[İ[ˆ	Óøn¨ZHÚøn¨ÛˆÚ0èXÉÎˆÙ]İ\”™XÙZ\\JŠK›X™[ˆ	Ó¸næZH[™ÈÚøn¨ÛˆÚ0èXÉÎˆ‹›İ\“›İH	ÉËˆ	ÒÚøn¨ÛˆÚ0èXÉÎˆ‹›İ\ˆˆ	Õ8nå[™Èxnà[‰Îˆ‹İ[ˆ	ñ$0èÈ[šğè[‰Îˆ‹œZY[[İ[ˆ	Ğğì›ˆ¸nèÉÎˆ‹İ[H
+‹œZY[[İ[
+Kˆ	Õ¸n¨[™È0èZIÎˆ‹œİ]\Ëˆ	Ó™ğèH8n¨[ÉÎˆ‹˜Ü™X]Y]È™]È]J‹˜Ü™X]Y]
+KÓØØ[Q]Tİš[™Ê	İšKU“‰ÊHˆ	ÉËˆ	Ó™ğèH1¬IÎˆ‹œØ]™Y]È™]È]J‹œØ]™Y]
+KÓØØ[Q]Tİš[™Ê	İšKU“‰ÊHˆ	ÉËˆ	ÑÚHÚ0î‰Îˆ‹››İH	ÉÂˆNÂˆJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+[ÛT™XÙZ\Ñ]JK”Y]H[™ÈŠNÂ‚ˆËÈËˆÚY][šØ[‚ˆÛÛœİ^[Y[Ñ]HH]Kœ™XÙZ\Ë›X\
+ˆOˆÂˆÛÛœİ[˜[HÙ][˜[›Ü”™XÙZ\
+]KŠNÂˆ™]\›ˆÂˆ	ÓpèÈxn¯İIÎˆ‹šYˆ	Óøn¨ZHxn¯İIÎˆ™XÙZ\\SX™[
+‹\JKˆ	Õ0è[™ÉÎˆ‹›[Ûˆ	Ô0ì›™ÉÎˆ‹œ›ÛÛRYˆ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰Îˆ[˜[È[˜[›˜[YHˆ	ÉËˆ	Õ8nå[™Èxnà[‰Îˆ‹İ[ˆ	ñ$0èÈ¸n¨ÉÎˆ‹œZY[[İ[ˆ	Ğğì›ˆ¸nèÉÎˆ‹İ[H
+‹œZY[[İ[
+Kˆ	Õ¸n¨[™È0èZIÎˆ‹œİ]\Ëˆ	Ó™ğèH[šğè[‰Îˆ‹œZY]H	ÉËˆ	Ó¸næZH[™ÈÚ^xnàÛˆÚøn¨Û‰Îˆ˜[œÙ™\ÛÛ[
+ŠKˆ	ÑÚHÚ0î‰Îˆ‹››İH	ÉÂˆNÂˆJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+^[Y[Ñ]JK•[šØ[ˆŠNÂ‚ˆËÈˆÚY]XÚİH˜HÛ™ÂˆÛÛœİ[İ™Sİ]]HH
+]K›[İ™Sİ]™\ÜÈ×JK›X\
+™\Oˆ
+Âˆ	ÓpèÈšpê›ˆ¸n¨Û‰Îˆ™\šYˆ	Ô0ì›™ÉÎˆ™\œ›ÛÛRYˆ	ÓpèÈ8nèÜ1$xnäÛ™ÉÎˆ™\˜ÛÛ˜XİYˆ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰ÎˆÙ]š[X\U[˜[PÛÛ˜Xİ
+]K™\˜ÛÛ˜XİY
+OË›˜[YH	ÉËˆ	Ó™ğèH¸n¨È0ì›™ÉÎˆ™\˜XİX[[™]H	ÉËˆ	ñ$xnáÛˆ1$xn©İIÎˆ™\™[XİšXÓÛˆ	ñ$xnáÛˆÚ8nä]	Îˆ™\™[XİšXÓ™]Ëˆ	Õxnà[ˆ1$ZxnáÛ‰Îˆ™\™[XİšXĞ[[İ[ˆ	Ó±¬8næØÈ1$xn©İIÎˆ™\Ø]\“Ûˆ	Ó±¬8næØÈÚ8nä]	Îˆ™\Ø]\“™]Ëˆ	Õxnà[ˆ±¬8næØÉÎˆ™\Ø]\[[İ[ˆ	ÔønäH™ğèH0ë[šxnà[ˆ0ì›™ÉÎˆ™\œ›ÛÛPÚ\™ÙQ^\È	ÉËˆ	Õxnà[ˆ0ì›™È0è]Ú[š	Îˆ™\œ›Ü˜]Y™[ˆ	Ñ8nâØÚ¸néH0è]Ú[š	Îˆ™\œ›Ü˜]Yš^YÙ\šXÙ\Èˆ	Õxnà[ˆ0ì›™È1$pèÈH0è[™È°èIÎˆ™\œ™\ZY™[ZYˆ	Ñ8nâØÚ¸néH1$pèÈH0è[™È°èIÎˆ™\œ™\ZYš^YÙ\šXÙ\ÔZYˆ	Õxnà[ˆ0ì›™È1$pèÈønëH8né[™ÉÎˆ™\œ™\ZY™[Ûİ™\™Yˆ	Ñ8nâØÚ¸néH1$pèÈønëH8né[™ÉÎˆ™\œ™\ZYš^YÙ\šXÙ\ĞÛİ™\™Yˆ	Òğèˆxnà[ˆ0ì›™ÈÚ1¬HønëH8né[™ÉÎˆ™\œ™\ZY[\ÙY™[™Y[™ˆ	Òğèˆ8nâØÚ¸néHÚ1¬HønëH8né[™ÉÎˆ™\œ™\ZY[\ÙYÙ\šXÙ\Ô™Y[™ˆ	Õxnà[ˆ0ì›™ËÜ0ëHğì›ˆ¸nèÈÚ0èXÉÎˆ™\[œZY™[ˆ	Ô0ëH1¬8nãÛ™ÉÎˆ™\™[XYÙQ™YHˆ	Ô0ëH¸náÈÚ[š	Îˆ™\˜ÛX[š[™Ñ™YHˆ	Ô0ëHÚ0èXÉÎˆ™\›İ\‘™YHˆ	Õxnà[ˆønãXÈ1$xnäZH¸nêÉÎˆ™\™\ÜÚ]\ÙYˆ	Õ8nå[™È0è]Ú[š	Îˆ™\İ[[˜İ\œ™Yˆ	ÒÚ0èXÚğì›ˆ8n¨ÚH¸n¨ÉÎˆ™\›]\İÛÛXİˆ	Ğøn©ÛˆğèˆønãXÉÎˆ™\›]\İ™Y[™ˆ	Ğøn©Ûˆ0ìØH°è›ˆ^IÎˆ
+™\˜XØÙ\ÜÔ™[[İ˜[\ÚÜÈ×JK™š[\ŠOˆœİ]\ÈOOH	Ğøn©Ûˆ0ìØIÊK›X\
+Oˆ	İ›˜[Y_H
+	İ™š[™Ù\œš[ÛÙ_JX
+Kš›Ú[Š	Ë	ÊKˆ	ĞšxnàÛˆønäHHøn©ÛˆÚxnàÛH˜IÎˆ
+™\˜XØÙ\ÜÔ™[[İ˜[\ÚÜÈ×JK›X\
+Oˆ›XÙ[œÙT]JK™š[\Š›ÛÛX[ŠKš›Ú[Š	Ë	ÊKˆ	ÑÚHÚ0î‰Îˆ™\››İH	ÉËˆ	Ó™ğèH8n¨[ÉÎˆ™\˜Ü™X]Y]È™]È]J™\˜Ü™X]Y]
+KÓØØ[Q]Tİš[™Ê	İšKU“‰ÊHˆ	ÉÂˆJJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+[İ™Sİ]]JK“XÚİH˜HÛ™ÈŠNÂ‚ˆËÈKˆÚY]XÚİH™İ[ÚHYBˆÛÛœİ\İ[˜[Ñ]HH]K[˜[Ë™š[\ŠOˆ
+]K›Y[X™\œÚ\È×JKœÛÛYJHOˆK[˜[YOOHšY	‰ˆ
+Kœİ]\ÈOOH	Ù[™Y	ÈKœİ]\ÈOOH	Û[İ™YÛİ]	ÊJJK›X\
+OˆÂˆÛÛœİHH]K›Y[X™\œÚ\Ë™š[™
+HOˆK[˜[YOOHšY	‰ˆ
+Kœİ]\ÈOOH	Ù[™Y	ÈKœİ]\ÈOOH	Û[İ™YÛİ]	ÊJNÂˆ™]\›ˆÂˆ	ÓpèÈ™ñ¬8nçZHpê‰ÎˆšYˆ	Ò8nãH0ê›‰Îˆ›˜[YKˆ	Ôñ$	ÎˆœÛ™Kˆ	ĞĞĞÑ	Îˆ˜ØØÙˆ	ĞšxnàÛˆønäHIÎˆ›XÙ[œÙT]H	ÉËˆ	ÓpèÈ°è›ˆ^IÎˆ™š[™Ù\œš[ÛÙH	ÉËˆ	Õ¸n¨[™È0èZH°è›ˆ^IÎˆ™š[™Ù\œš[İ]\È	ÉËˆ	Ô0ì›™ÈñjIÎˆHÈKœ›ÛÛRYˆ	ÉËˆ	Õ˜ZH°ì‰ÎˆOËœ›ÛHOOH	Üš[X\IÈÈ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰Èˆ	Ó™ñ¬8nçZH8nçÈğî[™ÉËˆ	Ó™ğèH°èÉÎˆHÈ
+Kš›Ú[™Y]H	ÉÊHˆ	ÉËˆ	Ó™ğèH¸nçZH1$ZIÎˆHÈ
+K›Y]H	ÉÊHˆ	ÉËˆ	ÓpèÈ8nèÜ1$xnäÛ™ÉÎˆHÈ
+K˜ÛÛ˜XİY	ÉÊHˆ	ÉËˆ	Õ¸n¨[™È0èZIÎˆ	ñ$0èÈ¸nçZH1$ZIËˆ	ÑÚHÚ0î‰Îˆ››İH	ÉÂˆNÂˆJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+\İ[˜[Ñ]JK“XÚİH™İ[ÚHYHŠNÂ‚ˆËÈLˆÚY]XÚİHÚHÛ™ÂˆÛÛœİ˜[œÙ™\‘]HH
+]Kœ›ÛÛU˜[œÙ™\œÈ×JK›X\
+ˆOˆ
+Âˆ	ÓpèÈÚ^xnàÛˆ0ì›™ÉÎˆ‹šYˆ	Ó™ğèHÚ^xnàÛ‰Îˆ‹˜[œÙ™\‘]H	ÉËˆ	Ó™ñ¬8nçZH1$xnê[™È0ê›‰Îˆ
+]K[˜[È×JK™š[™
+OˆšYOOH‹[˜[Y
+OË›˜[YH	ÉËˆ	Ô0ì›™ÈñjIÎˆ‹›Û›ÛÛRYˆ	Ô0ì›™ÈxnæÚIÎˆ‹›™]Ô›ÛÛRYˆ	Ò1$ñjIÎˆ‹›ÛÛÛ˜XİYˆ	Ò1$xnæÚIÎˆ‹›™]ĞÛÛ˜XİYˆ	ÑÚpèHpêˆñjIÎˆ‹›Û™[ˆ	ÑÚpèHpêˆxnæÚIÎˆ‹›™]Ô™[ˆ	ĞønãXÈñjIÎˆ‹›Û\ÜÚ]ˆ	ĞønãXÈxnæÚIÎˆ‹›™]Ñ\ÜÚ]ˆ	ÑÚHÚ0î‰Îˆ‹››İH	ÉËˆ	Ó™ğèH8n¨[ÉÎˆ‹˜Ü™X]Y]È™]È]J‹˜Ü™X]Y]
+KÓØØ[Q]Tİš[™Ê	İšKU“‰ÊHˆ	ÉÂˆJJNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][ËšœÛÛ—İ×ÜÚY]
+˜[œÙ™\‘]JK“XÚİHÚHÛ™ÈŠNÂ‚ˆËÈLKˆÚY]Ø]H[šˆÛÛœİÛÛ™šYÑ]HHÂˆÉÕ0í™È[‰Ë	ÑÚpèH¸nâÉ×KˆÉÕ0ê›ˆÚ8néÈš0è	Ë	Ñxná“H8nâˆ°ã’	×KˆÉÔñ$Ú8néÈš0è	Ë	ÌLŒËM‹ÎI×KˆÉÓ™ğè›ˆ0è™ÉË˜[šÒ[™›Ë˜˜[šÓ˜[YWKˆÉÔønäH0èHÚøn¨Û‰Ë˜[šÒ[™›Ë˜XØÛİ[›×KˆÉÕ0ê›ˆÚ8néÈ0èHÚøn¨Û‰Ë˜[šÒ[™›Ë˜XØÛİ[˜[YWKˆÉÓpèÈ™ğè›ˆ0è™ÈšY]T‰Ë˜[šÒ[™›Ë˜˜[šĞÛÙWKˆÉÓ™ğèHHxnà[ˆ0è™È0è[™ÉËWKˆÉñ$1¨[ˆÚpèH1$ZxnáÛˆxn­ØÈ1$xnâÛš	ËÎKˆÉñ$1¨[ˆÚpèH±¬8næØÈxn­ØÈ1$xnâÛš	ËÌŒBˆNÂˆÖ][Ë˜›ÛÚ×Ø\[™ÜÚY]
+Ø‹Ö][Ë˜[ØWİ×ÜÚY]
+ÛÛ™šYÑ]JKØ]H[šŠNÂ‚ˆÖÜš]Qš[JØ‹]X[‹[K\Û™ËIÙ]TİŸKŞ
+NÂˆ[\
+	ñ$0èÈxn©]š[H^Ù[0èšğí™ÈIÊNÂˆHØ]Ú
+\œŠHÂˆÛÛœÛÛK™\œ›ÜŠ\œŠNÂˆ[\
+	ÒÚ0í™È8nàÈxn©]^Ù[ˆZH0ì›™È8nëH8n¨ZK‰ÊNÂˆBˆH[ÙHYˆ
+\HOOH	ØÜ™X]WÜ™XÙZ\	ÊHÂˆÛÛœİ›ÛÛRYH›ÛÛSÜ•[˜[šYÂˆÛÛœİ[ÛHÙ]İ\œ™[[ÛX™[
+
+NÂˆÛÛœİ˜[œÙ™\•\™Ù]Hš[™˜[œÙ™\•\™Ù]›Ü“Û›ÛÛJ]K›ÛÛRY[Û
+NÂˆÛÛœİXİ]™PÛÛ˜XİHÙ]İ\œ™[ÛÛ˜Xİ›Ü”›ÛÛJ]K›ÛÛRY
+NÂˆÛÛœİ\™Ù]ÛÛ˜XİH˜[œÙ™\•\™Ù]Ë˜ÛÛ˜XİXİ]™PÛÛ˜XİÂˆÛÛœİ\™Ù]›ÛÛHH˜[œÙ™\•\™Ù]Ëœ›ÛÛH›ÛÛSÜ•[˜[ÂˆYˆ
+]\™Ù]ÛÛ˜Xİ
+H™]\›ˆ[\
+	Ô0ì›™È¸nä[™Èøn­ØÈÚ0í™ÈğìÈ8nèÜ1$xnäÛ™Èøn©Ûˆ8n«\xn¯İK‰ÊNÂˆÛÛœİ^\İÈH
+]Kœ™XÙZ\È×JK™š[™
+ˆOˆ‹œ›ÛÛRYOOH\™Ù]›ÛÛKšY	‰ˆ‹˜ÛÛ˜XİYOOH\™Ù]ÛÛ˜XİšY	‰ˆ‹›[ÛOOH[Û	‰ˆ‹\HOOH	Û[ÛIÊNÂˆYˆ
+^\İÊHÂˆÛÛœİ[˜[HÙ]š[X\U[˜[PÛÛ˜Xİ
+]K\™Ù]ÛÛ˜XİšY
+NÂˆYˆ
+]Ú[™İË˜ÛÛ™š\›J8nèÜ1$xnäÛ™È	İ\™Ù]ÛÛ˜Xİ˜ÛÛ˜Xİ›È\™Ù]ÛÛ˜XİšYHønéØH	İ[˜[Ë›˜[YH	İ\™Ù]›ÛÛKšYXH1$pèÈğìÈxn¯İH0è[™È	Û[ÛKˆ¸n¨[ˆ]xnä[ˆ0èHxnæÚKÙÚH1$pêxn¯İHønéØHÚ0ë[š8nèÜ1$xnäÛ™È°èOØ
+JH™]\›ÂˆBˆÛÛœİ™]ˆHÙ]™]š[İ\Ô™XÙZ\T›ÛÛJ]Kœ™XÙZ\Ë\™Ù]›ÛÛKšY[ÛÂˆ[˜ÛYTØ[YS[ÛˆYKˆ^ÛYT™XÙZ\Yˆ^\İÏËšYˆ^ÛYTØ[YS[ÛÛÛ˜XİYˆ\™Ù]ÛÛ˜XİšYˆJNÂˆÛÛœİš[[™ĞÛÛ^HÙ][ÛPš[[™ĞÛÛ^
+]K\™Ù]ÛÛ˜Xİ[Û
+NÂˆYˆ
+š[[™ĞÛÛ^›[ÙHOOH	İ˜[œÙ™\—ÛÛÜ›ÛÛWÜÚÚ\	ÊH™]\›ˆ[\
+0ì›™È	Ü›ÛÛRYH1$pèÈÚ^xnàÛˆØ[™È	Øš[[™ĞÛÛ^˜[œÙ™\Ë›™]Ô›ÛÛRYKˆ0èŞH8n«\xn¯İHønæ\8n¨ZH0ì›™ÈxnæÚK˜
+NÂˆÛÛœİ™]Ô™XÈHÜ™X]S[ÛT™XÙZ\
+\™Ù]›ÛÛK\™Ù]ÛÛ˜Xİ™]‹[Ûš[[™ĞÛÛ^
+NÂˆÙ]]JÛOˆ
+Âˆ‹‹›Ûˆ™XÙZ\ÎˆË‹‹ŠÛœ™XÙZ\È×JK™š[\ŠˆOˆ‹šYOOH^\İÏËšY
+K™]Ô™X×BˆJJNÂˆ[\
+1$0èÈ8n¨[Èxn¯İH0è[™È	Û[ÛHÚÈ	İ˜[œÙ™\•\™Ù]È	İ˜[œÙ™\•\™Ù]˜[œÙ™\‹›Û›ÛÛRYH8¡¤ˆ	İ\™Ù]›ÛÛKšYXˆ	İ\™Ù]›ÛÛKšYXX
+NÂˆÙ]XŠ	Ü™XÙZ\ÉÊNÂˆH[ÙHYˆ
+\HOOH	Ù[]WÜ™XÙZ\	ÊHÂˆYˆ
+Ú[™İË˜ÛÛ™š\›J	Ğ¸n¨[ˆğìÈÚ8n«ØÈÚ8n«Ûˆ]xnä[ˆ0ìØHxn¯İHH°èOÉÊJHÂˆÙ]]JÛOˆ
+È‹‹›Û™XÙZ\ÎˆÛœ™XÙZ\Ë™š[\ŠˆOˆ‹šYOOH›ÛÛSÜ•[˜[šY
+HJJNÂˆBˆBˆB‚ˆ[˜İ[Ûˆ\]PÛÛ˜Xİİ]\Ê›ÛÛRYİ]\ÊHÂˆÙ]]JÛOˆ
+Âˆ‹‹›ÛˆÛÛ˜XİÎˆÛ˜ÛÛ˜XİË›X\
+ÈOˆÂˆYˆ
+Ëœ›ÛÛRYOOH›ÛÛRYJËœİ]\ÈOOH	ØXİ]™IÈËœİ]\ÈOOH	Û›İXÙIÊJH™]\›ˆÎÂˆ™]\›ˆÂˆ‹‹˜Ëˆİ]\Ëˆ›İXÙQ]Nˆİ]\ÈOOH	Û›İXÙIÈÈ
+Ë››İXÙQ]H™]È]J
+KÒTÓÔİš[™Ê
+KœÛXÙJL
+JHˆ	ÉËˆ^XİY[İ™Sİ]]Nˆİ]\ÈOOH	Û›İXÙIÈÈË™^XİY[İ™Sİ]]Hˆ	ÉÂˆNÂˆJBˆJJNÂˆB‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH˜\‚ˆXY\ˆÛ\ÜÓ˜[YOH˜\ZXY\ˆ›Ë\š[‚ˆ]HÛ\ÜÓ˜[YOH˜\]]H”›ÛÛHX[˜YÙ\ÚOÛ\ÜÓ˜[YOH˜\\İX]H’8náÈ8nä[™È]xn¨Ûˆ0ïH0ì›™È¸nãHÚ^pê›ˆ™ÚxnáÜÜÙ]‚ˆ]ˆÛ\ÜÓ˜[YOHœÙX\˜ÚXÛÛZ[™\ˆˆİ[O^ŞÈX^ÚYˆ	Í	È_O[œ]Û\ÜÓ˜[YOHœÙX\˜Úˆ\OH^ˆXÙZÛ\H•0ëHš[š‹‹ˆˆ˜[YO^Ü]Y\_HÛÚ[™ÙO^ÙHOˆÙ]]Y\JK\™Ù]˜[YJ_HÏÙ]‚ˆÚXY\‚ˆ]ˆÛ\ÜÓ˜[YOH›^[İ]‚ˆ\ÚYHÛ\ÜÓ˜[YOHœÚYX˜\ˆ›Ë\š[‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	Ù\Ú›Ø\™	ÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	Ù\Ú›Ø\™	Ê_O¼'äâˆ8nä[™ÈğêØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	Ü›ÛÛ\ÉÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	Ü›ÛÛ\ÉÊ_O¼'ãè0ì›™È¸nãOØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	İ[˜[ÉÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	İ[˜[ÉÊ_O¼'äiH™ñ¬8nçZHpêØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	Ü™XÙZ\ÉÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	Ü™XÙZ\ÉÊ_O¼'éïˆxn¯İH0è[™ÏØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	Ü™[[Ú\İÜIÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	Ü™[[Ú\İÜIÊ_O¼'äç8nâØÚønëHpêØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	Ü^[Y[Ú\İÜIÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	Ü^[Y[Ú\İÜIÊ_O¼'ä¬[šğè[Ø]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	Ù^[œÙ\ÉÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	Ù^[œÙ\ÉÊ_O¼'ä®ÚH0ëOØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	Ùš[˜[˜ÚX[Ü™\Ü	ÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	Ùš[˜[˜ÚX[Ü™\Ü	Ê_O¼'äâˆ°è[Èğè[ÈHÚOØ]Û‚ˆ]ÛˆÛ\ÜÓ˜[YO^Ø˜]‹Z][H	İXˆOOH	ÜÙ][™ÜÉÈÈ	ØXİ]™IÈˆ	ÉßXHÛÛXÚÏ^Ê
+HOˆÙ]XŠ	ÜÙ][™ÜÉÊ_O¸¦¦{î#ÈğèH1$xn­İØ]Û‚ˆØ\ÚYO‚ˆ]ˆÛ\ÜÓ˜[YOH˜ÛÛ[ÛÛ[Y˜YH‚ˆİXˆOOH	Ù\Ú›Ø\™	È	‰ˆ
+ˆ\Ú›Ø\™ˆ]O^Ù]_HˆÛ”›ÛÛPÛXÚÏ^ÊY
+HOˆÈÙ]XŠ	Ü›ÛÛ\ÉÊNÈÙ]]Y\JY
+NÈ_HˆÛXİ[Û^Ú[™PXİ[ÛŸHˆ\ÔŞ[˜Ú[™Ï^Ú\ÔŞ[˜Ú[™ßHˆÛİY[˜X›Y^ØÛİY[˜X›YBˆ\ÓØYYÛİY^Ú\ÓØYYÛİYBˆ\İŞ[˜ÙY^Û\İŞ[˜ÙYHˆÏ‚ˆ
+_BˆİXˆOOH	Ü›ÛÛ\ÉÈ	‰ˆ›ÛÛ\ÕXˆ]O^Ù]_HÛXİ[Û^Ú[™PXİ[ÛŸHÛ”Ù[Xİ^ÜÙ]Ù[XİY›ÛÛ_H]Y\O^Ü]Y\_HÏŸBˆİXˆOOH	İ[˜[ÉÈ	‰ˆ[˜[ÕXˆ[˜[Ï^Ùš[\™Y[˜[ßH]O^Ù]_HÛXİ[Û^Ê\K
+HOˆÈYˆ
+\OOOIÙ]Z[	ÊHÙ]]Z[[˜[
+
+NÈ[ÙH[™PXİ[ÛŠ\K
+NÈ_H]Y\O^Ü]Y\_HÙ]]Y\O^ÜÙ]]Y\_HÙ]]O^ÜÙ]]_HÏŸBˆİXˆOOH	Ü™XÙZ\ÉÈ	‰ˆ
+ˆ™XÙZ\ÕXˆˆ]O^Ù]_H˜[šÒ[™›Ï^Ø˜[šÒ[™›ßBˆÛ•\]T™XÙZ\^Ê\]Y
+HOˆÙ]]JÛOˆÂˆÛÛœİ™]Ô™XÙZ\ÈHÛœ™XÙZ\Ë›X\
+ˆOˆ‹šYOOH\]YšYÈ\]YˆŠNÂˆËÈ1$8näÛ™È¸næHÚ8nâHønäH°èÈ›ÛÛBˆÛÛœİ™]Ô›ÛÛ\ÈHÛœ›ÛÛ\Ë›X\
+›ÛÛHOˆÂˆYˆ
+›ÛÛKšYOOH\]Yœ›ÛÛRY	‰ˆ\]Y\HOOH	Û[ÛIÊHÂˆ™]\›ˆÈ‹‹œ›ÛÛK[XİšXÓÛˆ\]Y™[XİšXÓÛ[XİšXÓ™]Îˆ\]Y™[XİšXÓ™]ËØ]\“Ûˆ\]YØ]\“ÛØ]\“™]Îˆ\]YØ]\“™]ÈNÂˆBˆ™]\›ˆ›ÛÛNÂˆJNÂˆ™]\›ˆÈ‹‹›Û™XÙZ\Îˆ™]Ô™XÙZ\Ë›ÛÛ\Îˆ™]Ô›ÛÛ\ÈNÂˆJ_BˆÛ˜]ÚÜ™X]O^Ê™]Ô™XÙZ\ÊHOˆÙ]]JÛOˆÂˆÛÛœİ^\İ[™ÒYÈH™]ÈÙ]
+™]Ô™XÙZ\Ë›X\
+œˆOˆ	Ûœ‹œ›ÛÛRYKIÛœ‹˜ÛÛ˜XİYKIÛœ‹›[ÛX
+JNÂˆÛÛœİš[\™YÛH
+Ûœ™XÙZ\È×JK™š[\ŠˆOˆY^\İ[™ÒYËš\Ê	Ü‹œ›ÛÛRYKIÜ‹˜ÛÛ˜XİYKIÜ‹›[ÛX
+JNÂˆÛÛœİY\™ÙY™XÙZ\ÈHË‹‹™š[\™YÛ‹‹›™]Ô™XÙZ\×NÂˆˆËÈ1$8näÛ™È¸næHÚ8nâHønäHÚÈš8nëÛ™È0ì›™È¸nêØH8n¨[Èxn¯İBˆÛÛœİ™]Ô›ÛÛ\ÈHÛœ›ÛÛ\Ë›X\
+›ÛÛHOˆÂˆÛÛœİ]\İˆH™]Ô™XÙZ\Ë™š[™
+œˆOˆœ‹œ›ÛÛRYOOH›ÛÛKšY	‰ˆœ‹\HOOH	Û[ÛIÊNÂˆYˆ
+]\İŠHÂˆ™]\›ˆÈ‹‹œ›ÛÛK[XİšXÓÛˆ]\İ‹™[XİšXÓÛ[XİšXÓ™]Îˆ]\İ‹™[XİšXÓ™]ËØ]\“Ûˆ]\İ‹Ø]\“ÛØ]\“™]Îˆ]\İ‹Ø]\“™]ÈNÂˆBˆ™]\›ˆ›ÛÛNÂˆJNÂˆˆ™]\›ˆÈ‹‹›Û™XÙZ\ÎˆY\™ÙY™XÙZ\Ë›ÛÛ\Îˆ™]Ô›ÛÛ\ÈNÂˆJ_BˆÛ•šY]Ï^ÊŠHOˆÙ]šY]Ú[™Ô™XÙZ\
+Š_HÛ”š[˜]Ú^Ê™XÙZ\ÊHOˆÙ]š[[™Ô™XÙZ\Ê™XÙZ\Ê_HÛ”^O^ÊŠHOˆÙ]^[Y[™XÙZ\
+Š_BˆÛ‘[]T™XÙZ\^Ê™XÙZ\
+HOˆÂˆÛÛœİY\ÜØYÙHH™XÙZ\š\Ñš[˜[^™YˆÈxn¯İH	Ü™XÙZ\œ›ÛÛRYH0è[™È	Ü™XÙZ\›[ÛH1$pèÈ1¬HÚ0ë[š8nêXËˆ¸nªÛˆ8néŞHxn¯İH°èOØˆˆ8néŞHxn¯İH	Ü™XÙZ\œ›ÛÛRYH0è[™È	Ü™XÙZ\›[ÛOØÂˆYˆ
+Ú[™İË˜ÛÛ™š\›JY\ÜØYÙJJHÂˆÙ]]JÛOˆ
+È‹‹›Û™XÙZ\Îˆ
+Ûœ™XÙZ\È×JK™š[\ŠˆOˆ‹šYOOH™XÙZ\šY
+HJJNÂˆBˆ_BˆÛ‘ÛÕÔ^[Y[^Êš[\œÊHOˆÂˆÙ]^[Y[š[\œÊš[\œÊNÂˆÙ]XŠ	Ü^[Y[Ú\İÜIÊNÂˆ_BˆÏ‚ˆ
+_BˆİXˆOOH	Ü™[[Ú\İÜIÈ	‰ˆ™[[\İÜUXˆ]O^Ù]_HÛXİ[Û^Ú[™PXİ[ÛŸHÏŸBˆİXˆOOH	Ü^[Y[Ú\İÜIÈ	‰ˆ
+ˆ^[Y[\İÜUXˆˆ]O^Ù]_Hˆ˜[šÒ[™›Ï^Ø˜[šÒ[™›ßHˆÛXİ[Û^Ú[™PXİ[ÛŸHˆ[š]X[š[\^Ü^[Y[š[\œßBˆÛ•\]T™XÙZ\^Ê\]Y[]RY
+HOˆÂˆYˆ
+[]RY
+HÂˆÙ]]JÛOˆ
+È‹‹›Û™XÙZ\ÎˆÛœ™XÙZ\Ë™š[\ŠˆOˆ‹šYOOH[]RY
+HJJNÂˆH[ÙHÂˆÙ]]JÛOˆ
+È‹‹›Û™XÙZ\ÎˆÛœ™XÙZ\Ë›X\
+ˆOˆ‹šYOOH\]YšYÈ\]YˆŠHJJNÂˆBˆ_HˆÛ•šY]Ï^ÊŠHOˆÙ]šY]Ú[™Ô™XÙZ\
+Š_HˆÛ”^O^ÊŠHOˆÙ]^[Y[™XÙZ\
+Š_HˆÏ‚ˆ
+_BˆİXˆOOH	Ù^[œÙ\ÉÈ	‰ˆ
+ˆ^[œÙ\ÕXˆˆ]O^Ù]_Hˆ›Øİ\Ñš[\^Ù^[œÙQ›Øİ\Ñš[\ŸBˆÛ‘›Øİ\ĞÛÛœİ[YY^Ê
+HOˆÙ]^[œÙQ›Øİ\Ñš[\Š[
+_BˆÛXİ[Û^Ê\K][JHOˆÂˆYˆ
+\HOOH	ØÜ™X]WÙ^[œÙIÊHÙ]Y[™Ñ^[œÙJYJNÂˆ[ÙHYˆ
+\HOOH	ÙY]Ù^[œÙIÊHÙ]Y][™Ñ^[œÙJ][JNÂˆ[ÙHYˆ
+\HOOH	Ù[]WÙ^[œÙIÊHÂˆYˆ
+Ú[™İË˜ÛÛ™š\›J	Ö0ìØHxn¯İHÚH°èOÉÊJHÂˆÙ]]JÛOˆ
+È‹‹›Û^[œÙT^[Y[ÎˆÛ™^[œÙT^[Y[Ë™š[\ŠHOˆKšYOOH][KšY
+HJJNÂˆBˆH[ÙHYˆ
+\HOOH	İšY]×Ü\‰ÊHÙ]šY]Ú[™Ñ^[œÙJ][JNÂˆ[ÙHYˆ
+\HOOH	ÛX[˜YÙWÜİ\Y\œÉÊHÙ]XŠ	Üİ\Y\œÉÊNÂˆ_HˆÏ‚ˆ
+_BˆİXˆOOH	Üİ\Y\œÉÈ	‰ˆ
+ˆİ\Y\œÕXˆˆ]O^Ù]_HˆÛXİ[Û^Ê\K][JHOˆÂˆYˆ
+\HOOH	ØYÜİ\Y\‰ÊHÙ]Y[™Ôİ\Y\ŠYJNÂˆ[ÙHYˆ
+\HOOH	ÙY]Üİ\Y\‰ÊHÙ]Y][™Ôİ\Y\Š][JNÂˆ[ÙHYˆ
+\HOOH	Ù[]WÜİ\Y\‰ÊHÂˆYˆ
+Ú[™İË˜ÛÛ™š\›J	Ö0ìØHš0èİ[™Èøn©\°èOÉÊJHÂˆÙ]]JÛOˆ
+È‹‹›Ûİ\Y\œÎˆÛœİ\Y\œË™š[\ŠÈOˆËšYOOH][KšY
+HJJNÂˆBˆH[ÙHYˆ
+\HOOH	Ø˜XÚÉÊHÙ]XŠ	Ù^[œÙ\ÉÊNÂˆ_BˆÏ‚ˆ
+_BˆİXˆOOH	Ùš[˜[˜ÚX[Ü™\Ü	È	‰ˆ
+ˆš[˜[˜ÚX[™\ÜXˆ]O^Ù]_HÛXİ[Û^Ê\K\™ÊHOˆÂˆYˆ
+\HOOH	İšY]×Ü™XÙZ\	ÊHÂˆÙ]šY]Ú[™Ô™XÙZ\
+\™ÊNÂˆH[ÙHYˆ
+\HOOH	İšY]×Ù^[œÙIÊHÂˆÙ]šY]Ú[™Ñ^[œÙJ\™ÊNÂˆBˆ_HÏ‚ˆ
+_BˆİXˆOOH	ÜÙ][™ÜÉÈ	‰ˆÙ][™ÜÕXˆ]O^Ù]_HÙ]]O^ÜÙ]]_H˜[šÒ[™›Ï^Ø˜[šÒ[™›ßHÙ]˜[šÒ[™›Ï^ÜÙ]˜[šÒ[™›ßHÛ”™\Ù]^Ê
+HOˆÈYŠÚ[™İË˜ÛÛ™š\›J	Ö0ìØH8n¯İ8nëÈxnáİOÉÊJHÙ]]JQUSÑUJNÈ_HÏŸBˆÙ]‚ˆÙ]‚ˆÜÙ[XİY›ÛÛH	‰ˆ
+ˆ›ÛÛQ]Z[[Ù[ˆ›ÛÛO^ÜÙ[XİY›ÛÛ_Hˆ]O^Ù]_HˆÛÛÜÙO^Ê
+HOˆÙ]Ù[XİY›ÛÛJ[
+_HˆÛXİ[Û^Ê\K\™ÊHOˆÈˆ[™PXİ[ÛŠ\K\™ÈÙ[XİY›ÛÛJNÈˆYˆ
+VÉØYÜ›ÛÛ[X]IË	ÙY]İ[˜[	Ë	ÛX]™WÜ›ÛÛ[X]I×Kš[˜ÛY\Ê\JJHÙ]Ù[XİY›ÛÛJ[
+NÂˆ_BˆÛY›ÛÛ[X]O^Ê™\İ[
+HOˆÂˆÛÛœİÈ[˜[Y[X™\œÚ\HH™\İ[ÂˆÙ]]JÛOˆ
+Âˆ‹‹›Ûˆ[˜[ÎˆË‹‹ŠÛ[˜[È×JK™š[\ŠOˆšYOOH[˜[šY
+K[˜[KˆY[X™\œÚ\ÎˆË‹‹ŠÛ›Y[X™\œÚ\È×JK™š[\ŠHOˆKšYOOHY[X™\œÚ\šY
+KY[X™\œÚ\BˆJJNÂˆ[\
+1$0èÈ0ê›H	İ[˜[›˜[Y_H°èÈ0ì›™È	ÛY[X™\œÚ\œ›ÛÛRYK˜
+NÂˆ™]\›ˆYNÂˆ_BˆÏ‚ˆ
+_BˆÛ™]Ô™[[›ÛÛH	‰ˆ
+ˆ™[[›İÓ[Ù[ˆ›ÛÛO^Û™]Ô™[[›ÛÛ_HˆÛÛÜÙO^Ê
+HOˆÙ]™]Ô™[[›ÛÛJ[
+_HˆÛ”Ø]™O^Ê™\İ[
+HOˆÂˆÛÛœİÈ[˜[ÛÛ˜XİY[X™\œÚ\ÈHH™\İ[ÂˆÛÛœİ^\İ[™ĞXİ]™PÛÛ˜XİH
+]K˜ÛÛ˜XİÈ×JK™š[™
+ÈOˆËœ›ÛÛRYOOHÛÛ˜Xİœ›ÛÛRY	‰ˆÉØXİ]™IË	Û›İXÙIË	Û[İš[™×Ûİ]	×Kš[˜ÛY\ÊËœİ]\ÊJNÂˆYˆ
+^\İ[™ĞXİ]™PÛÛ˜Xİ
+HÂˆ[\
+0ì›™È	ØÛÛ˜Xİœ›ÛÛRYH1$pèÈğìÈ8nèÜ1$xnäÛ™ÈxnáİH8nìXËˆ8náÈ8nä[™ÈÚ0í™È8n¨[È8nèÜ1$xnäÛ™È°î[™Ë˜
+NÂˆ™]\›ˆ˜[ÙNÂˆBˆÙ]]JÛOˆÂˆÛÛœİÙ\šXÙPÛÛ™šYÈHÛÛ˜Xİ\›\ÏËœÙ\šXÙ\ÈßNÂˆÛÛœİ\]Y›ÛÛ\ÈH
+Ûœ›ÛÛ\È×JK›X\
+ˆOˆ‹šYOOHÛÛ˜Xİœ›ÛÛRYÈÂˆ‹‹œ‹ˆ™[ˆ[X™\ŠÛÛ˜Xİœ™[‹œ™[
+Kˆ\ÜÚ]ˆ[X™\ŠÛÛ˜Xİ™\ÜÚ]‹™\ÜÚ]
+Kˆ[XİšXÔšXÙNˆ[X™\ŠÛÛ˜Xİ\›\ÏË™[XİšXÔšXÙH‹™[XİšXÔšXÙHÎ
+KˆØ]\”šXÙNˆ[X™\ŠÛÛ˜Xİ\›\ÏËØ]\”šXÙH‹Ø]\”šXÙHÌŒ
+KˆÛX[š[™Îˆ[X™\ŠÙ\šXÙPÛÛ™šYË˜ÛX[š[™ÈÏÈ‹˜ÛX[š[™ÈÏÈ
+Kˆ[]˜]Üˆ[X™\ŠÙ\šXÙPÛÛ™šYË™[]˜]ÜˆÏÈ‹™[]˜]ÜˆÏÈ
+Kˆ][™Nˆ[X™\ŠÙ\šXÙPÛÛ™šYË›][™HÏÈ‹›][™HÏÈ
+Kˆ[\›™]ˆ[X™\ŠÙ\šXÙPÛÛ™šYËš[\›™]ÏÈ‹š[\›™]ÏÈ
+KˆHˆŠNÂˆ™]\›ˆÂˆ‹‹›Ûˆ›ÛÛ\Îˆ\]Y›ÛÛ\Ëˆ[˜[ÎˆË‹‹ŠÛ[˜[È×JK™š[\ŠOˆšYOOH[˜[šY
+K[˜[KˆÛÛ˜XİÎˆË‹‹ŠÛ˜ÛÛ˜XİÈ×JK™š[\ŠÈOˆËšYOOHÛÛ˜XİšY
+KÛÛ˜XİKˆY[X™\œÚ\ÎˆË‹‹ŠÛ›Y[X™\œÚ\È×JK™š[\ŠHOˆ[Y[X™\œÚ\ËœÛÛYJ™]ÓHOˆ™]ÓKšYOOHKšY
+JK‹‹›Y[X™\œÚ\×BˆNÂˆJNÂˆÙ]™]Ô™[[›ÛÛJ[
+NÂˆÙ]Ù[XİY›ÛÛJ[
+NÂˆÙ]XŠ	Ü›ÛÛ\ÉÊNÂˆ[\
+1$0èÈ1¬H8nèÜ1$xnäÛ™È	ØÛÛ˜Xİ˜ÛÛ˜Xİ›ÈÛÛ˜XİšYHÚÈ0ì›™È	ØÛÛ˜Xİœ›ÛÛRYK˜
+NÂˆ™]\›ˆYNÂˆ_BˆÏ‚ˆ
+_BˆØY[™Ô›ÛÛ[X]H	‰ˆ
+ˆ›ÛÛ[X]S[Ù[ˆ›ÛÛO^ØY[™Ô›ÛÛ[X]Kœ›ÛÛ_BˆÛÛ˜Xİ^ØY[™Ô›ÛÛ[X]K˜ÛÛ˜XİBˆÛÛÜÙO^Ê
+HOˆÙ]Y[™Ô›ÛÛ[X]J[
+_BˆÛ”Ø]™O^Ê™\İ[
+HOˆÂˆÛÛœİÈ[˜[Y[X™\œÚ\HH™\İ[ÂˆÙ]]JÛOˆ
+Âˆ‹‹›Ûˆ[˜[ÎˆË‹‹ŠÛ[˜[È×JK™š[\ŠOˆšYOOH[˜[šY
+K[˜[KˆY[X™\œÚ\ÎˆË‹‹ŠÛ›Y[X™\œÚ\È×JK™š[\ŠHOˆKšYOOHY[X™\œÚ\šY
+KY[X™\œÚ\BˆJJNÂˆÙ]Y[™Ô›ÛÛ[X]J[
+NÂˆ[\
+1$0èÈ0ê›H	İ[˜[›˜[Y_H°èÈ0ì›™È	ÛY[X™\œÚ\œ›ÛÛRYK˜
+NÂˆ™]\›ˆYNÂˆ_BˆÏ‚ˆ
+_BˆÜÙ][™Ô›ÛÛH	‰ˆ
+ˆÙ][Y[[Ù[›ÛÛO^ÜÙ][™Ô›ÛÛKœ›ÛÛ_HÛÛ˜Xİ^ÜÙ][™Ô›ÛÛK˜ÛÛ˜XİH]O^Ù]_H˜[šÒ[™›Ï^Ø˜[šÒ[™›ßHÛÛÜÙO^Ê
+HOˆÙ]Ù][™Ô›ÛÛJ[
+_HÛ”Ø]™O^Ê™\Ü
+HOˆÂˆÛÛœİY™™XİY[˜[ÈH
+]K›Y[X™\œÚ\È×JBˆ™š[\ŠHOˆK˜ÛÛ˜XİYOOH™\Ü˜ÛÛ˜XİY
+Bˆ›X\
+HOˆ
+]K[˜[È×JK™š[™
+OˆšYOOHK[˜[Y
+JBˆ™š[\Š›ÛÛX[ŠNÂˆÙ]]JÛOˆÂˆÛÛœİ\]Y›ÛÛ\ÈHÛœ›ÛÛ\Ë›X\
+ˆOˆ‹šYOOH™\Üœ›ÛÛRYÈÂˆ‹‹œ‹ˆ[XİšXÓÛˆ™\Ü™[XİšXÓÛˆ[XİšXÓ™]Îˆ™\Ü™[XİšXÓ™]ËˆØ]\“Ûˆ™\ÜØ]\“ÛˆØ]\“™]Îˆ™\ÜØ]\“™]ÂˆHˆŠNÂˆÛÛœİ\]YÛÛ˜XİÈHÛ˜ÛÛ˜XİË›X\
+ÈOˆËšYOOH™\Ü˜ÛÛ˜XİYÈÈ‹‹˜Ëİ]\Îˆ	Ù[™Y	ËXİX[[™]Nˆ™\Ü˜XİX[[™]K[™Y]ˆ™]È]J
+KÒTÓÔİš[™Ê
+HHˆÊNÂˆÛÛœİ\]YY[X™\œÚ\ÈHÛ›Y[X™\œÚ\Ë›X\
+HOˆK˜ÛÛ˜XİYOOH™\Ü˜ÛÛ˜XİYÈÈ‹‹›Kİ]\Îˆ	Ù[™Y	ËY]Nˆ™\Ü˜XİX[[™]HHˆJNÂˆÛÛœİY™™XİY[˜[YÈHÛ›Y[X™\œÚ\Ë™š[\ŠHOˆK˜ÛÛ˜XİYOOH™\Ü˜ÛÛ˜XİY
+K›X\
+HOˆK[˜[Y
+NÂˆÛÛœİ\]Y[˜[ÈHÛ[˜[Ë›X\
+OˆY™™XİY[˜[YËš[˜ÛY\ÊšY
+HÈÈ‹‹İ]\Îˆ	Û[İ™YÛİ]	Ë\İ›ÛÛRYˆ™\Üœ›ÛÛRYš[™Ù\œš[İ]\Îˆ™š[™Ù\œš[ÛÙHÈ	Ğøn©Ûˆ0ìØIÈˆ
+™š[™Ù\œš[İ]\È	ĞÚ1¬H1$q Û™ÈğïIÊHHˆ
+NÂˆÛÛœİXØÙ\ÜÔ™[[İ˜[\ÚÜÈHÛ[˜[Âˆ™š[\ŠOˆY™™XİY[˜[YËš[˜ÛY\ÊšY
+JBˆ›X\
+Oˆ
+Âˆ[˜[YˆšYˆ˜[YNˆ›˜[YKˆÛ™NˆœÛ™Kˆš[™Ù\œš[ÛÙNˆ™š[™Ù\œš[ÛÙH	ÉËˆXÙ[œÙT]Nˆ›XÙ[œÙT]H™ZXÛH	ÉËˆXİ[Ûˆ™š[™Ù\œš[ÛÙHÈ	Ö0ìØH°è›ˆ^HÚ8nãÚHpè^HÚ8n©[KÚÚ0ìØHønëXIÈˆ	ÒÚ0í™ÈğìÈ°è›ˆ^H1$pèÈ1¬IËˆİ]\Îˆ™š[™Ù\œš[ÛÙHÈ	Ğøn©Ûˆ0ìØIÈˆ	ÒÚ0í™Èøn©Ûˆ8nëH0ïIÂˆJJNÂˆˆËÈ8n¨[Èxn¯İHHÚ8nä]¸n¨È0ì›™È¸n¯İHÚ0èXÚğì›ˆ8n¨ÚH[šğè[ˆ0ê›Bˆ]™]Ô™XÙZ\ÈHË‹‹ŠÛœ™XÙZ\È×JWNÂˆYˆ
+™\Ü›]\İÛÛXİˆ
+HÂˆ™]Ô™XÙZ\Ëœ\Ú
+ÂˆYˆZY
+	Ü™XÙZ\	ÊKˆ›ÛÛRYˆ™\Üœ›ÛÛRYˆÛÛ˜XİYˆ™\Ü˜ÛÛ˜XİYˆ\Nˆ	Û[İ™WÛİ]ÜÙ][Y[	Ëˆ[Ûˆ™\Ü˜XİX[[™]KœÜ]
+	ËIÊKœÛXÙJŠKœ™]™\œÙJ
+Kš›Ú[Š	ËÉÊKˆ™[ˆ™\Üœ›Ü˜]Y™[ˆš^YÙ\šXÙ\Îˆ™\Üœ›Ü˜]Yš^YÙ\šXÙ\Èˆ[XİšXÓÛˆ™\Ü™[XİšXÓÛˆ[XİšXÓ™]Îˆ™\Ü™[XİšXÓ™]Ëˆ[XİšXÕ\ÙYˆ™\Ü™[XİšXÕ\ÙYˆ[XİšXĞ[[İ[ˆ™\Ü™[XİšXĞ[[İ[ˆØ]\“Ûˆ™\ÜØ]\“ÛˆØ]\“™]Îˆ™\ÜØ]\“™]ËˆØ]\•\ÙYˆ™\ÜØ]\•\ÙYˆØ]\[[İ[ˆ™\ÜØ]\[[İ[ˆİ\ˆ[X™\Š™\Ü[œZY™[
+H
+È[X™\Š™\Ü˜ÛX[š[™Ñ™YH
+H
+È[X™\Š™\Ü™[XYÙQ™YH
+H
+È[X™\Š™\Ü›İ\‘™YH
+Kˆİ[ˆ™\Ü›]\İÛÛXİˆZY[[İ[ˆˆXˆ™\Ü›]\İÛÛXİˆİ]\Îˆ	ĞÚ1¬H[šğè[‰Ëˆ›İNˆ	Ôxn¯İHÚ8nä]¸n¨È0ì›™ÉËˆÜ™X]Y]ˆ™]È]J
+KÒTÓÔİš[™Ê
+BˆJNÂˆB‚ˆ]™]Ñ^[œÙT^[Y[ÈHË‹‹ŠÛ™^[œÙT^[Y[È×JWNÂˆ]Ü™X]Y^[œÙHH[ÂˆYˆ
+™\Ü›]\İ™Y[™ˆ
+HÂˆÛÛœİÛKWHH™\Ü˜XİX[[™]KœÜ]
+	ËIÊKœÛXÙJŠKœ™]™\œÙJ
+NÂˆÛÛœİ™Yš^HËIŞ_IÛ_XÂˆÛÛœİÛİ[H™]Ñ^[œÙT^[Y[Ë™š[\ŠHOˆK™^[œÙPÛÙH	‰ˆK™^[œÙPÛÙKœİ\ÕÚ]
+™Yš^
+JK›[™İ
+ÈNÂˆÛÛœİ^[œÙPÛÙHH	Ü™Yš^KIÔİš[™ÊÛİ[
+KœYİ\
+Ë	Ì	Ê_XÂˆÜ™X]Y^[œÙHHÂˆYˆZY
+	Ù^	ÊKˆ^[œÙPÛÙKˆ\Nˆ	Ù\ÜÚ]Ü™Y[™	ËˆÛİ\˜ÙNˆ	Û[İ™WÛİ]ÜÙ][Y[	ËˆÛİ\˜ÙT™\ÜYˆ™\ÜšYˆ›ÛÛRYˆ™\Üœ›ÛÛRYˆÛÛ˜XİYˆ™\Ü˜ÛÛ˜XİYˆ[˜[Yˆ™\Ü[˜[Yˆİ\Y\’Yˆ	ÉËˆ™XÚ\Y[˜[YNˆ™\Ü[˜[˜[YH	ÒÚ0èXÚpê‰Ëˆ™XÚ\Y[Û™Nˆ™\Ü[˜[Û™H	ÉËˆ™XÚ\Y[˜[šÓ˜[YNˆ™\Üœ™Y[™˜[šÓ˜[YH	ÉËˆ™XÚ\Y[˜[šĞXØÛİ[ˆ™\Üœ™Y[™˜[šĞXØÛİ[	ÉËˆ™XÚ\Y[˜[šÓİÛ™\ˆ™\Üœ™Y[™˜[šÓùÛŞö¶‰Ëkºwµçx¹™½É´°•±•ÑÉ¥AÉ¥”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ù§„»Ã†îmŒ€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹İ…Ñ•ÉAÉ¥•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°İ…Ñ•ÉAÉ¥”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°±…ÍÍ9…µ”ô‰ÍÁ…¸´Èˆù¡¤£èÑ£©´€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÍÑå±”õíìµ¥¹!•¥¡Ğè€œàÉÁàœõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É•¹Ñ…°µ½¹ÑÉ…Ğµ™½½Ñ•Èˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôÍÑå±”õíì™±•àè€Äõôù#†îä‹†î<ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õí¡…¹‘±•9•áÑôÍÑå±”õíì™±•àè€ÈõôùQ§†êıÀÑ¡•¼èa•´ÑËÃ†îmŒ£†îÀƒG†îM¹œƒŠz‡¾â<ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸QÉ…¹Í™•ÉI½½µ5½‘…°¡ì½¹ÑÉ…Ğ°‘…Ñ„°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞ½±‘I½½´€ô‘…Ñ„¹É½½µÌ¹™¥¹¡È€ôøÈ¹¥€ôôô½¹ÑÉ…Ğ¹É½½µ%¤ì(€½¹ÍĞÑ•¹…¹Ğ€ô•ÑAÉ¥µ…ÉåQ•¹…¹Ñ	å½¹ÑÉ…Ğ¡‘…Ñ„°½¹ÑÉ…Ğ¹¥¤ñğì¹…µ”è€8½œ°Á¡½¹”è€œœôì(€½¹ÍĞÙ……¹ÑI½½µÌ€ô€¡‘…Ñ„¹É½½µÌñğmt¤¹™¥±Ñ•È¡È€ôøÈ¹¥€„ôô½¹ÑÉ…Ğ¹É½½µ%€˜˜•ÑI½½µMÑ…ÑÕÍ%¹™¼¡‘…Ñ„°È¹¥¤¹±…‰•°€ôôô€QË†îE¹œœ¤ì(€½¹ÍĞ™¥ÉÍÑI½½´€ôÙ……¹ÑI½½µÍlÁtñğ¹Õ±°ì(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡ì(€€€¹•İI½½µ%è™¥ÉÍÑI½½´ü¹¥ñğ€œœ°(€€€ÑÉ…¹Í™•É…Ñ”è¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°(€€€½±‘I½½µMÑ…åÉ½´è™½Éµ…Ñ…Ñ•½É%¹ÁÕĞ¡½¹ÑÉ…Ğ¹ÍÑ…ÉÑ…Ñ”¤ñğ¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°(€€€½±‘I½½µMÑ…åQ¼è™½Éµ…Ñ…Ñ•%¹ÁÕÑY…±Õ”¡…‘‘…åÌ¡¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°€´Ä¤¤ñğ¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°(€€€½±‘I½½µM•ÉÙ¥•5½‘”è€¥¹±Õ‘•‘}¥¹}ÑÉ…¹Í™•É}É••¥ÁĞœ°(€€€•¹‘…Ñ”è½¹ÑÉ…Ğ¹•¹‘…Ñ”ñğ…‘‘5½¹Ñ¡ÍQ½…Ñ”¡¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°€ÄÈ¤°(€€€É•¹Ğè™¥ÉÍÑI½½´ü¹É•¹Ğ€üü½¹ÑÉ…Ğ¹É•¹Ğ°(€€€‘•Á½Í¥Ğè½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ°(€€€½¹ÑÉ…Ñ9¼è#@´‘í™¥ÉÍÑI½½´ü¹¥ñğ€I==4ô´‘í¹•Ü…Ñ” ¤¹•ÑÕ±±e•…È ¥ô‘íMÑÉ¥¹œ¡¹•Ü…Ñ” ¤¹•Ñ5½¹Ñ  ¤€¬€Ä¤¹Á…‘MÑ…ÉĞ È°€œÀœ¥õ€°(€€€¹½Ñ”è¡Õç†î¸Ó†î¬Á£É¹œ€‘í½¹ÑÉ…Ğ¹É½½µ%‘õ€(€ô¤ì((€½¹ÍĞÍ•±•Ñ•‘I½½´€ô‘…Ñ„¹É½½µÌ¹™¥¹¡È€ôøÈ¹¥€ôôô™½É´¹¹•İI½½µ%¤ì(€½¹ÍĞ½±‘I½½µ…åÍAÉ•Ù¥•Ü€ô¥¹±ÕÍ¥Ù•…åÍ	•Ñİ••¸¡™½É´¹½±‘I½½µMÑ…åÉ½´°™½É´¹½±‘I½½µMÑ…åQ¼¤ì(€½¹ÍĞ½±‘I½½µ5½¹Ñ €ôµ½¹Ñ¡É½µ…Ñ”¡™½É´¹½±‘I½½µMÑ…åQ¼ñğ™½É´¹ÑÉ…¹Í™•É…Ñ”¤ì(€½¹ÍĞ½±‘I½½µ5½¹Ñ¡…åÌ€ô‘…åÍ%¹	¥±±¥¹5½¹Ñ ¡½±‘I½½µ5½¹Ñ ¤ì(€½¹ÍĞ½±‘I½½µI•¹ÑAÉ•Ù¥•Ü€ô5…Ñ ¹É½Õ¹ ¡9Õµ‰•È¡½¹ÑÉ…Ğ¹É•¹Ğñğ½±‘I½½´ü¹É•¹Ğñğ€À¤€¼½±‘I½½µ5½¹Ñ¡…åÌ¤€¨½±‘I½½µ…åÍAÉ•Ù¥•Ü¤ì(€½¹ÍĞ½±‘I½½µM•ÉÙ¥•5½¹Ñ¡±åAÉ•Ù¥•Ü€ô™¥á•‘M•ÉÙ¥•Q½Ñ…°¡½±‘I½½´°•Ñ½¹ÑÉ…Ñ=ÕÁ…¹Ñ½Õ¹Ğ¡‘…Ñ„°½¹ÑÉ…Ğ¤ñğ€Ä¤ì(€½¹ÍĞ½±‘I½½µM•ÉÙ¥•AÉ•Ù¥•Ü€ô™½É´¹½±‘I½½µM•ÉÙ¥•5½‘”€ôôô€µ½¹Ñ¡±äœ(€€€€ü½±‘I½½µM•ÉÙ¥•5½¹Ñ¡±åAÉ•Ù¥•Ü(€€€€è™½É´¹½±‘I½½µM•ÉÙ¥•5½‘”€ôôô€‘…¥±äœ(€€€€€€ü5…Ñ ¹É½Õ¹ ¡½±‘I½½µM•ÉÙ¥•5½¹Ñ¡±åAÉ•Ù¥•Ü€¼½±‘I½½µ5½¹Ñ¡…åÌ¤€¨½±‘I½½µ…åÍAÉ•Ù¥•Ü¤(€€€€€€è€Àì((€½¹ÍĞ¡…¹‘±•I½½µ¡…¹”€ô€¡É½½µ%¤€ôøì(€€€½¹ÍĞÉ½½´€ô‘…Ñ„¹É½½µÌ¹™¥¹¡È€ôøÈ¹¥€ôôôÉ½½µ%¤ì(€€€Í•Ñ½É´¡ÁÉ•Ø€ôø€¡ì(€€€€€€¸¸¹ÁÉ•Ø°(€€€€€¹•İI½½µ%èÉ½½µ%°(€€€€€É•¹ĞèÉ½½´ü¹É•¹Ğ€üüÁÉ•Ø¹É•¹Ğ°(€€€€€½¹ÑÉ…Ñ9¼è#@´‘íÉ½½µ%‘ô´‘í¹•Ü…Ñ” ¤¹•ÑÕ±±e•…È ¥ô‘íMÑÉ¥¹œ¡¹•Ü…Ñ” ¤¹•Ñ5½¹Ñ  ¤€¬€Ä¤¹Á…‘MÑ…ÉĞ È°€œÀœ¥õ€(€€€ô¤¤ì(€ôì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œÜÈÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€ñ ÈûC†îU¤Á£É¹œƒŠˆíÑ•¹…¹Ğ¹¹…µ•ôğ½ Èø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆù/†êıĞÑ£éŒ£†îÀƒG†îM¹œÁ£É¹œ¤Û€Ó†ê…¼£†îÀƒG†îM¹œ·†îm¤¡¼Á£É¹œÑË†îE¹œ¸ğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆÍÑå±”õíì…Àè€œÈÁÁàœõôø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Éˆø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½ÀµÉ¥ˆø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆùA£É¹œ¡§†î¸Ó†ê…¤ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùAí½±‘I½½´ü¹¥‘ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù9ŸÃ†îu¤ƒG†î¥¹œÓ©¸ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùíÑ•¹…¹Ğ¹¹…µ•ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù§„Ñ¡×¨¤ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹É•¹Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù†î5ŒƒE…¹œ§†î¼ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€íÙ……¹ÑI½½µÌ¹±•¹Ñ €ôôô€À€ü€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ…É¹¥¹œµ‰½àˆù!§†î¸­£Ñ¹œÌÁ£É¹œÑË†îE¹œƒG†î¡Õç†î¸¸†ê¸Ó†ê•ĞÑ¿…¸¡¿†êİŒÓ†ê…¼Á£É¹œÑË†îE¹œÑËÃ†îmŒ¸ğ½‘¥Øø(€€€€€€€€€€¤€è€ (€€€€€€€€€€€€ğø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€€€ñ±…‰•°ùA£É¹œ·†îm¤(€€€€€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹¹•İI½½µ%‘ô½¹¡…¹”õí”€ôø¡…¹‘±•I½½µ¡…¹”¡”¹Ñ…É•Ğ¹Ù…±Õ”¥ôø(€€€€€€€€€€€€€€€€€€€íÙ……¹ÑI½½µÌ¹µ…À¡È€ôø€ñ½ÁÑ¥½¸­•äõíÈ¹¥‘ôÙ…±Õ”õíÈ¹¥‘ôùAíÈ¹¥‘ô€´í™½Éµ…Ñ5½¹•ä¡È¹É•¹Ğ¥ôğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ù9Ÿä¡Õç†î¸Á£É¹œ(€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹ÑÉ…¹Í™•É…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°ÑÉ…¹Í™•É…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ”°½±‘I½½µMÑ…åQ¼è™½Éµ…Ñ…Ñ•%¹ÁÕÑY…±Õ”¡…‘‘…åÌ¡”¹Ñ…É•Ğ¹Ù…±Õ”°€´Ä¤¤ñğ™½É´¹½±‘I½½µMÑ…åQ½ô¥ô€¼ø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ùA£É¹œ¤ƒ†î|Ó†î¬¹Ÿä(€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹½±‘I½½µMÑ…åÉ½µô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°½±‘I½½µMÑ…åÉ½´è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ùA£É¹œ¤Óµ¹ ƒG†êı¸¹Ÿä(€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹½±‘I½½µMÑ…åQ½ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°½±‘I½½µMÑ…åQ¼è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ùO†îD£†îÀƒG†îM¹œ·†îm¤(€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹½¹ÑÉ…Ñ9½ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°½¹ÑÉ…Ñ9¼è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ù9Ÿä£†êıĞ£†ê…¸·†îm¤(€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹•¹‘…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°•¹‘…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ù§„Ñ¡×¨·†îm¤(€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹É•¹Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°É•¹Ğè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ùQ§†î¸†î5Œƒ…À“†î•¹œ(€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹‘•Á½Í¥Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‘•Á½Í¥Ğè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ñ±…‰•°ù… Óµ¹ “†î- Û†î”Á£É¹œ¤(€€€€€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹½±‘I½½µM•ÉÙ¥•5½‘•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°½±‘I½½µM•ÉÙ¥•5½‘”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôø(€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰¥¹±Õ‘•‘}¥¹}ÑÉ…¹Í™•É}É••¥ÁĞˆùQ¡Ô¡Õ¹œ·†îeĞ³†ê¸ÑÉ½¹œÁ¡§†êıÔƒG†îU¤Á£É¹œğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰‘…¥±äˆùSµ¹ Ñ¡•¼¹Ÿäƒ†î|Ñ£†îÅŒÓ†êüğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰µ½¹Ñ¡±äˆùQ¡ÔÑË†î5¸Ñ£…¹œğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ…É¹¥¹œµ‰½àˆø(€€€€€€€€€€€€€€€A£É¹œ¤Aí½¹ÑÉ…Ğ¹É½½µ%‘ôèí™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡™½É´¹½±‘I½½µMÑ…åÉ½´¥ô€´í™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡™½É´¹½±‘I½½µMÑ…åQ¼¥ô€¡í½±‘I½½µ…åÍAÉ•Ù¥•İô¹Ÿä¤¸†îÄ­§†êı¸Ñ§†î¸Á£É¹œ¤í™½Éµ…Ñ5½¹•ä¡½±‘I½½µI•¹ÑAÉ•Ù¥•Ü¥ô°“†î- Û†î”Á£É¹œ¤í™½Éµ…Ñ5½¹•ä¡½±‘I½½µM•ÉÙ¥•AÉ•Ù¥•Ü¥ô¸;†êıÔ£†î5¸Ñ¡Ô¡Õ¹œ°Á¡§†êıÔŸ†îeÀÏ†êô¡§†î¸Ñ£†î,“†î- Û†î”Ñ£…¹œ·†îeĞ³†ê¸Ñ¡•¼Ï†îD¹ŸÃ†îu¤¸(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ñ±…‰•°ù¡¤£è(€€€€€€€€€€€€€€€€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€ğ½±…‰•°ø((€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ…É¹¥¹œµ‰½àˆø(€€€€€€€€€€€€€€€M…Ô­¡¤ã…Œ¹£†êµ¸°Á£É¹œí½¹ÑÉ…Ğ¹É½½µ%‘ôÏ†êô¡Õç†î¸Û†îÑË†îE¹œ°Ñ¿¸‹†îd¹ŸÃ†îu¤ƒE…¹œƒ†î|Ï†êôÍ…¹œAíÍ•±•Ñ•‘I½½´ü¹¥‘ô°Û€Á¡§†êıÔÑ£…¹œ·†îm¤Ï†êô“å¹œ£†î$Ï†îDƒG†êÔ¯†îÌ†î„Á£É¹œ·†îm¤¸(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ğ¼ø(€€€€€€€€€€¥ô((€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Ñ¥½¸µ™½½Ñ•Èˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôù#†îäğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ‘¥Í…‰±•õíÙ……¹ÑI½½µÌ¹±•¹Ñ €ôôô€Áô½¹±¥¬õì ¤€ôøì(€€€€€€€€€€€€€¥˜€ …™½É´¹¹•İI½½µ%¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ£†î5¸Á£É¹œ·†îm¤¸œ¤ì(€€€€€€€€€€€€€¥˜€ …™½É´¹ÑÉ…¹Í™•É…Ñ”ñğ€…™½É´¹•¹‘…Ñ”¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀ¹Ÿä¡Õç†î¸Û€¹Ÿä£†êıĞ£†ê…¸·†îm¤¸œ¤ì(€€€€€€€€€€€€€¥˜€ …™½É´¹½±‘I½½µMÑ…åÉ½´ñğ€…™½É´¹½±‘I½½µMÑ…åQ¼¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀÑ£†îu¤¥…¸ƒ†î|Á£É¹œ¤¸œ¤ì(€€€€€€€€€€€€€¥˜€¡Á…ÉÍ•…Ñ•±•á¥‰±”¡™½É´¹½±‘I½½µMÑ…åQ¼¤€ğÁ…ÉÍ•…Ñ•±•á¥‰±”¡™½É´¹½±‘I½½µMÑ…åÉ½´¤¤É•ÑÕÉ¸…±•ÉĞ 9Ÿä¯†êıĞÑ£éŒƒ†î|Á£É¹œ¤Á£†ê¤Í…Ô¹Ÿä‹†ê½ĞƒG†êÔ¸œ¤ì(€€€€€€€€€€€€€¥˜€¡™½É´¹•¹‘…Ñ”€ğ™½É´¹ÑÉ…¹Í™•É…Ñ”¤É•ÑÕÉ¸…±•ÉĞ 9Ÿä£†êıĞ£†ê…¸·†îm¤Á£†ê¤Í…Ô¹Ÿä¡Õç†î¸Á£É¹œ¸œ¤ì(€€€€€€€€€€€€€¥˜€¡İ¥¹‘½Ü¹½¹™¥É´¡c…Œ¹£†êµ¸¡Õç†î¸€‘íÑ•¹…¹Ğ¹¹…µ•ôÓ†î¬@‘í½¹ÑÉ…Ğ¹É½½µ%‘ôÍ…¹œ@‘í™½É´¹¹•İI½½µ%‘ôı€¤¤ì(€€€€€€€€€€€€€€€½¹M…Ù”¡™½É´¤ì(€€€€€€€€€€€€€ô(€€€€€€€€€€€õôùc…Œ¹£†êµ¸ƒG†îU¤Á£É¹œğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸M•ÑÑ±•µ•¹Ñ5½‘…°¡ìÉ½½´°½¹ÑÉ…Ğ°‘…Ñ„°‰…¹­%¹™¼°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞ±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ€ô•Ñ1…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁÑ½É½¹ÑÉ…Ğ¡‘…Ñ„°É½½´¹¥°½¹ÑÉ…Ğ¹¥¤ì(€½¹ÍĞµ•Ñ•É±•ÑÉ¥=±€ô±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ(€€€€ü•Ñ±•ÑÉ¥9•Ü¡±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ¤(€€€€è•Ñ5½¹Ñ¡±åMÑ…ÉÑ5•Ñ•È¡É½½´°½¹ÑÉ…Ğ°¹Õ±°°€•±•ÑÉ¥=±œ¤ì(€½¹ÍĞµ•Ñ•É]…Ñ•É=±€ô±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ(€€€€ü•Ñ]…Ñ•É9•Ü¡±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ¤(€€€€è•Ñ5½¹Ñ¡±åMÑ…ÉÑ5•Ñ•È¡É½½´°½¹ÑÉ…Ğ°¹Õ±°°€İ…Ñ•É=±œ¤ì(€½¹ÍĞµ•Ñ•ÉM½ÕÉ•Q•áĞ€ô±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ(€€€€ü3†ê•äÓ†î¬Á¡§†êıÔÑ£…¹œ€‘í±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ¹µ½¹Ñ¡ô†î„@‘í±…Ñ•ÍÑ5½¹Ñ¡±åI••¥ÁĞ¹É½½µ%‘ôèƒE§†î¸€‘í™½Éµ…Ñ1½…±•9Õµ‰•È¡µ•Ñ•É±•ÑÉ¥=±¥ô°»Ã†îmŒ€‘í™½Éµ…Ñ1½…±•9Õµ‰•È¡µ•Ñ•É]…Ñ•É=±¥ô¹€(€€€€è€¡•Ñ½¹ÑÉ…Ñ5•Ñ•ÉMÑ…ÉĞ¡½¹ÑÉ…Ğ°€•±•ÑÉ¥=±œ¤€„ôô¹Õ±°ñğ•Ñ½¹ÑÉ…Ñ5•Ñ•ÉMÑ…ÉĞ¡½¹ÑÉ…Ğ°€İ…Ñ•É=±œ¤€„ôô¹Õ±°¤(€€€€€€ü#†îÀƒG†îM¹œÌ£†î$Ï†îDƒG†êÔÉ§©¹œèƒE§†î¸€‘í™½Éµ…Ñ1½…±•9Õµ‰•È¡µ•Ñ•É±•ÑÉ¥=±¥ô°»Ã†îmŒ€‘í™½Éµ…Ñ1½…±•9Õµ‰•È¡µ•Ñ•É]…Ñ•É=±¥ô¹€(€€€€€€è€£Á„ÌÁ¡§†êıÔÑ£…¹œÑËÃ†îmŒƒGÌ°£†îÑ£†îE¹œ“å¹œ£†î$Ï†îDƒE…¹œ³ÁÔÑÉ½¹œÁ£É¹œ¸œì(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡ì(€€€…ÑÕ…±¹‘…Ñ”è¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹ÍÁ±¥Ğ Pœ¥lÁt°(€€€Í•ÑÑ±•µ•¹Ñ5½‘”è€½™™Í•Ñ}‘•Á½Í¥Ğœ°(€€€•±•ÑÉ¥9•Üèµ•Ñ•É±•ÑÉ¥=±°(€€€İ…Ñ•É9•Üèµ•Ñ•É]…Ñ•É=±°(€€€Õ¹Á…¥‘I•¹Ğè€À°(€€€±•…¹¥¹•”è€ÄÀÀÀÀÀ°(€€€‘…µ…••”è€À°(€€€½Ñ¡•É•”è€À°(€€€É•™Õ¹‘	…¹­9…µ”è€œœ°(€€€É•™Õ¹‘	…¹­½Õ¹Ğè€œœ°(€€€É•™Õ¹‘	…¹­=İ¹•Èè€œœ°(€€€É•™Õ¹‘EÉ%µ…•UÉ°è€œœ°(€€€¹½Ñ”è€œœ(€ô¤ì((€½¹ÍĞÁÉ¥µ…Éå5•µ‰•ÉÍ¡¥À€ô€¡‘…Ñ„¹µ•µ‰•ÉÍ¡¥ÁÌñğmt¤¹™¥¹¡´€ôø´¹½¹ÑÉ…Ñ%€ôôô½¹ÑÉ…Ğ¹¥€˜˜´¹É½±”€ôôô€ÁÉ¥µ…Éäœ¤ì(€½¹ÍĞÑ•¹…¹Ğ€ôÁÉ¥µ…Éå5•µ‰•ÉÍ¡¥À€ü€¡‘…Ñ„¹Ñ•¹…¹ÑÌñğmt¤¹™¥¹¡Ğ€ôøĞ¹¥€ôôôÁÉ¥µ…Éå5•µ‰•ÉÍ¡¥À¹Ñ•¹…¹Ñ%¤€èì¹…µ”è€8½œôì(€½¹ÍĞÍ•ÑÑ±•µ•¹Ñ5•µ‰•ÉÌ€ô€¡‘…Ñ„¹µ•µ‰•ÉÍ¡¥ÁÌñğmt¤(€€€€¹™¥±Ñ•È¡´€ôø´¹½¹ÑÉ…Ñ%€ôôô½¹ÑÉ…Ğ¹¥¤(€€€€¹µ…À¡´€ôø€¡ì€¸¸¹´°Ñ•¹…¹Ğè€¡‘…Ñ„¹Ñ•¹…¹ÑÌñğmt¤¹™¥¹¡Ğ€ôøĞ¹¥€ôôô´¹Ñ•¹…¹Ñ%¤ô¤¤(€€€€¹™¥±Ñ•È¡´€ôø´¹Ñ•¹…¹Ğ¤ì(€½¹ÍĞ™¥¹•ÉÁÉ¥¹ÑI•µ½Ù…±1¥ÍĞ€ôÍ•ÑÑ±•µ•¹Ñ5•µ‰•ÉÌ¹™¥±Ñ•È¡´€ôø´¹Ñ•¹…¹Ğ¹™¥¹•ÉÁÉ¥¹Ñ½‘”¤ì((€€¼¼1½¥ŒÓµ¹ Ñ¿…¸É•…±Ñ¥µ”(€½¹ÍĞ•±•ÑÉ¥=±€ô9Õµ‰•È¡µ•Ñ•É±•ÑÉ¥=±ñğ€À¤ì(€½¹ÍĞİ…Ñ•É=±€ô9Õµ‰•È¡µ•Ñ•É]…Ñ•É=±ñğ€À¤ì(€€(€½¹ÍĞ•±•ÑÉ¥UÍ•€ô5…Ñ ¹µ…à À°9Õµ‰•È¡™½É´¹•±•ÑÉ¥9•Ü¤€´•±•ÑÉ¥=±¤ì(€½¹ÍĞİ…Ñ•ÉUÍ•€ô5…Ñ ¹µ…à À°9Õµ‰•È¡™½É´¹İ…Ñ•É9•Ü¤€´İ…Ñ•É=±¤ì(€½¹ÍĞ•±•ÑÉ¥µ½Õ¹Ğ€ô•±•ÑÉ¥UÍ•€¨9Õµ‰•È¡É½½´¹•±•ÑÉ¥AÉ¥”ñğ€ÌàÀÀ¤ì(€½¹ÍĞİ…Ñ•Éµ½Õ¹Ğ€ôİ…Ñ•ÉUÍ•€¨9Õµ‰•È¡É½½´¹İ…Ñ•ÉAÉ¥”ñğ€ÌÈÀÀÀ¤ì(€½¹ÍĞ•¹‘…Ñ”€ô¹•Ü…Ñ”¡™½É´¹…ÑÕ…±¹‘…Ñ”¤ì(€½¹ÍĞÉ½½µ¡…É•…åÌ€ô9Õµ‰•È¹¥Í9…8¡•¹‘…Ñ”¹•ÑQ¥µ” ¤¤€ü€À€è•¹‘…Ñ”¹•Ñ…Ñ” ¤ì(€½¹ÍĞ‰¥±±¥¹5½¹Ñ¡…åÌ€ô9Õµ‰•È¹¥Í9…8¡•¹‘…Ñ”¹•ÑQ¥µ” ¤¤€ü€ÌÀ€è¹•Ü…Ñ”¡•¹‘…Ñ”¹•ÑÕ±±e•…È ¤°•¹‘…Ñ”¹•Ñ5½¹Ñ  ¤€¬€Ä°€À¤¹•Ñ…Ñ” ¤ì(€½¹ÍĞµ½¹Ñ¡±åI•¹Ğ€ô9Õµ‰•È¡½¹ÑÉ…Ğ¹É•¹ĞñğÉ½½´¹É•¹Ğñğ€À¤ì(€½¹ÍĞ½ÕÁ…¹Ñ½Õ¹Ğ€ô•Ñ½¹ÑÉ…Ñ=ÕÁ…¹Ñ½Õ¹Ğ¡‘…Ñ„°½¹ÑÉ…Ğ¤ì(€½¹ÍĞµ½¹Ñ¡±å¥á•‘M•ÉÙ¥•Ì€ô™¥á•‘M•ÉÙ¥•Q½Ñ…°¡É½½´°½ÕÁ…¹Ñ½Õ¹Ğ¤ì(€½¹ÍĞ‘…¥±åI•¹Ğ€ôµ½¹Ñ¡±åI•¹Ğ€¼‰¥±±¥¹5½¹Ñ¡…åÌì(€½¹ÍĞ‘…¥±å¥á•‘M•ÉÙ¥•Ì€ôµ½¹Ñ¡±å¥á•‘M•ÉÙ¥•Ì€¼‰¥±±¥¹5½¹Ñ¡…åÌì(€½¹ÍĞÉ½ÍÍAÉ½É…Ñ•‘I•¹Ğ€ô5…Ñ ¹É½Õ¹¡‘…¥±åI•¹Ğ€¨É½½µ¡…É•…åÌ¤ì(€½¹ÍĞÉ½ÍÍAÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì€ô5…Ñ ¹É½Õ¹¡‘…¥±å¥á•‘M•ÉÙ¥•Ì€¨É½½µ¡…É•…åÌ¤ì((€½¹ÍĞ‘•Á½Í¥Ğ€ô9Õµ‰•È¡½¹ÑÉ…Ğ¹‘•Á½Í¥Ğñğ€À¤ì(€½¹ÍĞ¥Í=™™Í•Ñ•Á½Í¥Ğ€ô™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€½™™Í•Ñ}‘•Á½Í¥Ğœì(€½¹ÍĞ¥ÍA…åM•Á…É…Ñ•±ä€ô™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€Á…å}Í•Á…É…Ñ•±äœì(€½¹ÍĞ¥ÍAÉ•Á…¥‘5½¹Ñ €ô™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€ÁÉ•Á…¥‘}µ½¹Ñ¡}É•™Õ¹‘}‘•Á½Í¥Ğœì(€½¹ÍĞ¥Í½É™•¥Ñ•Á½Í¥Ğ€ô™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€™½É™•¥Ñ}‘•Á½Í¥Ğœì(€½¹ÍĞÁÉ½É…Ñ•‘I•¹Ğ€ô¥ÍAÉ•Á…¥‘5½¹Ñ €ü€À€èÉ½ÍÍAÉ½É…Ñ•‘I•¹Ğì(€½¹ÍĞÁÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì€ô¥ÍAÉ•Á…¥‘5½¹Ñ €ü€À€èÉ½ÍÍAÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ìì(€½¹ÍĞÁÉ•Á…¥‘I•¹Ñ½Ù•É•€ô¥ÍAÉ•Á…¥‘5½¹Ñ €üÉ½ÍÍAÉ½É…Ñ•‘I•¹Ğ€è€Àì(€½¹ÍĞÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•Í½Ù•É•€ô¥ÍAÉ•Á…¥‘5½¹Ñ €üÉ½ÍÍAÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì€è€Àì(€½¹ÍĞÁÉ•Á…¥‘I•¹ÑA…¥€ô¥ÍAÉ•Á…¥‘5½¹Ñ €üµ½¹Ñ¡±åI•¹Ğ€è€Àì(€½¹ÍĞÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•ÍA…¥€ô¥ÍAÉ•Á…¥‘5½¹Ñ €üµ½¹Ñ¡±å¥á•‘M•ÉÙ¥•Ì€è€Àì(€½¹ÍĞÁÉ•Á…¥‘U¹ÕÍ•‘I•¹ÑI•™Õ¹€ô¥ÍAÉ•Á…¥‘5½¹Ñ €ü5…Ñ ¹µ…à À°µ½¹Ñ¡±åI•¹Ğ€´É½ÍÍAÉ½É…Ñ•‘I•¹Ğ¤€è€Àì(€½¹ÍĞÁÉ•Á…¥‘U¹ÕÍ•‘M•ÉÙ¥•ÍI•™Õ¹€ô¥ÍAÉ•Á…¥‘5½¹Ñ €ü5…Ñ ¹µ…à À°µ½¹Ñ¡±å¥á•‘M•ÉÙ¥•Ì€´É½ÍÍAÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì¤€è€Àì(€½¹ÍĞÁÉ•Á…¥‘U¹ÕÍ•‘I•™Õ¹€ôÁÉ•Á…¥‘U¹ÕÍ•‘I•¹ÑI•™Õ¹€¬ÁÉ•Á…¥‘U¹ÕÍ•‘M•ÉÙ¥•ÍI•™Õ¹ì((€½¹ÍĞÑ½Ñ…±%¹ÕÉÉ•€ôÁÉ½É…Ñ•‘I•¹Ğ€¬ÁÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì€¬•±•ÑÉ¥µ½Õ¹Ğ€¬İ…Ñ•Éµ½Õ¹Ğ€¬9Õµ‰•È¡™½É´¹Õ¹Á…¥‘I•¹Ğ¤€¬(€€€€€€€€€€€€€€€€€€€€€€€9Õµ‰•È¡™½É´¹±•…¹¥¹•”¤€¬9Õµ‰•È¡™½É´¹‘…µ…••”¤€¬9Õµ‰•È¡™½É´¹½Ñ¡•É•”¤ì(€€(€½¹ÍĞ‘•Á½Í¥ÑUÍ•€ô¥Í=™™Í•Ñ•Á½Í¥Ğ€ü5…Ñ ¹µ¥¸¡‘•Á½Í¥Ğ°Ñ½Ñ…±%¹ÕÉÉ•¤€è€Àì(€½¹ÍĞ‘•Á½Í¥Ñ½É™•¥Ñ•€ô¥Í½É™•¥Ñ•Á½Í¥Ğ€ü‘•Á½Í¥Ğ€è€Àì(€½¹ÍĞµÕÍÑ½±±•Ğ€ô€¡¥ÍA…åM•Á…É…Ñ•±äñğ¥ÍAÉ•Á…¥‘5½¹Ñ ñğ¥Í½É™•¥Ñ•Á½Í¥Ğ¤€üÑ½Ñ…±%¹ÕÉÉ•€è5…Ñ ¹µ…à À°Ñ½Ñ…±%¹ÕÉÉ•€´‘•Á½Í¥Ğ¤ì(€½¹ÍĞµÕÍÑI•™Õ¹€ô¥ÍAÉ•Á…¥‘5½¹Ñ €ü‘•Á½Í¥Ğ€¬ÁÉ•Á…¥‘U¹ÕÍ•‘I•™Õ¹€è¥ÍA…åM•Á…É…Ñ•±ä€ü‘•Á½Í¥Ğ€è¥Í=™™Í•Ñ•Á½Í¥Ğ€ü5…Ñ ¹µ…à À°‘•Á½Í¥Ğ€´Ñ½Ñ…±%¹ÕÉÉ•¤€è€Àì(€½¹ÍĞ¥ÍI•™Õ¹€ôµÕÍÑI•™Õ¹€ø€Àì(€½¹ÍĞ¥Í•‰Ğ€ôµÕÍÑ½±±•Ğ€ø€Àì(€½¹ÍĞÍ•ÑÑ±•µ•¹ÑQÉ…¹Í™•É½¹Ñ•¹Ğ€ô@‘íÉ½½´¹¥‘ôQIA!=9€‘í™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡™½É´¹…ÑÕ…±¹‘…Ñ”°€œœ¤¹É•Á±…” ½p¼½œ°€œœ¥õ€ì(€½¹ÍĞÍ•ÑÑ±•µ•¹ÑEÉUÉ°€ô‰Õ¥±‘A…åµ•¹ÑEÉUÉ°¡‰…¹­%¹™¼°µÕÍÑ½±±•Ğ°Í•ÑÑ±•µ•¹ÑQÉ…¹Í™•É½¹Ñ•¹Ğ¤ì(€½¹ÍĞ½ÁåM•ÑÑ±•µ•¹ÑQÉ…¹Í™•È€ô€ ¤€ôøì(€€€½¹ÍĞÑ•áĞ€ô€‘í‰…¹­%¹™¼ü¹‰…¹­9…µ”ñğ€œõq¹MQ,è€‘í‰…¹­%¹™¼ü¹…½Õ¹Ñ9¼ñğ€œõq¹£†îœQ,è€‘í‰…¹­%¹™¼ü¹…½Õ¹Ñ9…µ”ñğ€œõq¹O†îDÑ§†î¸è€‘í™½Éµ…Ñ5½¹•ä¡µÕÍÑ½±±•Ğ¥õq¹;†îe¤‘Õ¹œè€‘íÍ•ÑÑ±•µ•¹ÑQÉ…¹Í™•É½¹Ñ•¹Ñõ€ì(€€€¹…Ù¥…Ñ½È¹±¥Á‰½…É¹İÉ¥Ñ•Q•áĞ¡Ñ•áĞ¤ì(€€€…±•ÉĞ ŸCŒ½ÁäÑ£Ñ¹œÑ¥¸¡Õç†î¸­¡¿†ê¸Ó†ê•ĞÑ¿…¸¸œ¤ì(€ôì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œÄÀÀÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÈáÁàœõôùS†ê•ĞÑ¿…¸€¼QË†êŒÁ£É¹œƒŠˆA£É¹œíÉ½½´¹¥‘ôğ½ Èø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆù£†îEĞÑ¹œ»†îŒ°ƒE§†î¸»Ã†îmŒ°Á£´Á£…ĞÍ¥¹ Û€¡¿¸†î5Œğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø((€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈˆø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í•ÑÑ±•µ•¹ĞµÉ¥ˆø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í•ÑÑ±•µ•¹Ğµ™½É´ˆø(€€€€€€€€€€€€€ì¼¨9£Í´€ÄèQ£Ñ¹œÑ¥¸„‹†ê¸€¨½ô(€€€€€€€€€€€€€€ñÍ•Ñ¥½¸ø(€€€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰™½É´µÍ•Ñ¥½¸µÑ¥Ñ±”ˆûÂ~NQ£Ñ¹œÑ¥¸ÑË†êŒÁ£É¹œğ½ Ìø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ù9ŸäÑË†êŒÁ£É¹œ€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹…ÑÕ…±¹‘…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°…ÑÕ…±¹‘…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ù9ŸÃ†îu¤ƒG†î¥¹œÓ©¸€ñ¥¹ÁÕĞÙ…±Õ”õíÑ•¹…¹Ğ¹¹…µ•ôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜Å˜Õ˜äœõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ùO†îD¹ŸäÏ†î´“†î•¹œ€ñ¥¹ÁÕĞÙ…±Õ”õí€‘íÉ½½µ¡…É•…åÍô¹ŸåôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜Å˜Õ˜äœ°™½¹Ñ]•¥¡Ğè€‰½±œõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ùí¥ÍAÉ•Á…¥‘5½¹Ñ €ü€Q§†î¸Á£É¹œ†ê¸Ñ¡Ôœ€è€Q§†î¸Á£É¹œÁ£…ĞÍ¥¹ ô€ñ¥¹ÁÕĞÙ…±Õ”õí™½Éµ…Ñ5½¹•ä¡ÁÉ½É…Ñ•‘I•¹Ğ¥ôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜Å˜Õ˜äœ°™½¹Ñ]•¥¡Ğè€‰½±œõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ùí¥ÍAÉ•Á…¥‘5½¹Ñ €ü€†î- Û†î”†ê¸Ñ¡Ôœ€è€†î- Û†î”Á£…ĞÍ¥¹ ô€ñ¥¹ÁÕĞÙ…±Õ”õí™½Éµ…Ñ5½¹•ä¡ÁÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì¥ôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜Å˜Õ˜äœ°™½¹Ñ]•¥¡Ğè€‰½±œõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœ°µ…É¥¸è€Àõôø(€€€€€€€€€€€€€€€€€€€Sµ¹ Ó†î¬¹Ÿä€ÀÄƒG†êı¸¹Ÿäí™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡™½É´¹…ÑÕ…±¹‘…Ñ”¥ô°Ÿ†îM´†êŒ¹ŸäÑË†êŒÁ£É¹œèí™½Éµ…Ñ5½¹•ä¡µ½¹Ñ¡±åI•¹Ğ¥ô€¼í‰¥±±¥¹5½¹Ñ¡…åÍôàíÉ½½µ¡…É•…åÍô¹Ÿä€ôí™½Éµ…Ñ5½¹•ä¡É½ÍÍAÉ½É…Ñ•‘I•¹Ğ¥ô(€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœ°µ…É¥¸è€Àõôø(€€€€€€€€€€€€€€€€€€€†î- Û†î”†îDƒG†î-¹ èí™½Éµ…Ñ5½¹•ä¡µ½¹Ñ¡±å¥á•‘M•ÉÙ¥•Ì¥ô½Ñ£…¹œ€¡í½ÕÁ…¹Ñ½Õ¹Ñô¹ŸÃ†îu¤¤€¼í‰¥±±¥¹5½¹Ñ¡…åÍôàíÉ½½µ¡…É•…åÍô¹Ÿä€ôí™½Éµ…Ñ5½¹•ä¡É½ÍÍAÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì¥ô(€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€€í¥ÍAÉ•Á…¥‘5½¹Ñ €˜˜€ (€€€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°ˆÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœ°µ…É¥¸è€À°½±½Èè€Ù…È ´µÍÕ•ÍÌ¤œ°™½¹Ñ]•¥¡Ğè€ÜÀÀõôø(€€€€€€€€€€€€€€€€€€€€€ƒCŒÑ¡ÔÑËÃ†îmŒí™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘I•¹ÑA…¥€¬ÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•ÍA…¥¥ô¸A£†ê¸ƒGŒÏ†î´“†î•¹œƒG†êı¸¹ŸäÑË†êŒÁ£É¹œ³€í™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘I•¹Ñ½Ù•É•€¬ÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•Í½Ù•É•¥ôì¡¿¸³†ê…¤Á£†ê¸£Á„Ï†î´“†î•¹œí™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘U¹ÕÍ•‘I•™Õ¹¥ô¸(€€€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€ÈœõôùQ§†î¸†î5ŒƒE…¹œ§†î¼€ñ¥¹ÁÕĞÙ…±Õ”õí™½Éµ…Ñ5½¹•ä¡‘•Á½Í¥Ğ¥ôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜Å˜Õ˜äœ°™½¹Ñ]•¥¡Ğè€‰½±œõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø((€€€€€€€€€€€€€€ñÍ•Ñ¥½¸ø(€€€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰™½É´µÍ•Ñ¥½¸µÑ¥Ñ±”ˆûÂ~JÌ… ã†î´³ôÑ¹œ»†îŒ€˜Ñ§†î¸†î5Œğ½ Ìø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…¬ˆÍÑå±”õíì…Àè€œÄÁÁàœõôø(€€€€€€€€€€€€€€€€€€ñ±…‰•°±…ÍÍ9…µ”ô‰½ÁÑ¥½¸µÉ½Üˆø(€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰É…‘¥¼ˆ¹…µ”ô‰Í•ÑÑ±•µ•¹Ñ5½‘”ˆ¡•­•õí™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€½™™Í•Ñ}‘•Á½Í¥Ğô½¹¡…¹”õì ¤€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Í•ÑÑ±•µ•¹Ñ5½‘”è€½™™Í•Ñ}‘•Á½Í¥Ğô¥ô€¼ø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸øñˆûC†îE¤ÑË†î¬Û¼†î5Œğ½ˆøñÍµ…±°ûA§†î¸»Ã†îmŒ°Á£´Á£…ĞÍ¥¹ ƒGÃ†îŒÑË†î¬Û¼Ñ§†î¸†î5Œì£†î$¡¿¸Á£†ê¸†î5ŒÉ¸³†ê…¤¸ğ½Íµ…±°øğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°±…ÍÍ9…µ”ô‰½ÁÑ¥½¸µÉ½Üˆø(€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰É…‘¥¼ˆ¹…µ”ô‰Í•ÑÑ±•µ•¹Ñ5½‘”ˆ¡•­•õí™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€Á…å}Í•Á…É…Ñ•±äô½¹¡…¹”õì ¤€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Í•ÑÑ±•µ•¹Ñ5½‘”è€Á…å}Í•Á…É…Ñ•±äô¥ô€¼ø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸øñˆù-£… Ñ¡…¹ Ñ¿…¸ƒE§†î¸»Ã†îmŒ½Á£´É§©¹œ°¡¿¸¹Õç©¸†î5Œğ½ˆøñÍµ…±°ùS†ê…¼­¡¿†ê¸­£… †ê¸ÑË†êŒ¡¼Á£…ĞÍ¥¹ Û€¡¿¸³†ê…¤Ñ¿¸‹†îdÑ§†î¸†î5Œ¸ğ½Íµ…±°øğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°±…ÍÍ9…µ”ô‰½ÁÑ¥½¸µÉ½Üˆø(€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰É…‘¥¼ˆ¹…µ”ô‰Í•ÑÑ±•µ•¹Ñ5½‘”ˆ¡•­•õí™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€ÁÉ•Á…¥‘}µ½¹Ñ¡}É•™Õ¹‘}‘•Á½Í¥Ğô½¹¡…¹”õì ¤€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Í•ÑÑ±•µ•¹Ñ5½‘”è€ÁÉ•Á…¥‘}µ½¹Ñ¡}É•™Õ¹‘}‘•Á½Í¥Ğô¥ô€¼ø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸øñˆûCŒÑ¡…¹ Ñ¿…¸Ñ§†î¸¹£€†êŒÑ£…¹œ°ÑË†êŒÏ†îm´ğ½ˆøñÍµ…±°ù!¿¸³†ê…¤Ñ§†î¸Á£É¹œ½“†î- Û†î”†î„¹Ÿä£Á„Ï†î´“†î•¹œì£†î$Ñ¡ÔƒE§†î¸»Ã†îmŒ½Á£´Á£…ĞÍ¥¹ Û€¡¿¸ÑË†êŒ†î5Œ¸ğ½Íµ…±°øğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°±…ÍÍ9…µ”ô‰½ÁÑ¥½¸µÉ½Ü‘…¹•Èˆø(€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰É…‘¥¼ˆ¹…µ”ô‰Í•ÑÑ±•µ•¹Ñ5½‘”ˆ¡•­•õí™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€™½É™•¥Ñ}‘•Á½Í¥Ğô½¹¡…¹”õì ¤€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Í•ÑÑ±•µ•¹Ñ5½‘”è€™½É™•¥Ñ}‘•Á½Í¥Ğô¥ô€¼ø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸øñˆùQË†êŒÏ†îm´£†îÀƒG†îM¹œ°­£Ñ¹œ¡¿¸†î5Œğ½ˆøñÍµ…±°ù†î5ŒƒGÃ†îŒ‹äÑ¹œ»†îŒÑËÃ†îmŒìÁ£†ê¸†î5ŒÉ¸³†ê…¤¡¤¹£†êµ¸§†î¼³†ê…¤‘¼­£… ÑË†êŒÁ£É¹œÑËÃ†îmŒ£†ê…¸¸ğ½Íµ…±°øğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø((€€€€€€€€€€€€€íµÕÍÑI•™Õ¹€ø€À€˜˜€…¥Í½É™•¥Ñ•Á½Í¥Ğ€˜˜€ (€€€€€€€€€€€€€€€€ñÍ•Ñ¥½¸ø(€€€€€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰™½É´µÍ•Ñ¥½¸µÑ¥Ñ±”ˆûÂ~>˜Q£Ñ¹œÑ¥¸¡¿¸†î5Œ¡¼­£… ğ½ Ìø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€€€€€€€ñ±…‰•°ù9Ÿ‰¸£¹œ¹ŸÃ†îu¤Ñ¡×¨(€€€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹É•™Õ¹‘	…¹­9…µ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°É•™Õ¹‘	…¹­9…µ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰YèY¥•Ñ½µ‰…¹¬°	%X¸¸¸ˆ€¼ø(€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€€ñ±…‰•°ùO†îDÓ¤­¡¿†ê¸(€€€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹É•™Õ¹‘	…¹­½Õ¹Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°É•™Õ¹‘	…¹­½Õ¹Ğè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰9£†êµÀMQ,¹£†êµ¸¡¿¸†î5Œˆ€¼ø(€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù£†îœÓ¤­¡¿†ê¸(€€€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹É•™Õ¹‘	…¹­=İ¹•ÈñğÑ•¹…¹Ğ¹¹…µ”ñğ€œô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°É•™Õ¹‘	…¹­=İ¹•Èè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•ÈõíÑ•¹…¹Ğ¹¹…µ”ñğ€S©¸£†îœÓ¤­¡¿†ê¸ô€¼ø(€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù1¥¹¬ƒ†ê¹ EH†î„¹ŸÃ†îu¤Ñ¡×¨(€€€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹É•™Õ¹‘EÉ%µ…•UÉ±ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°É•™Õ¹‘EÉ%µ…•UÉ°è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰…¸±¥¹¬ƒ†ê¹ EHƒG†î³ÁÔÛ¼Á¡§†êıÔ¡¤¡¿¸†î5Œˆ€¼ø(€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœ°µ…É¥¸è€Àõôø(€€€€€€€€€€€€€€€€€€€€€-¡¤¡¿¸Ó†ê•ĞÑË†êŒÁ£É¹œ°£†îÑ£†îE¹œÓ†îÄÓ†ê…¼Á¡§†êıÔ¡¤¡¿¸†î5Œí™½Éµ…Ñ5½¹•ä¡µÕÍÑI•™Õ¹¥ôƒG†îã…Œ¹£†êµ¸£†îœ¹£€ƒGŒ¡Õç†î¸³†ê…¤Ñ§†î¸¡¼­£… ¸(€€€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø(€€€€€€€€€€€€€€¥ô((€€€€€€€€€€€€€ì¼¨9£Í´€ÈèƒA§†î¸»Ã†îmŒ€¨½ô(€€€€€€€€€€€€€€ñÍ•Ñ¥½¸ø(€€€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰™½É´µÍ•Ñ¥½¸µÑ¥Ñ±”ˆûŠj„£†î$Ï†îDƒE§†î¸»Ã†îmŒğ½ Ìø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœ°µ…É¥¸è€Àõôùíµ•Ñ•ÉM½ÕÉ•Q•áÑôğ½Àø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ûA§†î¸è£†î$Ï†îD¤€ñ¥¹ÁÕĞÙ…±Õ”õí•±•ÑÉ¥=±‘ôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜Å˜Õ˜äœõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ù£†î$Ï†îD·†îm¤€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹•±•ÑÉ¥9•İô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°•±•ÑÉ¥9•Üè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ù;Ã†îmŒè£†î$Ï†îD¤€ñ¥¹ÁÕĞÙ…±Õ”õíİ…Ñ•É=±‘ôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜Å˜Õ˜äœõô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ù£†î$Ï†îD·†îm¤€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹İ…Ñ•É9•İô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°İ…Ñ•É9•Üè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ‘¥ØÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœ°‘¥ÍÁ±…äè€™±•àœ°…Àè€œÈÁÁàœ°™½¹ÑM¥é”è€œÄÍÁàœ°‰…­É½Õ¹è€œ˜á™…™Œœ°Á…‘‘¥¹œè€œÄÉÁàœ°‰½É‘•ÉI…‘¥ÕÌè€œÄÉÁàœõôø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ûŠj„Q§©ÔÑ£†î”è€ñˆùí•±•ÑÉ¥UÍ•‘ô­] ğ½ˆø€ô€ñˆùí™½Éµ…Ñ5½¹•ä¡•±•ÑÉ¥µ½Õ¹Ğ¥ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ûÂ~JœQ§©ÔÑ£†î”è€ñˆùíİ…Ñ•ÉUÍ•‘ô·
+Ìğ½ˆø€ô€ñˆùí™½Éµ…Ñ5½¹•ä¡İ…Ñ•Éµ½Õ¹Ğ¥ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø((€€€€€€€€€€€€€ì¼¨9£Í´€ÌèA£´Á£…ĞÍ¥¹ €¨½ô(€€€€€€€€€€€€€€ñÍ•Ñ¥½¸ø(€€€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰™½É´µÍ•Ñ¥½¸µÑ¥Ñ±”ˆûÂ~JàA£´Á£…ĞÍ¥¹ €˜¡¤£èğ½ Ìø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ùQ§†î¸Á£É¹œ½Á£´É¸»†îŒ­£…Œ€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹Õ¹Á…¥‘I•¹Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Õ¹Á…¥‘I•¹Ğè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ùA£´Û†îÍ¥¹ ÑË†êŒÁ£É¹œ€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹±•…¹¥¹••ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°±•…¹¥¹•”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ù¡¤Á£´£À£†î=¹œ€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹‘…µ…•••ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‘…µ…••”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ùA£´­£…Œ€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹½Ñ¡•É••ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°½Ñ¡•É•”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù¡¤£èÓ†ê•ĞÑ¿…¸€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰9£†êµÀ¡¤Ñ§†êıĞ…Œ­¡¿†ê¸£À£†î=¹œ¡¿†êİŒ³ô‘¼Á£´­£…Œ¸¸¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í•ÑÑ±•µ•¹ĞµÍÕµµ…ÉäµÍ¥‘”ˆø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…Éäµ…Éˆø(€€€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰ÍÕµµ…Éäµ±…‰•°µµ…¥¸ˆù/†êıĞÅ×†êŒÓ†ê•ĞÑ¿…¸ğ½ Ìø(€€€€€€€€€€€€€€€€(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùí¥ÍAÉ•Á…¥‘5½¹Ñ €ü€Q§†î¸Á£É¹œ†ê¸Ñ¡Ôœ€è€Q§†î¸Á£É¹œÁ£…ĞÍ¥¹ ô€¡íÉ½½µ¡…É•…åÍô¹Ÿä¤ğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡ÁÉ½É…Ñ•‘I•¹Ğ¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùí¥ÍAÉ•Á…¥‘5½¹Ñ €ü€†î- Û†î”†ê¸Ñ¡Ôœ€è€†î- Û†î”Á£…ĞÍ¥¹ ô€¡íÉ½½µ¡…É•…åÍô¹Ÿä¤ğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡ÁÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€í¥ÍAÉ•Á…¥‘5½¹Ñ €˜˜€ (€€€€€€€€€€€€€€€€€€ğø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùQ§†î¸Á£É¹œƒGŒÑ¡ÔÑ£…¹œ»äğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘I•¹ÑA…¥¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ù†î- Û†î”ƒGŒÑ¡ÔÑ£…¹œ»äğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•ÍA…¥¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùQ§†î¸Á£É¹œƒGŒÏ†î´“†î•¹œğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µÑ•áĞµµÕÑ•¤œõôø´í™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘I•¹Ñ½Ù•É•¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ù†î- Û†î”ƒGŒÏ†î´“†î•¹œğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µÑ•áĞµµÕÑ•¤œõôø´í™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•Í½Ù•É•¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ù!¿¸Ñ§†î¸ÑË†êŒÑËÃ†îmŒ£Á„Ï†î´“†î•¹œğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µÍÕ•ÍÌ¤œõôùí™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘U¹ÕÍ•‘I•™Õ¹¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ¼ø(€€€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùQ§†î¸ƒE§†î¸ğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡•±•ÑÉ¥µ½Õ¹Ğ¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùQ§†î¸»Ã†îmŒğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡İ…Ñ•Éµ½Õ¹Ğ¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùA£´­£…Œğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡9Õµ‰•È¡™½É´¹Õ¹Á…¥‘I•¹Ğñğ€À¤€¬9Õµ‰•È¡™½É´¹±•…¹¥¹•”ñğ€À¤€¬9Õµ‰•È¡™½É´¹‘…µ…••”ñğ€À¤€¬9Õµ‰•È¡™½É´¹½Ñ¡•É•”ñğ€À¤¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùS†îU¹œÁ£…ĞÍ¥¹ ğ½ÍÁ…¸øñˆùí™½Éµ…Ñ5½¹•ä¡Ñ½Ñ…±%¹ÕÉÉ•¥ôğ½ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€í¥Í=™™Í•Ñ•Á½Í¥Ğ€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ùQ§†î¸†î5ŒƒG†îE¤ÑË†î¬ğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µÑ•áĞµµÕÑ•¤œõôø´í™½Éµ…Ñ5½¹•ä¡‘•Á½Í¥ÑUÍ•¥ôğ½ˆøğ½‘¥Øùô(€€€€€€€€€€€€€€€í¥Í½É™•¥Ñ•Á½Í¥Ğ€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ù†î5Œ§†î¼³†ê…¤‘¼ÑË†êŒÏ†îm´ğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µ‘…¹•È¤œõôùí™½Éµ…Ñ5½¹•ä¡‘•Á½Í¥Ñ½É™•¥Ñ•¥ôğ½ˆøğ½‘¥Øùô(€€€€€€€€€€€€€€€í¥ÍA…åM•Á…É…Ñ•±ä€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ù!¿¸¹Õç©¸†î5Œğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µÍÕ•ÍÌ¤œõôùí™½Éµ…Ñ5½¹•ä¡µÕÍÑI•™Õ¹¥ôğ½ˆøğ½‘¥Øùô(€€€€€€€€€€€€€€€í¥ÍAÉ•Á…¥‘5½¹Ñ €˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ù!¿¸†î5Œ€¬Ñ§†î¸ÑË†êŒÑËÃ†îmŒÉ¸³†ê…¤ğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µÍÕ•ÍÌ¤œõôùí™½Éµ…Ñ5½¹•ä¡µÕÍÑI•™Õ¹¥ôğ½ˆøğ½‘¥Øùô(€€€€€€€€€€€€€€€íµÕÍÑ½±±•Ğ€ø€À€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÉ½ÜˆøñÍÁ…¸ù-£… Ñ¡…¹ Ñ¿…¸Á£…ĞÍ¥¹ ğ½ÍÁ…¸øñˆÍÑå±”õíì½±½Èè€Ù…È ´µ‘…¹•È¤œõôùí™½Éµ…Ñ5½¹•ä¡µÕÍÑ½±±•Ğ¥ôğ½ˆøğ½‘¥Øùô(€€€€€€€€€€€€€€€€(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÕµµ…ÉäµÑ½Ñ…°ˆø(€€€€€€€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ô‰ÍÕµµ…Éäµ±…‰•°µµ…¥¸ˆùí¥Í½É™•¥Ñ•Á½Í¥Ğ€ü€-£… †ê¸Ñ¡…¹ Ñ¿…¸œ€è¥Í=™™Í•Ñ•Á½Í¥Ğ€ü€¡¥ÍI•™Õ¹€ü€O†îDÑ§†î¸¡¿¸­£… œ€è€-£… †ê¸ÑË†êŒÑ£©´œ¤€è¥ÍAÉ•Á…¥‘5½¹Ñ €ü€!¿¸†î5Œ€˜£†îEĞÁ£…ĞÍ¥¹ œ€è€!¿¸†î5Œ€˜Ñ¡ÔÁ£…ĞÍ¥¹ ôğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÕµµ…Éäµ…µ½Õ¹ĞˆÍÑå±”õíì½±½Èè¥ÍI•™Õ¹€ü€Ù…È ´µÍÕ•ÍÌ¤œ€è¥Í•‰Ğ€ü€Ù…È ´µ‘…¹•È¤œ€è€Ù…È ´µÑ•áĞµµ…¥¸¤œõôø(€€€€€€€€€€€€€€€€€€€í¥Í½É™•¥Ñ•Á½Í¥Ğ€ü™½Éµ…Ñ5½¹•ä¡µÕÍÑ½±±•Ğ¤€è¥Í=™™Í•Ñ•Á½Í¥Ğ€ü™½Éµ…Ñ5½¹•ä¡¥ÍI•™Õ¹€üµÕÍÑI•™Õ¹€èµÕÍÑ½±±•Ğ¤€è€‘í™½Éµ…Ñ5½¹•ä¡µÕÍÑI•™Õ¹¥ô€¼€‘í™½Éµ…Ñ5½¹•ä¡µÕÍÑ½±±•Ğ¥õô(€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€€€ñÀÍÑå±”õíì™½¹ÑM¥é”è€œÄÍÁàœ°™½¹Ñ]•¥¡Ğè€œÔÀÀœõôø(€€€€€€€€€€€€€€€€€€€í¥Í½É™•¥Ñ•Á½Í¥Ğ(€€€€€€€€€€€€€€€€€€€€€€ü€ŸŠjƒ¾â<-£… ÑË†êŒÏ†îm´£†îÀƒG†îM¹œè­£Ñ¹œ¡¿¸†î5Œ°Á£…ĞÍ¥¹ Û†ê­¸Ñ¡ÔÉ§©¹œœ(€€€€€€€€€€€€€€€€€€€€€€è¥Í=™™Í•Ñ•Á½Í¥Ğ(€€€€€€€€€€€€€€€€€€€€€€ü¥ÍI•™Õ¹€ü€ŸŠr †ê¸¡¿¸Á£†ê¸†î5ŒÉ¸³†ê…¤¡¼­£… œ€è¥Í•‰Ğ€ü€ŸŠjƒ¾â<-£… Ñ¡×¨†ê¸ƒGÍ¹œÑ£©´Ñ§†î¸Í…Ô­¡¤ÑË†î¬†î5Œœ€è€ŸŠrÑ¹œ»†îŒƒGŒƒGÃ†îŒÓ†ê•ĞÑ¿…¸ƒG†îœœ(€€€€€€€€€€€€€€€€€€€€€€è¥ÍAÉ•Á…¥‘5½¹Ñ (€€€€€€€€€€€€€€€€€€€€€€ü€ŸŠr -£… ƒGŒÑË†êŒÑËÃ†îmŒÑ£…¹œ»äè¡¿¸†î5ŒÛ€¡¿¸Ñ§†î¸Á£É¹œ½“†î- Û†î”£Á„Ï†î´“†î•¹œ°£†î$Ñ¡ÔƒE§†î¸»Ã†îmŒ½Á£´Á£…ĞÍ¥¹ œ(€€€€€€€€€€€€€€€€€€€€€€è€ŸŠr !¿¸Ñ¿¸‹†îd†î5Œ°ƒG†îM¹œÑ£†îu¤Ñ¡ÔÉ§©¹œƒE§†î¸»Ã†îmŒ½Á£´Á£…ĞÍ¥¹ ô(€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€€€íµÕÍÑ½±±•Ğ€ø€À€˜˜€ (€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í•ÑÑ±•µ•¹ĞµÅÈµ…Éˆø(€€€€€€€€€€€€€€€€€€€€ñ ĞùEH­£… ¡Õç†î¸­¡¿†ê¸ğ½ Ğø(€€€€€€€€€€€€€€€€€€€íÍ•ÑÑ±•µ•¹ÑEÉUÉ°€ü€ñ¥µœÍÉŒõíÍ•ÑÑ±•µ•¹ÑEÉUÉ±ô…±Ğô‰EHÓ†ê•ĞÑ¿…¸ˆ€¼ø€è€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆù£Á„†ê•Ô£±¹ ·ŒY¥•ÑEH¸ğ½Àùô(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…åµ•¹Ğµ‘•Ñ…¥±ÌµØĞˆø(€€€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆùO†îDÑ§†î¸ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆùí™½Éµ…Ñ5½¹•ä¡µÕÍÑ½±±•Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆù;†îe¤‘Õ¹œ,ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆÍÑå±”õíì½±½Èè€œŒÅ”ĞÁ…˜œõôùíÍ•ÑÑ±•µ•¹ÑQÉ…¹Í™•É½¹Ñ•¹Ñôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´İ¥‘”ˆ½¹±¥¬õí½ÁåM•ÑÑ±•µ•¹ÑQÉ…¹Í™•Éôù½Áä»†îe¤‘Õ¹œ,ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€¥ô((€€€€€€€€€€€€€€€íµÕÍÑI•™Õ¹€ø€À€˜˜€…¥Í½É™•¥Ñ•Á½Í¥Ğ€˜˜€ (€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í•ÑÑ±•µ•¹ĞµÅÈµ…Éˆø(€€€€€€€€€€€€€€€€€€€€ñ Ğùí¥ÍAÉ•Á…¥‘5½¹Ñ €ü€A¡§†êıÔ¡¤¡¿¸†î5Œ€˜Ñ§†î¸ÑË†êŒÑËÃ†îmŒÏ†êôÓ†ê…¼œ€è€A¡§†êıÔ¡¤¡¿¸†î5ŒÏ†êôÓ†ê…¼ôğ½ Ğø(€€€€€€€€€€€€€€€€€€€í™½É´¹É•™Õ¹‘EÉ%µ…•UÉ°€ü€ñ¥µœÍÉŒõí™½É´¹É•™Õ¹‘EÉ%µ…•UÉ±ô…±Ğô‰EH¹ŸÃ†îu¤Ñ¡×¨¹£†êµ¸¡¿¸†î5Œˆ€¼ø€è€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆùÌÑ£†î“…¸±¥¹¬EH¹ŸÃ†îu¤Ñ¡×¨ƒ†î|™½É´‹©¸ÑË…¤ƒG†î³ÁÔ¯¡´Á¡§†êıÔ¡¤¸ğ½Àùô(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…åµ•¹Ğµ‘•Ñ…¥±ÌµØĞˆø(€€€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆù9ŸÃ†îu¤¹£†êµ¸ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆùí™½É´¹É•™Õ¹‘	…¹­=İ¹•ÈñğÑ•¹…¹Ğ¹¹…µ”ñğ€-£… Ñ¡×¨ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆùO†îDÑ§†î¸¡¿¸ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆùí™½Éµ…Ñ5½¹•ä¡µÕÍÑI•™Õ¹¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€€í™½É´¹É•™Õ¹‘	…¹­½Õ¹Ğ€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆùMQ,ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆùí™½É´¹É•™Õ¹‘	…¹­½Õ¹Ñôğ½ÍÁ…¸øğ½‘¥Øùô(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€¥ô((€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ…É¹¥¹œµ‰½àˆø(€€€€€€€€€€€€€€€€€€ñˆù3ÁÔƒôÍ…Ô­¡¤¡¿¸Ó†ê•Ğèğ½ˆø(€€€€€€€€€€€€€€€€€€ñÕ°ø(€€€€€€€€€€€€€€€€€€€€ñ±¤ù#†îÀƒG†îM¹œÏ†êô¡Õç†î¸Í…¹œ€‹CŒ¯†êıĞÑ£éŒˆğ½±¤ø(€€€€€€€€€€€€€€€€€€€€ñ±¤ùA£É¹œíÉ½½´¹¥‘ôÏ†êôÑË†î|Û†îÑË†ê…¹œÑ£…¤ÑË†îE¹œğ½±¤ø(€€€€€€€€€€€€€€€€€€€€ñ±¤ù3†î- Ï†î´Ó†ê•ĞÑ¿…¸Ï†êôƒGÃ†îŒ³ÁÔ³†ê…¤ğ½±¤ø(€€€€€€€€€€€€€€€€€€€í™¥¹•ÉÁÉ¥¹ÑI•µ½Ù…±1¥ÍĞ¹±•¹Ñ €ø€À€˜˜€ñ±¤ù‘µ¥¸†ê¸ãÍ„Û‰¸Ñ…äèí™¥¹•ÉÁÉ¥¹ÑI•µ½Ù…±1¥ÍĞ¹µ…À¡´€ôø€‘í´¹Ñ•¹…¹Ğ¹¹…µ•ô€ ‘í´¹Ñ•¹…¹Ğ¹™¥¹•ÉÁÉ¥¹Ñ½‘•ô¥€¤¹©½¥¸ œ°€œ¥ôğ½±¤ùô(€€€€€€€€€€€€€€€€€€€í¥ÍAÉ•Á…¥‘5½¹Ñ €˜˜€ñ±¤ùQ§†î¸Á£É¹œ½“†î- Û†î”Ñ£…¹œ¡§†î¸Ó†ê…¤ƒGŒÑ¡…¹ Ñ¿…¸ÑËÃ†îmŒè£†îÑ£†îE¹œ¡¿¸³†ê…¤Á£†ê¸£Á„Ï†î´“†î•¹œí™½Éµ…Ñ5½¹•ä¡ÁÉ•Á…¥‘U¹ÕÍ•‘I•™Õ¹¥ôğ½±¤ùô(€€€€€€€€€€€€€€€€€€€í¥Í½É™•¥Ñ•Á½Í¥Ğ€˜˜€ñ±¤ùQ§†î¸†î5ŒÉ¸³†ê…¤ƒGÃ†îŒ¡¤¹£†êµ¸§†î¼³†ê…¤‘¼­£… ÑË†êŒÏ†îm´£†îÀƒG†îM¹œğ½±¤ùô(€€€€€€€€€€€€€€€€€€ğ½Õ°ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…¬ˆÍÑå±”õíì…Àè€œÄÉÁàœ°µ…É¥¹Q½Àè€…ÕÑ¼œõôø(€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸İ¥‘”ˆ½¹±¥¬õì ¤€ôøì(€€€€€€€€€€€€€€€€€€€¥˜€¡İ¥¹‘½Ü¹½¹™¥É´ c…Œ¹£†êµ¸¡¿¸Ó†ê•Ğ·†î5¤Ñ£†îœÓ†î•ŒÑË†êŒÁ£É¹œÛ€£†îEĞÑ¹œ»†îŒüœ¤¤ì(€€€€€€€€€€€€€€€€€€€€€½¹M…Ù”¡ì(€€€€€€€€€€€€€€€€€€€€€€€€¸¸¹™½É´°(€€€€€€€€€€€€€€€€€€€€€€€¥èÕ¥ µ½Ù•½ÕĞœ¤°(€€€€€€€€€€€€€€€€€€€€€€€Õ¹Á…¥‘I•¹Ğè9Õµ‰•È¡™½É´¹Õ¹Á…¥‘I•¹Ğñğ€À¤°(€€€€€€€€€€€€€€€€€€€€€€€µ½¹Ñ¡±åI•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€µ½¹Ñ¡±å¥á•‘M•ÉÙ¥•Ì°(€€€€€€€€€€€€€€€€€€€€€€€É½½µ¡…É•…åÌ°(€€€€€€€€€€€€€€€€€€€€€€€‰¥±±¥¹5½¹Ñ¡…åÌ°(€€€€€€€€€€€€€€€€€€€€€€€‘…¥±åI•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€‘…¥±å¥á•‘M•ÉÙ¥•Ì°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½É…Ñ•‘I•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì°(€€€€€€€€€€€€€€€€€€€€€€€É½ÍÍAÉ½É…Ñ•‘I•¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€É½ÍÍAÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…¥‘I•¹ÑA…¥°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•ÍA…¥°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…¥‘I•¹Ñ½Ù•É•°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•Í½Ù•É•°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…¥‘U¹ÕÍ•‘I•¹ÑI•™Õ¹°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…¥‘U¹ÕÍ•‘M•ÉÙ¥•ÍI•™Õ¹°(€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…¥‘U¹ÕÍ•‘I•™Õ¹°(€€€€€€€€€€€€€€€€€€€€€€€±•…¹¥¹•”è9Õµ‰•È¡™½É´¹±•…¹¥¹•”ñğ€À¤°(€€€€€€€€€€€€€€€€€€€€€€€‘…µ…••”è9Õµ‰•È¡™½É´¹‘…µ…••”ñğ€À¤°(€€€€€€€€€€€€€€€€€€€€€€€½Ñ¡•É•”è9Õµ‰•È¡™½É´¹½Ñ¡•É•”ñğ€À¤°(€€€€€€€€€€€€€€€€€€€€€€€•±•ÑÉ¥=±°(€€€€€€€€€€€€€€€€€€€€€€€•±•ÑÉ¥9•Üè9Õµ‰•È¡™½É´¹•±•ÑÉ¥9•Üñğ€À¤°(€€€€€€€€€€€€€€€€€€€€€€€•±•ÑÉ¥UÍ•°(€€€€€€€€€€€€€€€€€€€€€€€•±•ÑÉ¥µ½Õ¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€İ…Ñ•É=±°(€€€€€€€€€€€€€€€€€€€€€€€İ…Ñ•É9•Üè9Õµ‰•È¡™½É´¹İ…Ñ•É9•Üñğ€À¤°(€€€€€€€€€€€€€€€€€€€€€€€İ…Ñ•ÉUÍ•°(€€€€€€€€€€€€€€€€€€€€€€€İ…Ñ•Éµ½Õ¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€Ñ½Ñ…±%¹ÕÉÉ•°(€€€€€€€€€€€€€€€€€€€€€€€‘•Á½Í¥ÑUÍ•°(€€€€€€€€€€€€€€€€€€€€€€€‘•Á½Í¥Ñ½É™•¥Ñ•°(€€€€€€€€€€€€€€€€€€€€€€€µÕÍÑ½±±•Ğ°(€€€€€€€€€€€€€€€€€€€€€€€µÕÍÑI•™Õ¹°(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑÑ±•µ•¹Ñ5½‘”è™½É´¹Í•ÑÑ±•µ•¹Ñ5½‘”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ•¹…¹Ñ%èÑ•¹…¹Ğ¹¥°(€€€€€€€€€€€€€€€€€€€€€€€Ñ•¹…¹Ñ9…µ”èÑ•¹…¹Ğ¹¹…µ”°(€€€€€€€€€€€€€€€€€€€€€€€Ñ•¹…¹ÑA¡½¹”èÑ•¹…¹Ğ¹Á¡½¹”°(€€€€€€€€€€€€€€€€€€€€€€€É•™Õ¹‘	…¹­9…µ”è™½É´¹É•™Õ¹‘	…¹­9…µ”°(€€€€€€€€€€€€€€€€€€€€€€€É•™Õ¹‘	…¹­½Õ¹Ğè™½É´¹É•™Õ¹‘	…¹­½Õ¹Ğ°(€€€€€€€€€€€€€€€€€€€€€€€É•™Õ¹‘	…¹­=İ¹•Èè™½É´¹É•™Õ¹‘	…¹­=İ¹•ÈñğÑ•¹…¹Ğ¹¹…µ”°(€€€€€€€€€€€€€€€€€€€€€€€É•™Õ¹‘EÉ%µ…•UÉ°è™½É´¹É•™Õ¹‘EÉ%µ…•UÉ°°(€€€€€€€€€€€€€€€€€€€€€€€½¹ÑÉ…Ñ%è½¹ÑÉ…Ğ¹¥°(€€€€€€€€€€€€€€€€€€€€€€€É½½µ%èÉ½½´¹¥(€€€€€€€€€€€€€€€€€€€€€ô¤ì(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€õôù!¿¸Ó†ê•ĞÑË†êŒÁ£É¹œğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸İ¥‘”ˆ½¹±¥¬õí½¹±½Í•ôù#†îä‹†î<ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸I•¹•İ…±5½‘…°¡ì½¹ÑÉ…Ğ°‘…Ñ„°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞÉ½½´€ô‘…Ñ„¹É½½µÌ¹™¥¹¡È€ôøÈ¹¥€ôôô½¹ÑÉ…Ğ¹É½½µ%¤ì(€½¹ÍĞÑ•¹…¹Ğ€ô•ÑAÉ¥µ…ÉåQ•¹…¹Ñ	å½¹ÑÉ…Ğ¡‘…Ñ„°½¹ÑÉ…Ğ¹¥¤ñğì¹…µ”è€8½œ°Á¡½¹”è€8½œôì(€½¹ÍĞmÍ¡½İÁÁ•¹‘¥à°Í•ÑM¡½İÁÁ•¹‘¥át€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì(€½¹ÍĞ¡…ÍY…±¥‘ÕÉÉ•¹Ñ¹‘…Ñ”€ô¥ÍY…±¥‘	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹•¹‘…Ñ”¤ì(€½¹ÍĞÕÉÉ•¹Ñ¹‘…Ñ•Q•áĞ€ô™½Éµ…Ñ	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹•¹‘…Ñ”¤ì(€½¹ÍĞÕÉÉ•¹ÑMÑ…ÉÑ…Ñ•Q•áĞ€ô™½Éµ…Ñ	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹ÍÑ…ÉÑ…Ñ”¤ì(€½¹ÍĞÕÉÉ•¹ÑM¥¹•‘…Ñ•Q•áĞ€ô™½Éµ…Ñ½¹ÑÉ…Ñ…Ñ”¡½¹ÑÉ…Ğ¹Í¥¹•‘…Ñ”¤ì(€½¹ÍĞ‘•™…Õ±ÑMÑ…ÉÑ…Ñ”€ô¡…ÍY…±¥‘ÕÉÉ•¹Ñ¹‘…Ñ”€ü…‘‘…åÍQ½…Ñ”¡½¹ÑÉ…Ğ¹•¹‘…Ñ”°€Ä¤€è¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤ì(€€(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡ì(€€€Í¥¹•‘…Ñ”è¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°(€€€¹•İMÑ…ÉÑ…Ñ”è‘•™…Õ±ÑMÑ…ÉÑ…Ñ”°(€€€¹•İ¹‘…Ñ”è¡…ÍY…±¥‘ÕÉÉ•¹Ñ¹‘…Ñ”€ü…‘‘5½¹Ñ¡ÍQ½…Ñ”¡½¹ÑÉ…Ğ¹•¹‘…Ñ”°€ÄÈ¤€è€œœ°(€€€­••ÁAÉ¥¥¹œèÑÉÕ”°(€€€¹•İI•¹Ğè½¹ÑÉ…Ğ¹É•¹Ğ°(€€€¹•İ•Á½Í¥Ğè½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ°(€€€¹½Ñ”è€œœ(€ô¤ì((€½¹ÍĞ¥ÍY…±¥€ô™½É´¹¹•İ¹‘…Ñ”€˜˜€ …¡…ÍY…±¥‘ÕÉÉ•¹Ñ¹‘…Ñ”ñğ™½É´¹¹•İ¹‘…Ñ”€ø½¹ÑÉ…Ğ¹•¹‘…Ñ”¤ì(€½¹ÍĞÉ•¹Ñ¡…¹•€ô€…™½É´¹­••ÁAÉ¥¥¹œ€˜˜9Õµ‰•È¡™½É´¹¹•İI•¹Ğ¤€„ôô9Õµ‰•È¡½¹ÑÉ…Ğ¹É•¹Ğ¤ì(€½¹ÍĞ‘•Á½Í¥Ñ¡…¹•€ô€…™½É´¹­••ÁAÉ¥¥¹œ€˜˜9Õµ‰•È¡™½É´¹¹•İ•Á½Í¥Ğ¤€„ôô9Õµ‰•È¡½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ¤ì(€½¹ÍĞÉ•¹Ñ•±Ñ„€ô™½É´¹­••ÁAÉ¥¥¹œ€ü€À€è9Õµ‰•È¡™½É´¹¹•İI•¹Ğñğ€À¤€´9Õµ‰•È¡½¹ÑÉ…Ğ¹É•¹Ğñğ€À¤ì(€½¹ÍĞ‘•Á½Í¥Ñ•±Ñ„€ô™½É´¹­••ÁAÉ¥¥¹œ€ü€À€è9Õµ‰•È¡™½É´¹¹•İ•Á½Í¥Ğñğ€À¤€´9Õµ‰•È¡½¹ÑÉ…Ğ¹‘•Á½Í¥Ğñğ€À¤ì(€½¹ÍĞ‘É…™ÑÁÁ•¹‘¥áAÉ¥¹Ñ%€ô‘É…™ĞµÉ•¹•İ…°µ…ÁÁ•¹‘¥à´‘í½¹ÑÉ…Ğ¹¥‘õ€ì((€½¹ÍĞ¡…¹‘±•AÉ¥¹ÑÁÁ•¹‘¥à€ô€ ¤€ôøì(€€€½¹ÍĞ¥™É…µ”€ô‘½Õµ•¹Ğ¹É•…Ñ•±•µ•¹Ğ ¥™É…µ”œ¤ì(€€€¥™É…µ”¹ÍÑå±”¹Á½Í¥Ñ¥½¸€ô€™¥á•œì(€€€¥™É…µ”¹ÍÑå±”¹É¥¡Ğ€ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹‰½ÑÑ½´€ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹İ¥‘Ñ €ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹¡•¥¡Ğ€ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹‰½É‘•È€ô€œÀœì(€€€‘½Õµ•¹Ğ¹‰½‘ä¹…ÁÁ•¹‘¡¥±¡¥™É…µ”¤ì(€€€€(€€€½¹ÍĞ‘½Œ€ô¥™É…µ”¹½¹Ñ•¹Ñ]¥¹‘½Ü¹‘½Õµ•¹Ğì(€€€‘½Œ¹İÉ¥Ñ”¡€(€€€€€€ñ¡Ñµ°ø(€€€€€€€€ñ¡•…ø(€€€€€€€€€€ñÑ¥Ñ±”ùA£†î”³†î•Œ¥„£†ê…¸€´@‘í½¹ÑÉ…Ğ¹É½½µ%‘ôğ½Ñ¥Ñ±”ø(€€€€€€€€€€ñÍÑå±”ø(€€€€€€€€€€€¥µÁ½ÉĞÕÉ° ¡ÑÑÁÌè¼½™½¹ÑÌ¹½½±•…Á¥Ì¹½´½ÍÌÈı™…µ¥±äõQ¥µ•Ì­9•Ü­I½µ…¸™‘¥ÍÁ±…äõÍİ…Àœ¤ì(€€€€€€€€€€€‰½‘äì™½¹Ğµ™…µ¥±äè€Q¥µ•Ì9•ÜI½µ…¸œ°Q¥µ•Ì°Í•É¥˜ì±¥¹”µ¡•¥¡Ğè€Ä¸Ôì½±½Èè‰±…¬ìµ…É¥¸è€ÀìÁ…‘‘¥¹œè€Àìô(€€€€€€€€€€€€¹…ÁÁ•¹‘¥àµÁÉ¥¹Ğìİ¥‘Ñ è€ÈÄÁµ´ìµ¥¸µ¡•¥¡Ğè€Èäİµ´ìÁ…‘‘¥¹œè€ÈÁµ´€ÈÕµ´ìµ…É¥¸è…ÕÑ¼ì‰½àµÍ¥é¥¹œè‰½É‘•Èµ‰½àì‰…­É½Õ¹èİ¡¥Ñ”ìô(€€€€€€€€€€€Á…”ìÍ¥é”èĞìµ…É¥¸è€Àìô(€€€€€€€€€€€ Ä° È° ÌìÑ•áĞµ…±¥¸è•¹Ñ•Èìµ…É¥¸è€ÄÁÁà€Àì™½¹ĞµÍ¥é”è€ÄÙÁàìÑ•áĞµÑÉ…¹Í™½É´èÕÁÁ•É…Í”ìô(€€€€€€€€€€€€¹Í•Ñ¥½¸ìµ…É¥¸µÑ½Àè€ÈÁÁàìô(€€€€€€€€€€€€¹Í•Ñ¥½¸ ĞìÑ•áĞµ‘•½É…Ñ¥½¸èÕ¹‘•É±¥¹”ìµ…É¥¸µ‰½ÑÑ½´è€ÕÁàìô(€€€€€€€€€€€€¹É¥ì‘¥ÍÁ±…äèÉ¥ìÉ¥µÑ•µÁ±…Ñ”µ½±Õµ¹Ìè€Å™È€Å™Èì…Àè€ÈÁÁàìµ…É¥¸µÑ½Àè€ÌÁÁàìô(€€€€€€€€€€€€¹É¥‘¥ØìÑ•áĞµ…±¥¸è•¹Ñ•Èìô(€€€€€€€€€€€€¹Í¥¹…ÑÕÉ”µÍÁ…”ì¡•¥¡Ğè€àÁÁàìô(€€€€€€€€€€€Ñ…‰±”ìİ¥‘Ñ è€ÄÀÀ”ì‰½É‘•Èµ½±±…ÁÍ”è½±±…ÁÍ”ìµ…É¥¸è€ÄÕÁà€Àìô(€€€€€€€€€€€Ñ…‰±”Ñ °Ñ…‰±”Ñì‰½É‘•Èè€ÅÁàÍ½±¥‰±…¬ìÁ…‘‘¥¹œè€áÁàìÑ•áĞµ…±¥¸è±•™Ğì™½¹ĞµÍ¥é”è€ÄÑÁàìô(€€€€€€€€€€€€¹µÕÑ•ì½±½Èè€ŒÔÔÔìô(€€€€€€€€€€€ˆì™½¹Ğµİ•¥¡Ğè‰½±ìô(€€€€€€€€€€ğ½ÍÑå±”ø(€€€€€€€€ğ½¡•…ø(€€€€€€€€ñ‰½‘äø(€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰…ÁÁ•¹‘¥àµÁÉ¥¹Ğˆø(€€€€€€€€€€€€ñ‘¥ØÍÑå±”ô‰Ñ•áĞµ…±¥¸è•¹Ñ•Èìµ…É¥¸µ‰½ÑÑ½´è€ÌÁÁàìˆø(€€€€€€€€€€€€€€ñ ÈÍÑå±”ô‰µ…É¥¸è€Àìˆù†îa9#Ic#†îa$#†î˜9#¡Y'†îP94ğ½ Èø(€€€€€€€€€€€€€€ñ ÌÍÑå±”ô‰µ…É¥¸è€ÕÁà€ÀìÑ•áĞµÑÉ…¹Í™½É´è¹½¹”ìˆûC†îeŒ³†êµÀƒŠLS†îÄ‘¼ƒŠL#†ê…¹ Á£éŒğ½ Ìø(€€€€€€€€€€€€€€ñ‘¥ØÍÑå±”ô‰İ¥‘Ñ è€ÄÔÁÁàì‰½É‘•ÈµÑ½Àè€ÅÁàÍ½±¥‰±…¬ìµ…É¥¸è€ÄÁÁà…ÕÑ¼ìˆøğ½‘¥Øø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ ÄùA#†î3†î‘%#†ê8#†î‰@ƒC†îI9Q!W(A#I9ğ½ Äø(€€€€€€€€€€€€ñÀÍÑå±”ô‰Ñ•áĞµ…±¥¸è•¹Ñ•ÈìˆùO†îDÁ£†î”³†î•ŒèA0´‘í½¹ÑÉ…Ğ¹½¹ÑÉ…Ñ9¼ñğ½¹ÑÉ…Ğ¹¥‘ô´‘í™½É´¹Í¥¹•‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œœ¥ôğ½Àø(€€€€€€€€€€€€ñÀÍÑå±”ô‰Ñ•áĞµ…±¥¸è•¹Ñ•Èìˆù/¡´Ñ¡•¼#†îÀƒG†îM¹œÑ¡×¨Á£É¹œÏ†îDè€‘í½¹ÑÉ…Ğ¹½¹ÑÉ…Ñ9¼ñğ½¹ÑÉ…Ğ¹¥‘ôğ½Àø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸ˆø(€€€€€€€€€€€€€€ñÀù#Ñ´¹…ä°¹Ÿä€‘í™½É´¹Í¥¹•‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ô°Ó†ê…¤#€;†îe¤°£é¹œÓÑ¤Ÿ†îM´èğ½Àø(€€€€€€€€€€€€€€(€€€€€€€€€€€€€€ñ Ğù)8!<Q!W(ƒŠP)8ğ½ Ğø(€€€€€€€€€€€€€€ñÀù€è€ñˆù'†î4Q#†î(19 ğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀùO†îDƒE§†î¸Ñ¡¿†ê…¤è€ñˆøÀÄÈÌ¸ĞÔØ¸Üàäğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀûC†î-„£†î$è€ñˆùO†îD€Èà°¹Ÿ… €Ä°¹ŸÔ€ÄØÈ-£Ã…¹œƒC±¹ °Q¡…¹ a×‰¸°#€;†îe¤ğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀùO†îDÓ¤­¡¿†ê¸¹£†êµ¸Ñ§†î¸è€ñˆøààĞÜÈÄĞØØÄğ½ˆø€´9Ÿ‰¸£¹œè€ñˆù	%Xğ½ˆøğ½Àø((€€€€€€€€€€€€€€ñ Ğù)8Q!W(ƒŠP)8ğ½ Ğø(€€€€€€€€€€€€€€ñÀûQ¹œ½€è€ñˆø‘íÑ•¹…¹Ğ¹¹…µ•ôğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀùO†îDƒE§†î¸Ñ¡¿†ê…¤è€ñˆø‘íÑ•¹…¹Ğ¹Á¡½¹•ôğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀù½59è€ñˆø‘íÑ•¹…¹Ğ¹ñğ€œ¸¸¸¸¸¸¸¸¸¸¸¸¸¸¸¸ôğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀûA…¹œÑ¡×¨Á£É¹œè€ñˆø‘í½¹ÑÉ…Ğ¹É½½µ%‘ôğ½ˆøğ½Àø((€€€€€€€€€€€€€€ñÀù!…¤‹©¸Ñ£†îE¹œ¹£†ê•Ğ¯ôÁ£†î”³†î•Œ»äƒG†î¥„£†ê…¸Ñ£†îu¤£†ê…¸Ñ¡×¨Á£É¹œÑ¡•¼…Œ»†îe¤‘Õ¹œÍ…Ôèğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸ˆø(€€€€€€€€€€€€€€ñ ĞûA'†îT€Ä¸%#†ê8Q#†îq$#†ê8Q!W(ğ½ Ğø(€€€€€€€€€€€€€€ñÀù!…¤‹©¸Ñ£†îE¹œ¹£†ê•Ğ¥„£†ê…¸Ñ£†îu¤£†ê…¸Ñ¡×¨Á£É¹œ€‘í½¹ÑÉ…Ğ¹É½½µ%‘ô¹£ÀÍ…Ôèğ½Àø(€€€€€€€€€€€€€€ñÕ°ø(€€€€€€€€€€€€€€€€ñ±¤ù9Ÿä‹†ê½ĞƒG†êÔ¥„£†ê…¸è€ñˆø‘í™½É´¹¹•İMÑ…ÉÑ…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ôğ½ˆøğ½±¤ø(€€€€€€€€€€€€€€€€ñ±¤ù9Ÿä£†êıĞ£†ê…¸¤è€ñˆø‘íÕÉÉ•¹Ñ¹‘…Ñ•Q•áÑôğ½ˆøğ½±¤ø(€€€€€€€€€€€€€€€€ñ±¤ù9Ÿä£†êıĞ£†ê…¸·†îm¤è€ñˆø‘í™½É´¹¹•İ¹‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ôğ½ˆøğ½±¤ø(€€€€€€€€€€€€€€ğ½Õ°ø(€€€€€€€€€€€€€€ñÀùM…ÔÑ£†îu¤£†ê…¸ÑË©¸°»†êıÔ©¸Ñ§†êıÀÓ†î•ŒÌ¹¡Ô†êÔÑ¡×¨°¡…¤‹©¸Ï†êôÑ£†î=„Ñ¡×†êµ¸¥„£†ê…¸Ñ§†êıÀ¡¿†êİŒ¯ô£†îÀƒG†îM¹œ½Á£†î”³†î•Œ·†îm¤¸ğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸ˆø(€€€€€€€€€€€€€€ñ ĞûA'†îT€È¸'Q!W([ Q'†î8†î1ğ½ Ğø(€€€€€€€€€€€€€€ñÀù/†îÓ†î¬¹Ÿä€‘í™½É´¹¹•İMÑ…ÉÑ…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ô°…Œ­¡¿†ê¸Ñ§†î¸ƒGÃ†îŒƒ…À“†î•¹œ¹£ÀÍ…Ôèğ½Àø(€€€€€€€€€€€€€€ñÑ…‰±”ø(€€€€€€€€€€€€€€€€ñÑ¡•…ø(€€€€€€€€€€€€€€€€€€ñÑÈøñÑ ù;†îe¤‘Õ¹œğ½Ñ øñÑ ùQËÃ†îmŒ¥„£†ê…¸ğ½Ñ øñÑ ùM…Ô¥„£†ê…¸ğ½Ñ øğ½ÑÈø(€€€€€€€€€€€€€€€€ğ½Ñ¡•…ø(€€€€€€€€€€€€€€€€ñÑ‰½‘äø(€€€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€€€ñÑù§„Ñ¡×¨Á£É¹œ½Ñ£…¹œğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑø‘í™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹É•¹Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑøñˆø‘í™½Éµ…Ñ5½¹•ä¡™½É´¹­••ÁAÉ¥¥¹œ€ü½¹ÑÉ…Ğ¹É•¹Ğ€è™½É´¹¹•İI•¹Ğ¥ôğ½ˆøğ½Ñø(€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€€€ñÑùQ§†î¸†î5Œğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑø‘í™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑøñˆø‘í™½Éµ…Ñ5½¹•ä¡™½É´¹­••ÁAÉ¥¥¹œ€ü½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ€è™½É´¹¹•İ•Á½Í¥Ğ¥ôğ½ˆøğ½Ñø(€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€ğ½Ñ‰½‘äø(€€€€€€€€€€€€€€ğ½Ñ…‰±”ø(€€€€€€€€€€€€€€ñÀùQ§†î¸Ñ¡×¨Á£É¹œƒGÃ†îŒÑ¡…¹ Ñ¿…¸Ñ¡•¼¡Ô¯†îÌ£¹œÑ£…¹œ°Û¼¹Ÿä€ñˆø‘í½¹ÑÉ…Ğ¹Á…åµ•¹Ñå±•…äñğ€Õôğ½ˆø£¹œÑ£…¹œ¸ğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸ˆø(€€€€€€€€€€€€€€ñ ĞûA'†îT€Ì¸ƒA'†î8°;¿†îi[ -!?†ê‰8A#4†î) [†îğ½ Ğø(€€€€€€€€€€€€€€ñÀù…Œ­¡¿†ê¸ƒE§†î¸°»Ã†îmŒÛ€Á£´“†î- Û†î”Ñ§†êıÀÓ†î•ŒƒGÃ†îŒƒ…À“†î•¹œÑ¡•¼£†îÀƒG†îM¹œÑ¡×¨Á£É¹œƒGŒ¯ôèğ½Àø(€€€€€€€€€€€€€€ñÕ°ø(€€€€€€€€€€€€€€€€ñ±¤ûC…¸§„ƒE§†î¸è€ñˆø‘íÉ½½´¹•±•ÑÉ¥AÉ¥•÷D½­] ğ½ˆøğ½±¤ø(€€€€€€€€€€€€€€€€ñ±¤ûC…¸§„»Ã†îmŒè€ñˆø‘í™½Éµ…Ñ5½¹•ä¡É½½´¹İ…Ñ•ÉAÉ¥”¥ô½·
+Ìğ½ˆøğ½±¤ø(€€€€€€€€€€€€€€€€ñ±¤ùA£´“†î- Û†î”†îDƒG†î-¹ è€ñˆø‘í™½Éµ…Ñ5½¹•ä ¡É½½´¹±•…¹¥¹œñğ€À¤€¬€¡É½½´¹•±•Ù…Ñ½Èñğ€À¤€¬€¡É½½´¹±…Õ¹‘Éäñğ€À¤€¬€¡É½½´¹¥¹Ñ•É¹•Ğñğ€À¤¥ôğ½ˆøğ½±¤ø(€€€€€€€€€€€€€€ğ½Õ°ø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸ˆø(€€€€€€€€€€€€€€ñ ĞûA'†îT€Ğ¸!'†îT3†îÁğ½ Ğø(€€€€€€€€€€€€€€ñÀùA£†î”³†î•Œ»äÌ¡§†îÔ³†îÅŒ¯†îÓ†î¬¹Ÿä€‘í™½É´¹Í¥¹•‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ô¸…Œ»†îe¤‘Õ¹œ­£…Œ­£Ñ¹œƒGÃ†îŒÏ†îµ„ƒG†îU¤ÑÉ½¹œÁ£†î”³†î•Œ»äÛ†ê­¸Ñ§†êıÀÓ†î•ŒÑ£†îÅŒ¡§†î¸Ñ¡•¼#†îÀƒG†îM¹œŸ†îEŒ¸ğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰É¥ˆø(€€€€€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€€€€€ñÀøñˆûC†ê$'†î8)8ğ½ˆøğ½Àø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í¥¹…ÑÕÉ”µÍÁ…”ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€ñÀøñˆù'†î4Q#†î(19 ğ½ˆøğ½Àø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€€€€€ñÀøñˆûC†ê$'†î8)8ğ½ˆøğ½Àø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í¥¹…ÑÕÉ”µÍÁ…”ˆøğ½‘¥Øø(€€€€€€€€€€€€€€€€ñÀøñˆø‘íÑ•¹…¹Ğ¹¹…µ•ôğ½ˆøğ½Àø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‰½‘äø(€€€€€€ğ½¡Ñµ°ø(€€€€¤ì(€€€‘½Œ¹±½Í” ¤ì(€€€€(€€€¥™É…µ”¹½¹Ñ•¹Ñ]¥¹‘½Ü¹™½ÕÌ ¤ì(€€€Í•ÑQ¥µ•½ÕĞ  ¤€ôøì(€€€€€¥™É…µ”¹½¹Ñ•¹Ñ]¥¹‘½Ü¹ÁÉ¥¹Ğ ¤ì(€€€€€‘½Õµ•¹Ğ¹‰½‘ä¹É•µ½Ù•¡¥±¡¥™É…µ”¤ì(€€€ô°€ÔÀÀ¤ì(€ôì(((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œÜÀÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÈÑÁàœõôù¥„£†ê…¸£†îÀƒG†îM¹œƒŠˆA£É¹œí½¹ÑÉ…Ğ¹É½½µ%‘ôğ½ Èø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆùíÑ•¹…¹Ğ¹¹…µ•ôƒŠˆ#†êıĞ£†ê…¸¡§†î¸Ó†ê…¤èíÕÉÉ•¹Ñ¹‘…Ñ•Q•áÑôğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø((€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆÍÑå±”õíì…Àè€œÈÑÁàœõôø(€€€€€€€€€ì¼¨Q£Ñ¹œÑ¥¸¡§†î¸Ó†ê…¤€¨½ô(€€€€€€€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”ô‰½Àµ…ÉˆÍÑå±”õíì‰…­É½Õ¹è€œ˜á™…™Œœ°‰½É‘•ÉMÑå±”è€‘…Í¡•œõôø(€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰½Àµ…ÉµÑ¥Ñ±”ˆûÂ~N0Q£Ñ¹œÑ¥¸¡§†î¸Ó†ê…¤ğ½ Ìø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½ÀµÉ¥ˆø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù9Ÿä‹†ê½ĞƒG†êÔğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùíÕÉÉ•¹ÑMÑ…ÉÑ…Ñ•Q•áÑôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù#†êıĞ£†ê…¸¡§†î¸Ó†ê…¤ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùíÕÉÉ•¹Ñ¹‘…Ñ•Q•áÑôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù9Ÿä¯ô£†îÀƒG†îM¹œŸ†îEŒğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùíÕÉÉ•¹ÑM¥¹•‘…Ñ•Q•áÑôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù§„Ñ¡×¨ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹É•¹Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆùQ§†î¸†î5Œğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€ì¡¥Í%¹Ù…±¥‘½¹ÑÉ…Ñ…Ñ”¡½¹ÑÉ…Ğ¹Í¥¹•‘…Ñ”¤ñğ€…¥ÍY…±¥‘	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹ÍÑ…ÉÑ…Ñ”¤ñğ€…¡…ÍY…±¥‘ÕÉÉ•¹Ñ¹‘…Ñ”¤€˜˜€ (€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ…É¹¥¹œµ‰½àˆÍÑå±”õíìµ…É¥¹Q½Àè€œÄÉÁàœõôù#†îÀƒG†îM¹œÑ¡§†êıÔ¹Ÿä¯ô€¼¹Ÿä‹†ê½ĞƒG†êÔ€¼¹Ÿä£†êıĞ£†ê…¸£†îÀ³†î¸YÕ¤³É¹œ†êµÀ¹£†êµĞ“†î¼±§†îÔ£†îÀƒG†îM¹œÑËÃ†îmŒ­¡¤¥„£†ê…¸¸ğ½‘¥Øø(€€€€€€€€€€€€¥ô(€€€€€€€€€€ğ½Í•Ñ¥½¸ø((€€€€€€€€€ì¼¨½É´¥„£†ê…¸€¨½ô(€€€€€€€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”ô‰ÍÑ…¬ˆÍÑå±”õíì…Àè€œÄÙÁàœõôø(€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰™½É´µÍ•Ñ¥½¸µÑ¥Ñ±”ˆûŠr7¾â<¡¤Ñ§†êıĞ¥„£†ê…¸ğ½ Ìø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€ñ±…‰•°ù9Ÿä¯ôÁ£†î”³†î•Œ€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹Í¥¹•‘…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Í¥¹•‘…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øñÍÁ…¸±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆù£†î$“å¹œ¡¼Á£†î”³†î•Œ¥„£†ê…¸°­£Ñ¹œ¡¤ƒG ¹Ÿä¯ô£†îÀƒG†îM¹œŸ†îEŒ¸ğ½ÍÁ…¸øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù†ê½ĞƒG†êÔ¥„£†ê…¸€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹¹•İMÑ…ÉÑ…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹•İMÑ…ÉÑ…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôø(€€€€€€€€€€€€€€€9Ÿä£†êıĞ£†ê…¸·†îm¤(€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹¹•İ¹‘…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹•İ¹‘…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€ì…¡…ÍY…±¥‘ÕÉÉ•¹Ñ¹‘…Ñ”€˜˜€ñÀ±…ÍÍ9…µ”ô‰‘…¹•ÈÍµ…±°ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÑÁàœõôûŠj€£Á„Ì¹Ÿä£†êıĞ£†ê…¸¤£†îÀ³†î¸YÕ¤³É¹œ£†î5¸¹Ÿä·†îm¤¸ğ½Àùô(€€€€€€€€€€€€€€€í¡…ÍY…±¥‘ÕÉÉ•¹Ñ¹‘…Ñ”€˜˜™½É´¹¹•İ¹‘…Ñ”€ğô½¹ÑÉ…Ğ¹•¹‘…Ñ”€˜˜€ñÀ±…ÍÍ9…µ”ô‰‘…¹•ÈÍµ…±°ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÑÁàœõôûŠj€9Ÿä£†êıĞ£†ê…¸·†îm¤Á£†ê¤Í…Ô¹ŸäíÕÉÉ•¹Ñ¹‘…Ñ•Q•áÑôğ½Àùô(€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Éˆø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœ°…Àè€œÄÁÁàœ°ÕÉÍ½Èè€Á½¥¹Ñ•Èœ°µ…É¥¸è€Àõôø(€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¡•­‰½àˆ¡•­•õí™½É´¹­••ÁAÉ¥¥¹ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°­••ÁAÉ¥¥¹œè”¹Ñ…É•Ğ¹¡•­•‘ô¥ôÍÑå±”õíìİ¥‘Ñ è€œÄáÁàœ°¡•¥¡Ğè€œÄáÁàœõô€¼ø(€€€€€€€€€€€€€€€€ñˆù§†î¼¹Õç©¸§„Ñ¡×¨Û€Ñ§†î¸†î5Œğ½ˆø(€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€(€€€€€€€€€€€€€ì…™½É´¹­••ÁAÉ¥¥¹œ€˜˜€ (€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆÍÑå±”õíìµ…É¥¹Q½Àè€œÄÉÁàœõôø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ø(€€€€€€€€€€€€€€€€€€€§„Ñ¡×¨·†îm¤(€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹¹•İI•¹Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹•İI•¹Ğè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€€€€íÉ•¹Ñ¡…¹•€˜˜€ñÍÁ…¸±…ÍÍ9…µ”ô‰ÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥¹½Ñ¥”ˆÍÑå±”õíì™½¹ÑM¥é”è€œÄÁÁàœõôùQ¡…äƒG†îU¤§„ğ½ÍÁ…¸ùô(€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€ñ±…‰•°ø(€€€€€€€€€€€€€€€€€€€Q§†î¸†î5Œ·†îm¤(€€€€€€€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹¹•İ•Á½Í¥Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹•İ•Á½Í¥Ğè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€€€€€€€€í‘•Á½Í¥Ñ¡…¹•€˜˜€ñÍÁ…¸±…ÍÍ9…µ”ô‰ÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥¹½Ñ¥”ˆÍÑå±”õíì™½¹ÑM¥é”è€œÄÁÁàœõôùQ¡…äƒG†îU¤†î5Œğ½ÍÁ…¸ùô(€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€ì¡É•¹Ñ•±Ñ„€„ôô€Àñğ‘•Á½Í¥Ñ•±Ñ„€„ôô€À¤€˜˜€ (€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ…É¹¥¹œµ‰½àˆÍÑå±”õíìµ…É¥¹Q½Àè€œÄÉÁàœõôø(€€€€€€€€€€€€€€€€€€ñˆù£†î¥¹œÓ†î¬Ï†êôÓ†îÄƒG†îe¹œÓ†ê…¼Í…Ô­¡¤¥„£†ê…¸èğ½ˆø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…¬ˆÍÑå±”õíì…Àè€œÑÁàœ°µ…É¥¹Q½Àè€œáÁàœõôø(€€€€€€€€€€€€€€€€€€€ì¡5…Ñ ¹µ…à À°É•¹Ñ•±Ñ„¤€¬5…Ñ ¹µ…à À°‘•Á½Í¥Ñ•±Ñ„¤¤€ø€À€˜˜€ñÍÁ…¸ûŠˆA¡§†êıÔÑ¡Ôèí™½Éµ…Ñ5½¹•ä¡5…Ñ ¹µ…à À°É•¹Ñ•±Ñ„¤€¬5…Ñ ¹µ…à À°‘•Á½Í¥Ñ•±Ñ„¤¥ôğ½ÍÁ…¸ùô(€€€€€€€€€€€€€€€€€€€ì¡5…Ñ ¹µ…à À°€µÉ•¹Ñ•±Ñ„¤€¬5…Ñ ¹µ…à À°€µ‘•Á½Í¥Ñ•±Ñ„¤¤€ø€À€˜˜€ñÍÁ…¸ûŠˆA¡§†êıÔ¡¤¡¿¸­£… èí™½Éµ…Ñ5½¹•ä¡5…Ñ ¹µ…à À°€µÉ•¹Ñ•±Ñ„¤€¬5…Ñ ¹µ…à À°€µ‘•Á½Í¥Ñ•±Ñ„¤¥ôğ½ÍÁ…¸ùô(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ±…‰•°ø(€€€€€€€€€€€€€¡¤£èÁ£†î”³†î•Œ¥„£†ê…¸(€€€€€€€€€€€€€€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰[´“†î”èƒ½ÔƒG¤§†ê´§„€ÌÑ£…¹œƒG†êÔ°…´¯†êıĞ­£Ñ¹œÓ¹œ§„ÑÉ½¹œ€È»´¸¸¸ˆÍÑå±”õíìµ¥¹!•¥¡Ğè€œàÁÁàœõô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½Í•Ñ¥½¸ø((€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‰Ñ¸µÉ½ÕÀˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôù#†îäğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôøÍ•ÑM¡½İÁÁ•¹‘¥à …Í¡½İÁÁ•¹‘¥à¥ô‘¥Í…‰±•õì…¥ÍY…±¥‘ôø(€€€€€€€€€€€€€ì…¥ÍY…±¥€ü€£Á„ÌÁ£†î”³†î•Œœ€èÍ¡½İÁÁ•¹‘¥à€ü€Ÿ†ê¡¸Á£†î”³†î•Œœ€è€a•´Á£†î”³†î•Œô(€€€€€€€€€€€€ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôø½¹M…Ù”¡™½É´¥ô‘¥Í…‰±•õì…¥ÍY…±¥‘ôÍÑå±”õíì™±•àè€Èõôø(€€€€€€€€€€€€€ƒÂ~j ¥„£†ê…¸£†îÀƒG†îM¹œ(€€€€€€€€€€€€ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€íÍ¡½İÁÁ•¹‘¥à€˜˜€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÁÉ•Ù¥•ÜµÍÉ½±°ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÈÁÁàœ°‰½É‘•ÉQ½Àè€œÅÁàÍ½±¥É‰„ ÈÔÔ°ÈÔÔ°ÈÔÔ°À¸Ä¤œ°Á…‘‘¥¹Q½Àè€œÈÁÁàœõôø(€€€€€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°©ÕÍÑ¥™å½¹Ñ•¹Ğè€ÍÁ…”µ‰•Ñİ••¸œ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœ°µ…É¥¹	½ÑÑ½´è€œÄÕÁàœõôø(€€€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰™½É´µÍ•Ñ¥½¸µÑ¥Ñ±”ˆÍÑå±”õíìµ…É¥¸è€ÀõôûÂ~Na•´ÑËÃ†îmŒÁ£†î”³†î•Œ€¡Ğ¤ğ½ Ìø(€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆ½¹±¥¬õì ¤€ôøÁÉ¥¹Ñ½Õµ•¹Ñ±•µ•¹Ğ¡‘É…™ÑÁÁ•¹‘¥áAÉ¥¹Ñ%°A£†î”³†î•Œ¥„£†ê…¸@‘í½¹ÑÉ…Ğ¹É½½µ%‘õ€¥ôûÂ~Z£¾â<%¸Á£†î”³†î•Œ»äğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµ½¹Ñ…¥¹•ÈµÍÉ½±°ˆÍÑå±”õíìµ…á!•¥¡Ğè€œÔÀÁÁàœ°½Ù•É™±½İdè€…ÕÑ¼œ°‰…­É½Õ¹è€É‰„ À°À°À°À¸È¤œ°Á…‘‘¥¹œè€œÈÁÁàœ°‰½É‘•ÉI…‘¥ÕÌè€œÄÉÁàœõôø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÁ…Á•Èµ„ĞˆÍÑå±”õíìÑÉ…¹Í™½É´è€Í…±” À¸à¤œ°ÑÉ…¹Í™½Éµ=É¥¥¸è€Ñ½À•¹Ñ•Èœ°µ…É¥¸è€œÀ…ÕÑ¼œ°µ…É¥¹	½ÑÑ½´è€œ´ÄÔÁÁàœõôø(€€€€€€€€€€€€€€€€€€€ñÁÁ•¹‘¥á½¹Ñ•¹Ğ½¹ÑÉ…Ğõí½¹ÑÉ…ÑôÑ•¹…¹ĞõíÑ•¹…¹Ñô™½É´õí™½ÉµôÉ½½´õíÉ½½µôÁÉ¥¹Ñ%õí‘É…™ÑÁÁ•¹‘¥áAÉ¥¹Ñ%‘ô€¼ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¥ô(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸ÁÉ¥¹ÑÁÁ•¹‘¥áÉ½µ±•µ•¹Ğ¡•±•µ•¹Ñ%°Ñ¥Ñ±”€ô€A£†î”³†î•Œ¥„£†ê…¸œ¤ì(€ÁÉ¥¹Ñ½Õµ•¹Ñ±•µ•¹Ğ¡•±•µ•¹Ñ%°Ñ¥Ñ±”¤ì)ô()™Õ¹Ñ¥½¸I•¹•İ…±ÁÁ•¹‘¥áAÉ•Ù¥•İ5½‘…°¡ì½¹ÑÉ…Ğ°™½É´°‘…Ñ„°½¹±½Í”ô¤ì(€½¹ÍĞÉ½½´€ô‘…Ñ„¹É½½µÌ¹™¥¹¡È€ôøÈ¹¥€ôôô½¹ÑÉ…Ğ¹É½½µ%¤ñğíôì(€½¹ÍĞÑ•¹…¹Ğ€ô•ÑAÉ¥µ…ÉåQ•¹…¹Ñ	å½¹ÑÉ…Ğ¡‘…Ñ„°½¹ÑÉ…Ğ¹¥¤ñğì¹…µ”è€8½œ°Á¡½¹”è€8½œôì(€½¹ÍĞÁÉ¥¹Ñ%€ô€Í…Ù•µÉ•¹•İ…°µ…ÁÁ•¹‘¥àœì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œäÀÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÈÑÁàœõôùA£†î”³†î•Œ¥„£†ê…¸ƒŠˆA£É¹œí½¹ÑÉ…Ğ¹É½½µ%‘ôğ½ Èø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆù9Ÿä¯ôÁ£†î”³†î•Œèí™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡™½É´¹Í¥¹•‘…Ñ”¥ôƒŠˆ#†êıĞ£†ê…¸·†îm¤èí™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡™½É´¹¹•İ¹‘…Ñ”¥ôğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‰Ñ¸µÉ½ÕÀˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôøÁÉ¥¹ÑÁÁ•¹‘¥áÉ½µ±•µ•¹Ğ¡ÁÉ¥¹Ñ%°A£†î”³†î•Œ¥„£†ê…¸@‘í½¹ÑÉ…Ğ¹É½½µ%‘õ€¥ôûÂ~Z£¾â<%¸Á£†î”³†î•Œğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûCÍ¹œğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈˆø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµ½¹Ñ…¥¹•ÈµÍÉ½±°ˆÍÑå±”õíìµ…á!•¥¡Ğè€œÜÁÙ œ°½Ù•É™±½İdè€…ÕÑ¼œ°‰…­É½Õ¹è€É‰„ À°À°À°À¸ÀØ¤œ°Á…‘‘¥¹œè€œÈÁÁàœ°‰½É‘•ÉI…‘¥ÕÌè€œÄÉÁàœõôø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÁ…Á•Èµ„ĞˆÍÑå±”õíìÑÉ…¹Í™½É´è€Í…±” À¸àØ¤œ°ÑÉ…¹Í™½Éµ=É¥¥¸è€Ñ½À•¹Ñ•Èœ°µ…É¥¸è€œÀ…ÕÑ¼œ°µ…É¥¹	½ÑÑ½´è€œ´ÄÀÁÁàœõôø(€€€€€€€€€€€€€€ñÁÁ•¹‘¥á½¹Ñ•¹Ğ½¹ÑÉ…Ğõí½¹ÑÉ…ÑôÑ•¹…¹ĞõíÑ•¹…¹Ñô™½É´õí™½ÉµôÉ½½´õíÉ½½µôÁÉ¥¹Ñ%õíÁÉ¥¹Ñ%‘ô€¼ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸ÁÁ•¹‘¥á½¹Ñ•¹Ğ¡ì½¹ÑÉ…Ğ°Ñ•¹…¹Ğ°™½É´°É½½´°ÁÉ¥¹Ñ%ô¤ì(€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø¥õíÁÉ¥¹Ñ%‘ô±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµ½¹Ñ•¹ĞµØÄˆÍÑå±”õíì(€€€€€İ¥‘Ñ è€œÈÄÁµ´œ°€(€€€€€µ¥¹!•¥¡Ğè€œÈäİµ´œ°€(€€€€€Á…‘‘¥¹œè€œÈÁµ´€ÈÕµ´œ°€(€€€€€‰…­É½Õ¹è€İ¡¥Ñ”œ°€(€€€€€½±½Èè€‰±…¬œ°€(€€€€€™½¹Ñ…µ¥±äè€œ‰Q¥µ•Ì9•ÜI½µ…¸ˆ°Q¥µ•Ì°Í•É¥˜œ°(€€€€€±¥¹•!•¥¡Ğè€œÄ¸Ôœ°(€€€€€‰½áM¥é¥¹œè€‰½É‘•Èµ‰½àœ°(€€€€€Ñ•áÑ±¥¸è€±•™Ğœ(€€€õôø(€€€€€€ñ‘¥ØÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°µ…É¥¹	½ÑÑ½´è€œÌÁÁàœõôø(€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÄÙÁàœ°™½¹Ñ]•¥¡Ğè€‰½±œ°µ…É¥¸è€Àõôù†îa9#Ic#†îa$#†î˜9#¡Y'†îP94ğ½ Èø(€€€€€€€€ñ ÌÍÑå±”õíì™½¹ÑM¥é”è€œÄÑÁàœ°µ…É¥¸è€œÕÁà€Àœ°Ñ•áÑQÉ…¹Í™½É´è€¹½¹”œõôûC†îeŒ³†êµÀƒŠLS†îÄ‘¼ƒŠL#†ê…¹ Á£éŒğ½ Ìø(€€€€€€€€ñ‘¥ØÍÑå±”õíìİ¥‘Ñ è€œÄÔÁÁàœ°‰½É‘•ÉQ½Àè€œÅÁàÍ½±¥‰±…¬œ°µ…É¥¸è€œÄÁÁà…ÕÑ¼œõôøğ½‘¥Øø(€€€€€€ğ½‘¥Øø((€€€€€€ñ ÄÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°™½¹ÑM¥é”è€œÄáÁàœ°™½¹Ñ]•¥¡Ğè€‰½±œ°Ñ•áÑQÉ…¹Í™½É´è€ÕÁÁ•É…Í”œ°µ…É¥¹	½ÑÑ½´è€œÄÁÁàœõôùA#†î3†î‘%#†ê8#†î‰@ƒC†îI9Q!W(A#I9ğ½ Äø(€€€€€€ñÀÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°™½¹ÑM¥é”è€œÄÍÁàœ°µ…É¥¸è€œÉÁà€ÀœõôùO†îDÁ£†î”³†î•ŒèA0µí½¹ÑÉ…Ğ¹½¹ÑÉ…Ñ9¼ñğ½¹ÑÉ…Ğ¹¥‘ô´‘í™½É´¹Í¥¹•‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œœ¥ôğ½Àø(€€€€€€ñÀÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°™½¹ÑM¥é”è€œÄÍÁàœ°µ…É¥¹	½ÑÑ½´è€œÌÁÁàœõôù/¡´Ñ¡•¼#†îÀƒG†îM¹œÑ¡×¨Á£É¹œÏ†îDèí½¹ÑÉ…Ğ¹½¹ÑÉ…Ñ9¼ñğ½¹ÑÉ…Ğ¹¥‘ôğ½Àø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÍ•Ñ¥½¸ˆø(€€€€€€€€ñÀù#Ñ´¹…ä°¹Ÿäí™½É´¹Í¥¹•‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ô°Ó†ê…¤#€;†îe¤°£é¹œÓÑ¤Ÿ†îM´èğ½Àø(€€€€€€€€(€€€€€€€€ñ ĞÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œ°Ñ•áÑ•½É…Ñ¥½¸è€Õ¹‘•É±¥¹”œ°µ…É¥¹Q½Àè€œÄÕÁàœ°µ…É¥¹	½ÑÑ½´è€œÕÁàœõôù)8!<Q!W(ƒŠP)8ğ½ Ğø(€€€€€€€€ñÀù€è€ñˆù'†î4Q#†î(19 ğ½ˆøğ½Àø(€€€€€€€€ñÀùO†îDƒE§†î¸Ñ¡¿†ê…¤è€ñˆøÀÄÈÌ¸ĞÔØ¸Üàäğ½ˆøğ½Àø(€€€€€€€€ñÀûC†î-„£†î$è€ñˆùO†îD€Èà°¹Ÿ… €Ä°¹ŸÔ€ÄØÈ-£Ã…¹œƒC±¹ °Q¡…¹ a×‰¸°#€;†îe¤ğ½ˆøğ½Àø(€€€€€€€€ñÀùO†îDÓ¤­¡¿†ê¸¹£†êµ¸Ñ§†î¸è€ñˆøààĞÜÈÄĞØØÄğ½ˆø€´9Ÿ‰¸£¹œè€ñˆù	%Xğ½ˆøğ½Àø((€€€€€€€€ñ ĞÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œ°Ñ•áÑ•½É…Ñ¥½¸è€Õ¹‘•É±¥¹”œ°µ…É¥¹Q½Àè€œÄÕÁàœ°µ…É¥¹	½ÑÑ½´è€œÕÁàœõôù)8Q!W(ƒŠP)8ğ½ Ğø(€€€€€€€€ñÀûQ¹œ½€è€ñˆùíÑ•¹…¹Ğ¹¹…µ•ôğ½ˆøğ½Àø(€€€€€€€€ñÀùO†îDƒE§†î¸Ñ¡¿†ê…¤è€ñˆùíÑ•¹…¹Ğ¹Á¡½¹•ôğ½ˆøğ½Àø(€€€€€€€€ñÀù½59è€ñˆùíÑ•¹…¹Ğ¹ñğ€œ¸¸¸¸¸¸¸¸¸¸¸¸¸¸¸¸ôğ½ˆøğ½Àø(€€€€€€€€ñÀûA…¹œÑ¡×¨Á£É¹œè€ñˆùí½¹ÑÉ…Ğ¹É½½µ%‘ôğ½ˆøğ½Àø((€€€€€€€€ñÀÍÑå±”õíìµ…É¥¹Q½Àè€œÄÕÁàœõôù!…¤‹©¸Ñ£†îE¹œ¹£†ê•Ğ¯ôÁ£†î”³†î•Œ»äƒG†î¥„£†ê…¸Ñ£†îu¤£†ê…¸Ñ¡×¨Á£É¹œÑ¡•¼…Œ»†îe¤‘Õ¹œÍ…Ôèğ½Àø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÍ•Ñ¥½¸ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÈÁÁàœõôø(€€€€€€€€ñ ĞÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œõôûA'†îT€Ä¸%#†ê8Q#†îq$#†ê8Q!W(ğ½ Ğø(€€€€€€€€ñÀù!…¤‹©¸Ñ£†îE¹œ¹£†ê•Ğ¥„£†ê…¸Ñ£†îu¤£†ê…¸Ñ¡×¨Á£É¹œí½¹ÑÉ…Ğ¹É½½µ%‘ô¹£ÀÍ…Ôèğ½Àø(€€€€€€€€ñÕ°ÍÑå±”õíìÁ…‘‘¥¹1•™Ğè€œÈÕÁàœ°µ…É¥¸è€œÄÁÁà€Àœõôø(€€€€€€€€€€ñ±¤ù9Ÿä‹†ê½ĞƒG†êÔ¥„£†ê…¸è€ñˆùí™½É´¹¹•İMÑ…ÉÑ…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ôğ½ˆøğ½±¤ø(€€€€€€€€€€ñ±¤ù9Ÿä£†êıĞ£†ê…¸¤è€ñˆùí™½Éµ…Ñ	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹•¹‘…Ñ”¥ôğ½ˆøğ½±¤ø(€€€€€€€€€€ñ±¤ù9Ÿä£†êıĞ£†ê…¸·†îm¤è€ñˆùí™½É´¹¹•İ¹‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ôğ½ˆøğ½±¤ø(€€€€€€€€ğ½Õ°ø(€€€€€€€€ñÀùM…ÔÑ£†îu¤£†ê…¸ÑË©¸°»†êıÔ©¸Ñ§†êıÀÓ†î•ŒÌ¹¡Ô†êÔÑ¡×¨°¡…¤‹©¸Ï†êôÑ£†î=„Ñ¡×†êµ¸¥„£†ê…¸Ñ§†êıÀ¡¿†êİŒ¯ô£†îÀƒG†îM¹œ½Á£†î”³†î•Œ·†îm¤¸ğ½Àø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÍ•Ñ¥½¸ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÈÁÁàœõôø(€€€€€€€€ñ ĞÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œõôûA'†îT€È¸'Q!W([ Q'†î8†î1ğ½ Ğø(€€€€€€€€ñÀù/†îÓ†î¬¹Ÿäí™½É´¹¹•İMÑ…ÉÑ…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ô°…Œ­¡¿†ê¸Ñ§†î¸ƒGÃ†îŒƒ…À“†î•¹œ¹£ÀÍ…Ôèğ½Àø(€€€€€€€€ñÑ…‰±”ÍÑå±”õíìİ¥‘Ñ è€œÄÀÀ”œ°‰½É‘•É½±±…ÁÍ”è€½±±…ÁÍ”œ°µ…É¥¹Q½Àè€œÄÁÁàœõôø(€€€€€€€€€€ñÑ¡•…ø(€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€ñÑ ÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€±•™Ğœõôù;†îe¤‘Õ¹œğ½Ñ ø(€€€€€€€€€€€€€€ñÑ ÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€±•™ĞœõôùQËÃ†îmŒ¥„£†ê…¸ğ½Ñ ø(€€€€€€€€€€€€€€ñÑ ÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€±•™ĞœõôùM…Ô¥„£†ê…¸ğ½Ñ ø(€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€ğ½Ñ¡•…ø(€€€€€€€€€€ñÑ‰½‘äø(€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôù§„Ñ¡×¨Á£É¹œ½Ñ£…¹œğ½Ñø(€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùí™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹É•¹Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôøñˆùí™½Éµ…Ñ5½¹•ä¡™½É´¹­••ÁAÉ¥¥¹œ€ü½¹ÑÉ…Ğ¹É•¹Ğ€è™½É´¹¹•İI•¹Ğ¥ôğ½ˆøğ½Ñø(€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùQ§†î¸†î5Œğ½Ñø(€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùí™½Éµ…Ñ5½¹•ä¡½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôøñˆùí™½Éµ…Ñ5½¹•ä¡™½É´¹­••ÁAÉ¥¥¹œ€ü½¹ÑÉ…Ğ¹‘•Á½Í¥Ğ€è™½É´¹¹•İ•Á½Í¥Ğ¥ôğ½ˆøğ½Ñø(€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€ğ½Ñ‰½‘äø(€€€€€€€€ğ½Ñ…‰±”ø(€€€€€€€€ñÀÍÑå±”õíìµ…É¥¹Q½Àè€œÄÁÁàœõôùQ§†î¸Ñ¡×¨Á£É¹œƒGÃ†îŒÑ¡…¹ Ñ¿…¸Ñ¡•¼¡Ô¯†îÌ£¹œÑ£…¹œ°Û¼¹Ÿä€ñˆùí½¹ÑÉ…Ğ¹Á…åµ•¹Ñå±•…äñğ€Õôğ½ˆø£¹œÑ£…¹œ¸ğ½Àø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÍ•Ñ¥½¸ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÈÁÁàœõôø(€€€€€€€€ñ ĞÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œõôûA'†îT€Ì¸ƒA'†î8°;¿†îi[ -!?†ê‰8A#4†î) [†îğ½ Ğø(€€€€€€€€ñÀù…Œ­¡¿†ê¸ƒE§†î¸°»Ã†îmŒÛ€Á£´“†î- Û†î”Ñ§†êıÀÓ†î•ŒƒGÃ†îŒƒ…À“†î•¹œÑ¡•¼£†îÀƒG†îM¹œÑ¡×¨Á£É¹œƒGŒ¯ôèğ½Àø(€€€€€€€€ñÕ°ÍÑå±”õíìÁ…‘‘¥¹1•™Ğè€œÈÕÁàœ°µ…É¥¸è€œÄÁÁà€Àœõôø(€€€€€€€€€€ñ±¤ûC…¸§„ƒE§†î¸è€ñˆùíÉ½½´¹•±•ÑÉ¥AÉ¥•÷D½­] ğ½ˆøğ½±¤ø(€€€€€€€€€€ñ±¤ûC…¸§„»Ã†îmŒè€ñˆùí™½Éµ…Ñ5½¹•ä¡É½½´¹İ…Ñ•ÉAÉ¥”¥ô½·
+Ìğ½ˆøğ½±¤ø(€€€€€€€€€€ñ±¤ùA£´“†î- Û†î”†îDƒG†î-¹ è€ñˆùí™½Éµ…Ñ5½¹•ä ¡É½½´¹±•…¹¥¹œñğ€À¤€¬€¡É½½´¹•±•Ù…Ñ½Èñğ€À¤€¬€¡É½½´¹±…Õ¹‘Éäñğ€À¤€¬€¡É½½´¹¥¹Ñ•É¹•Ğñğ€À¤¥ôğ½ˆøğ½±¤ø(€€€€€€€€ğ½Õ°ø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰…ÁÁ•¹‘¥àµÍ•Ñ¥½¸ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÈÁÁàœõôø(€€€€€€€€ñ ĞÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œõôûA'†îT€Ğ¸!'†îT3†îÁğ½ Ğø(€€€€€€€€ñÀùA£†î”³†î•Œ»äÌ¡§†îÔ³†îÅŒ¯†îÓ†î¬¹Ÿäí™½É´¹Í¥¹•‘…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¥ô¸…Œ»†îe¤‘Õ¹œ­£…Œ­£Ñ¹œƒGÃ†îŒÏ†îµ„ƒG†îU¤ÑÉ½¹œÁ£†î”³†î•Œ»äÛ†ê­¸Ñ§†êıÀÓ†î•ŒÑ£†îÅŒ¡§†î¸Ñ¡•¼#†îÀƒG†îM¹œŸ†îEŒ¸ğ½Àø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€É¥œ°É¥‘Q•µÁ±…Ñ•½±Õµ¹Ìè€œÅ™È€Å™Èœ°µ…É¥¹Q½Àè€œĞÁÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôø(€€€€€€€€ñ‘¥Øø(€€€€€€€€€€ñÀøñˆûC†ê$'†î8)8ğ½ˆøğ½Àø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíì¡•¥¡Ğè€œÜÁÁàœõôøğ½‘¥Øø(€€€€€€€€€€ñÀøñˆù'†î4Q#†î(19 ğ½ˆøğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Øø(€€€€€€€€€€ñÀøñˆûC†ê$'†î8)8ğ½ˆøğ½Àø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíì¡•¥¡Ğè€œÜÁÁàœõôøğ½‘¥Øø(€€€€€€€€€€ñÀøñˆùíÑ•¹…¹Ğ¹¹…µ•ôğ½ˆøğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸Q•¹…¹Ñ•Ñ…¥±5½‘…°¡ìÑ•¹…¹Ğ°‘…Ñ„°½¹±½Í”ô¤ì(€½¹ÍĞµ•µ‰•ÉÍ¡¥ÁÌ€ô€¡‘…Ñ„¹µ•µ‰•ÉÍ¡¥ÁÌñğmt¤¹™¥±Ñ•È¡´€ôø´¹Ñ•¹…¹Ñ%€ôôôÑ•¹…¹Ğ¹¥¤¹Í½ÉĞ ¡„°ˆ¤€ôø¹•Ü…Ñ”¡ˆ¹É•…Ñ•‘Ğñğ€À¤€´¹•Ü…Ñ”¡„¹É•…Ñ•‘Ğñğ€À¤¤ì(€½¹ÍĞ…Ñ¥Ù•5•µ‰•ÉÍ¡¥À€ôµ•µ‰•ÉÍ¡¥ÁÌ¹™¥¹¡´€ôø´¹ÍÑ…ÑÕÌ€ôôô€…Ñ¥Ù”œ¤ñğµ•µ‰•ÉÍ¡¥ÁÍlÁtì(€½¹ÍĞ½¹ÑÉ…Ğ€ô…Ñ¥Ù•5•µ‰•ÉÍ¡¥À€ü€¡‘…Ñ„¹½¹ÑÉ…ÑÌñğmt¤¹™¥¹¡Œ€ôøŒ¹¥€ôôô…Ñ¥Ù•5•µ‰•ÉÍ¡¥À¹½¹ÑÉ…Ñ%¤€è¹Õ±°ì(€½¹ÍĞÉ½½´€ô…Ñ¥Ù•5•µ‰•ÉÍ¡¥À€ü€¡‘…Ñ„¹É½½µÌñğmt¤¹™¥¹¡È€ôøÈ¹¥€ôôô…Ñ¥Ù•5•µ‰•ÉÍ¡¥À¹É½½µ%¤€è¹Õ±°ì(€½¹ÍĞÉ••¥ÁÑÌ€ô½¹ÑÉ…Ğ€ü€¡‘…Ñ„¹É••¥ÁÑÌñğmt¤¹™¥±Ñ•È¡È€ôøÈ¹½¹ÑÉ…Ñ%€ôôô½¹ÑÉ…Ğ¹¥¤¹Í½ÉĞ ¡„°ˆ¤€ôø¹•Ü…Ñ”¡ˆ¹É•…Ñ•‘Ğñğ€À¤€´¹•Ü…Ñ”¡„¹É•…Ñ•‘Ğñğ€À¤¤€èmtì(€½¹ÍĞÕÉÉ•¹ÑI••¥ÁĞ€ôÉ••¥ÁÑÌ¹™¥¹¡È€ôøÈ¹µ½¹Ñ €ôôô•ÑÕÉÉ•¹Ñ5½¹Ñ¡1…‰•° ¤€˜˜È¹ÑåÁ”€ôôô€µ½¹Ñ¡±äœ¤ì(€½¹ÍĞ‘•‰Ğ€ôÕÉÉ•¹ÑI••¥ÁĞ€ü•ÑI••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¡ÕÉÉ•¹ÑI••¥ÁĞ¤¹‘•‰Ğ€è€Àì(€½¹ÍĞÑ¥µ•±¥¹”€ôl(€€€ì‘…Ñ”èÑ•¹…¹Ğ¹É•…Ñ•‘Ğ°Ñ¥Ñ±”è€S†ê…¼­£… œ°‘•Ñ…¥°èÑ•¹…¹Ğ¹¹…µ”ô°(€€€€¸¸¹µ•µ‰•ÉÍ¡¥ÁÌ¹µ…À¡´€ôø€¡ì‘…Ñ”è´¹©½¥¹•‘…Ñ”ñğ´¹É•…Ñ•‘Ğ°Ñ¥Ñ±”è€[¼ƒ†î|œ°‘•Ñ…¥°è@‘í´¹É½½µ%‘ô€´€‘í´¹É½±”€ôôô€ÁÉ¥µ…Éäœ€ü€ŸC†ê…¤‘§†î¸œ€è€Ÿ†îxå¹œõ€ô¤¤°(€€€€¸¸¸¡½¹ÑÉ…Ğ€ümì‘…Ñ”è½¹ÑÉ…Ğ¹Í¥¹•‘…Ñ”ñğ½¹ÑÉ…Ğ¹É•…Ñ•‘Ğ°Ñ¥Ñ±”è€/ô£†îÀƒG†îM¹œœ°‘•Ñ…¥°è€‘í™½Éµ…Ñ	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹ÍÑ…ÉÑ…Ñ”¥ôƒŠH€‘í™½Éµ…Ñ	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹•¹‘…Ñ”¥õ€õt€èmt¤°(€€€€¸¸¹É••¥ÁÑÌ¹™¥±Ñ•È¡È€ôø9Õµ‰•È¡È¹Á…¥‘µ½Õ¹Ğñğ€À¤€ø€À¤¹µ…À¡È€ôø€¡ì‘…Ñ”èÈ¹Á…¥‘…Ñ”ñğÈ¹É•…Ñ•‘Ğ°Ñ¥Ñ±”èQ¡…¹ Ñ¿…¸€‘íÈ¹µ½¹Ñ¡õ€°‘•Ñ…¥°è™½Éµ…Ñ5½¹•ä¡È¹Á…¥‘µ½Õ¹Ğñğ€À¤ô¤¤°(€€€€¸¸¸¡µ•µ‰•ÉÍ¡¥ÁÌ¹™¥±Ñ•È¡´€ôø´¹±•™Ñ…Ñ”¤¹µ…À¡´€ôø€¡ì‘…Ñ”è´¹±•™Ñ…Ñ”°Ñ¥Ñ±”è€K†îu¤Á£É¹œœ°‘•Ñ…¥°è@‘í´¹É½½µ%‘õ€ô¤¤¤(€t¹™¥±Ñ•È¡¤€ôø¤¹‘…Ñ”¤¹Í½ÉĞ ¡„°ˆ¤€ôø¹•Ü…Ñ”¡ˆ¹‘…Ñ”ñğ€À¤€´¹•Ü…Ñ”¡„¹‘…Ñ”ñğ€À¤¤¹Í±¥” À°€à¤ì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œàÈÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÈÙÁàœõôùíÑ•¹…¹Ğ¹¹…µ•ôğ½ Èø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆùíÑ•¹…¹Ğ¹Á¡½¹”ñğ€£Á„ÌOAPôƒŠˆíÑ•¹…¹Ğ¹ñğ€£Á„†êµÀ¹£†êµĞôğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆÍÑå±”õíì…Àè€œÄÙÁàœõôø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Ñ•¹…¹Ğµ‘•Ñ…¥°µÉ¥ˆø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Éˆø(€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰½Àµ…ÉµÑ¥Ñ±”ˆùÀÑËèğ½ Ìø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùAí…Ñ¥Ù•5•µ‰•ÉÍ¡¥Àü¹É½½µ%ñğ€ŸŠPôğ½Àø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆùí…Ñ¥Ù•5•µ‰•ÉÍ¡¥Àü¹ÍÑ…ÑÕÌ€ôôô€…Ñ¥Ù”œ€ü€ŸA…¹œƒ†î|œ€è€ŸCŒË†îu¤ôƒŠˆí…Ñ¥Ù•5•µ‰•ÉÍ¡¥Àü¹É½±”€ôôô€ÁÉ¥µ…Éäœ€ü€ŸC†ê…¤‘§†î¸œ€è€Ÿ†îxå¹œôğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Éˆø(€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰½Àµ…ÉµÑ¥Ñ±”ˆù#†îÀƒG†îM¹œğ½ Ìø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùí½¹ÑÉ…Ğ€ü€‘í™½Éµ…Ñ	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹ÍÑ…ÉÑ…Ñ”¥ôƒŠH€‘í™½Éµ…Ñ	ÕÍ¥¹•ÍÍ…Ñ”¡½¹ÑÉ…Ğ¹•¹‘…Ñ”¥õ€€è¥Í=İ¹•É=ÕÁ¥•‘I½½´¡É½½´¤€ü€£†îœ¹£€ƒ†î|œ€è€£Á„Ìôğ½Àø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆùí½¹ÑÉ…Ğ€ü…±Õ±…Ñ•I•¹Ñ…±ÕÉ…Ñ¥½¸¡½¹ÑÉ…Ğ¹ÍÑ…ÉÑ…Ñ”°½¹ÑÉ…Ğ¹•¹‘…Ñ”¤€è€-£Ñ¹œƒ…À“†î•¹œôğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Éˆø(€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰½Àµ…ÉµÑ¥Ñ±”ˆùQ¡…¹ Ñ¿…¸ğ½ Ìø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆÍÑå±”õíì½±½Èè‘•‰Ğ€ø€À€ü€Ù…È ´µ‘…¹•È¤œ€è€Ù…È ´µÍÕ•ÍÌ¤œõôùí‘•‰Ğ€ø€À€ü™½Éµ…Ñ5½¹•ä¡‘•‰Ğ¤€è€-£Ñ¹œ»†îŒôğ½Àø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆùíÕÉÉ•¹ÑI••¥ÁĞ€üA¡§†êıÔ€‘íÕÉÉ•¹ÑI••¥ÁĞ¹µ½¹Ñ¡õ€€è€£Á„ÌÁ¡§†êıÔÑ£…¹œ»äôğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Éˆø(€€€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰½Àµ…ÉµÑ¥Ñ±”ˆùI„Û¼ğ½ Ìø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½ÀµÙ…±Õ”ˆùíÑ•¹…¹Ğ¹±¥•¹Í•A±…Ñ”ñğ€£Á„Ì‰§†î¸Ï†îDôğ½Àø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰½Àµ±…‰•°ˆù[‰¸Ñ…äèíÑ•¹…¹Ğ¹™¥¹•ÉÁÉ¥¹Ñ½‘”ñğ€£Á„ƒG¹œ¯ôôƒŠˆíÑ•¹…¹Ğ¹™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÌñğ€£Á„ƒG¹œ¯ôôğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Éˆø(€€€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰½Àµ…ÉµÑ¥Ñ±”ˆùQ¥µ•±¥¹”ğ½ Ìø(€€€€€€€€€€€íÑ¥µ•±¥¹”¹µ…À ¡¥Ñ•´°¥‘à¤€ôø€ (€€€€€€€€€€€€€€ñ‘¥Ø­•äõí€‘í¥Ñ•´¹Ñ¥Ñ±•ô´‘í¥‘áõô±…ÍÍ9…µ”ô‰Ñ•¹…¹ĞµÑ¥µ•±¥¹”µÉ½Üˆø(€€€€€€€€€€€€€€€€ñÍÁ…¸ùí™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡MÑÉ¥¹œ¡¥Ñ•´¹‘…Ñ”ñğ€œœ¤¹Í±¥” À°€ÄÀ¤¥ôğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€ñˆùí¥Ñ•´¹Ñ¥Ñ±•ôğ½ˆø(€€€€€€€€€€€€€€€€ñ•´ùí¥Ñ•´¹‘•Ñ…¥±ôğ½•´ø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€¤¥ô(€€€€€€€€€€€ì…Ñ¥µ•±¥¹”¹±•¹Ñ €˜˜€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•Íµ…±°ˆù£Á„Ì³†î- Ï†î´¡¿†ê…ĞƒG†îe¹œ¸ğ½Àùô(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸‘¥ÑQ•¹…¹Ñ5½‘…°¡ìÑ•¹…¹Ğ°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡ì€¸¸¹Ñ•¹…¹Ğô¤ì(€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œÔÀÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ ÈùO†îµ„¹ŸÃ†îu¤Ñ¡×¨èíÑ•¹…¹Ğ¹¹…µ•ôğ½ Èø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈˆø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù#†î4Ó©¸€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹¹…µ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹…µ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùOAP€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹Á¡½¹•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Á¡½¹”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹‘ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù	§†î¸Ï†îDá”€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹±¥•¹Í•A±…Ñ”ñğ™½É´¹Ù•¡¥±”ñğ€œô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°±¥•¹Í•A±…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù7ŒÛ‰¸Ñ…ä€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹™¥¹•ÉÁÉ¥¹Ñ½‘”ñğ€œô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°™¥¹•ÉÁÉ¥¹Ñ½‘”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰YèÔÀÈ´ÀÄˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùQË†ê…¹œÑ£…¤Û‰¸Ñ…ä(€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÌñğ€£Á„ƒG¹œ¯ôô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÌè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ù£Á„ƒG¹œ¯ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ûCŒƒG¹œ¯ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ù†ê¸ãÍ„ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ûCŒãÍ„ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùY…¤ÑËÈ€(€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹É½±•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°É½±”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰ÁÉ¥µ…Éäˆù9ŸÃ†îu¤ƒG†î¥¹œÓ©¸ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰Í•½¹‘…Éäˆù9ŸÃ†îu¤ƒ†î|å¹œğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€ÈœõôûC†î-„£†î$€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹…‘‘É•ÍÌñğ€œô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°…‘‘É•ÍÌè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù¡¤£è€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ”ñğ€œô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸İ¥‘”ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÈÑÁàœõô½¹±¥¬õì ¤€ôø½¹M…Ù”¡™½É´¥ôù3ÁÔÑ¡…äƒG†îU¤ğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸I½½µµ…Ñ•5½‘…°¡ìÉ½½´°½¹ÑÉ…Ğ°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞm¥ÍM…Ù¥¹œ°Í•Ñ%ÍM…Ù¥¹t€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡ì(€€€¹…µ”è€œœ°(€€€Á¡½¹”è€œœ°(€€€è€œœ°(€€€‘…Ñ”è€œœ°(€€€‘A±…”è€œœ°(€€€‰¥ÉÑ¡‘…äè€œœ°(€€€…‘‘É•ÍÌè€œœ°(€€€±¥•¹Í•A±…Ñ”è€œœ°(€€€™¥¹•ÉÁÉ¥¹Ñ½‘”è€œœ°(€€€™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÌè€£Á„ƒG¹œ¯ôœ°(€€€©½¥¹•‘…Ñ”è¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°(€€€¹½Ñ”è€œœ°(€€€¥‘A…ÍÑ”è€œœ(€ô¤ì((€½¹ÍĞ…ÁÁ±åA…ÍÑ•‘%‘%¹™¼€ô€¡Ñ•áĞ¤€ôøì(€€€½¹ÍĞÁ…ÉÍ•€ôÁ…ÉÍ•Y¥•Ñ¹…µ•Í•%‘…É¡Ñ•áĞ¤ì((€€€Í•Ñ½É´¡ÁÉ•Ø€ôø€¡ì(€€€€€€¸¸¹ÁÉ•Ø°(€€€€€¥‘A…ÍÑ”èÑ•áĞ°(€€€€€èÁ…ÉÍ•¹ñğÁÉ•Ø¹°(€€€€€¹…µ”èÁ…ÉÍ•¹¹…µ”ñğÁÉ•Ø¹¹…µ”°(€€€€€‰¥ÉÑ¡‘…äèÁ…ÉÍ•¹‰¥ÉÑ¡‘…äñğÁÉ•Ø¹‰¥ÉÑ¡‘…ä°(€€€€€…‘‘É•ÍÌèÁ…ÉÍ•¹…‘‘É•ÍÌñğÁÉ•Ø¹…‘‘É•ÍÌ°(€€€€€‘…Ñ”èÁ…ÉÍ•¹¥ÍÍÕ•…Ñ”ñğÁÉ•Ø¹‘…Ñ”°(€€€€€‘A±…”èÁ…ÉÍ•¹¥ÍÍÕ•A±…”ñğÁÉ•Ø¹‘A±…”°(€€€€€¹½Ñ”èÁ…ÉÍ•¹¹½Ñ”ñğÁÉ•Ø¹¹½Ñ”(€€€ô¤¤ì(€ôì((€½¹ÍĞ¡…¹‘±•M…Ù”€ô€ ¤€ôøì(€€€¥˜€¡¥ÍM…Ù¥¹œ¤É•ÑÕÉ¸ì(€€€¥˜€ …™½É´¹¹…µ”¹ÑÉ¥´ ¤¤ì(€€€€€…±•ÉĞ YÕ¤³É¹œ¹£†êµÀ£†î4Ó©¸¹ŸÃ†îu¤ƒ†î|å¹œ¸œ¤ì(€€€€€É•ÑÕÉ¸ì(€€€ô(€€€¥˜€ …™½É´¹©½¥¹•‘…Ñ”¤ì(€€€€€…±•ÉĞ YÕ¤³É¹œ¹£†êµÀ¹ŸäÛ¼ƒ†î|¸œ¤ì(€€€€€É•ÑÕÉ¸ì(€€€ô(€€€Í•Ñ%ÍM…Ù¥¹œ¡ÑÉÕ”¤ì(€€€½¹ÍĞÑ•¹…¹Ñ%€ôÕ¥ Ñ•¹…¹Ğœ¤ì(€€€½¹ÍĞµ•µ‰•ÉÍ¡¥Á%€ôÕ¥ µ•µ‰•ÉÍ¡¥Àœ¤ì(€€€½¹ÍĞÑ•¹…¹Ğ€ôì(€€€€€¥èÑ•¹…¹Ñ%°(€€€€€¹…µ”è™½É´¹¹…µ”¹ÑÉ¥´ ¤°(€€€€€Á¡½¹”è™½É´¹Á¡½¹”°(€€€€€è™½É´¹°(€€€€€‘…Ñ”è™½É´¹‘…Ñ”°(€€€€€‘A±…”è™½É´¹‘A±…”°(€€€€€‰¥ÉÑ¡‘…äè™½É´¹‰¥ÉÑ¡‘…ä°(€€€€€…‘‘É•ÍÌè™½É´¹…‘‘É•ÍÌ°(€€€€€±¥•¹Í•A±…Ñ”è™½É´¹±¥•¹Í•A±…Ñ”°(€€€€€™¥¹•ÉÁÉ¥¹Ñ½‘”è™½É´¹™¥¹•ÉÁÉ¥¹Ñ½‘”°(€€€€€™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÌè™½É´¹™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÌ°(€€€€€É½±”è€µ•µ‰•Èœ°(€€€€€ÍÑ…ÑÕÌè€…Ñ¥Ù”œ°(€€€€€¹½Ñ”è™½É´¹¹½Ñ”°(€€€€€É•…Ñ•‘Ğè¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤(€€€ôì(€€€½¹ÍĞµ•µ‰•ÉÍ¡¥À€ôì(€€€€€¥èµ•µ‰•ÉÍ¡¥Á%°(€€€€€½¹ÑÉ…Ñ%è½¹ÑÉ…Ğ¹¥°(€€€€€Ñ•¹…¹Ñ%°(€€€€€É½½µ%èÉ½½´¹¥°(€€€€€É½±”è€µ•µ‰•Èœ°(€€€€€ÍÑ…ÑÕÌè€…Ñ¥Ù”œ°(€€€€€©½¥¹•‘…Ñ”è™½É´¹©½¥¹•‘…Ñ”°(€€€€€±•™Ñ…Ñ”è€œœ°(€€€€€É•…Ñ•‘Ğè¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤(€€€ôì(€€€ÑÉäì(€€€€€½¹ÍĞÍ…Ù•€ô½¹M…Ù”¡ìÑ•¹…¹Ğ°µ•µ‰•ÉÍ¡¥Àô¤ì(€€€€€¥˜€¡Í…Ù•€ôôô™…±Í”¤ì(€€€€€€€Í•Ñ%ÍM…Ù¥¹œ¡™…±Í”¤ì(€€€€€ô(€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€½¹Í½±”¹•ÉÉ½È¡•ÉÉ½È¤ì(€€€€€Í•Ñ%ÍM…Ù¥¹œ¡™…±Í”¤ì(€€€€€…±•ÉĞ -£Ñ¹œ³ÁÔƒGÃ†îŒ¹ŸÃ†îu¤ƒ†î|å¹œ¸YÕ¤³É¹œÑ£†î´³†ê…¤¸œ¤ì(€€€ô(€ôì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œØÈÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€ñ ÈùQ£©´¹ŸÃ†îu¤ƒ†î|å¹œƒŠˆA£É¹œíÉ½½´¹¥‘ôğ½ Èø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆù†ê½¸¹ŸÃ†îu¤ƒ†î|å¹œÛ¼£†îÀƒG†îM¹œí½¹ÑÉ…Ğ¹½¹ÑÉ…Ñ9¼ñğ½¹ÑÉ…Ğ¹¥‘ôğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…ÍÑ”µ¥µ…Éˆø(€€€€€€€€€€€€ñ±…‰•°ù…¸¹¡…¹ Ñ£Ñ¹œÑ¥¸(€€€€€€€€€€€€€€ñÑ•áÑ…É•„(€€€€€€€€€€€€€€€Ù…±Õ”õí™½É´¹¥‘A…ÍÑ•ô(€€€€€€€€€€€€€€€½¹¡…¹”õí”€ôø…ÁÁ±åA…ÍÑ•‘%‘%¹™¼¡”¹Ñ…É•Ğ¹Ù…±Õ”¥ô(€€€€€€€€€€€€€€€Á±…•¡½±‘•Èô‰…¸¹Õç©¸»†îe¤‘Õ¹œƒ†î|ƒG‰ä°£†îÑ£†îE¹œÓ†îÄƒE§†î¸è£†î4Ó©¸°Ï†îD°¹ŸäÍ¥¹ °Ñ£Ã†îu¹œÑËè°¹Ÿä†ê•À¸¸¸ˆ(€€€€€€€€€€€€€€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É•¹Ñ…°µÍÕ‰Í•Ñ¥½¸µÑ¥Ñ±”ˆù·†êİĞÑËÃ†îmŒğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù#†î4Û€Ó©¸€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹¹…µ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹…µ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰9Õç†î¸[¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùO†îD€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹‘ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù9ŸäÍ¥¹ €ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹‰¥ÉÑ¡‘…åô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‰¥ÉÑ¡‘…äè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€ÈœõôûC†î-„£†î$Ñ£Ã†îu¹œÑËè€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹…‘‘É•ÍÍô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°…‘‘É•ÍÌè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É•¹Ñ…°µÍÕ‰Í•Ñ¥½¸µÑ¥Ñ±”ˆù·†êİĞÍ…Ôğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ù9Ÿä†ê•À€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹‘…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‘…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù;…¤†ê•À€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹‘A±…•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‘A±…”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù¡¤£è€¼5Ih€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰§†îm¤Óµ¹ °Å×†îEŒÓ†î- °Å×¨Å×…¸°£†ê…¸°ƒG†êİŒƒE§†î´¹£†êµ¸“†ê…¹œ°5Ih¸¸¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É•¹Ñ…°µÍÕ‰Í•Ñ¥½¸µÑ¥Ñ±”ˆù1§©¸£†î€˜Å×†ê¸³ôÉ„Û¼ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ùO†îDƒE§†î¸Ñ¡¿†ê…¤€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹Á¡½¹•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Á¡½¹”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•ÈôˆÀåáà¸¸¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù9ŸäÛ¼ƒ†î|€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹©½¥¹•‘…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°©½¥¹•‘…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù	§†î¸Ï†îDá”€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹±¥•¹Í•A±…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°±¥•¹Í•A±…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù7ŒÛ‰¸Ñ…ä€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹™¥¹•ÉÁÉ¥¹Ñ½‘•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°™¥¹•ÉÁÉ¥¹Ñ½‘”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰YèÔÀÈ´ÀÈˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùQË†ê…¹œÑ£…¤Û‰¸Ñ…ä(€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÍô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°™¥¹•ÉÁÉ¥¹ÑMÑ…ÑÕÌè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ù£Á„ƒG¹œ¯ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ûCŒƒG¹œ¯ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ù†ê¸ãÍ„ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸ûCŒãÍ„ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Ñ¥½¸µ™½½Ñ•Èˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôù#†îäğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õí¡…¹‘±•M…Ù•ô‘¥Í…‰±•õí¥ÍM…Ù¥¹ôùí¥ÍM…Ù¥¹œ€ü€ŸA…¹œ³ÁÔ¸¸¸œ€è€œ¬Q£©´¹ŸÃ†îu¤ƒ†î|å¹œôğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸I••¥ÁÑ5½‘…°¡ìÉ••¥ÁĞ°É½½´°‘…Ñ„°‰…¹­%¹™¼°½¹±½Í”°½¹AÉ•Ø°½¹9•áĞô¤ì(€¥˜€ …É••¥ÁĞñğ€…É½½´¤É•ÑÕÉ¸¹Õ±°ì(€½¹ÍĞ•¹É¥¡•‘I••¥ÁĞ€ô•¹É¥¡I••¥ÁÑ]¥Ñ¡QÉ…¹Í™•ÉUÑ¥±¥Ñä¡É••¥ÁĞ°‘…Ñ„¤ì(€½¹ÍĞÁ…åµ•¹ÑMÑ…Ñ”€ô•ÑI••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¡•¹É¥¡•‘I••¥ÁĞ¤ì(€½¹ÍĞ‘¥ÍÁ±…åI••¥ÁĞ€ôì(€€€€¸¸¹•¹É¥¡•‘I••¥ÁĞ°(€€€‘•‰ĞèÁ…åµ•¹ÑMÑ…Ñ”¹‘•‰Ğ°(€€€ÍÑ…ÑÕÌèÁ…åµ•¹ÑMÑ…Ñ”¹ÍÑ…ÑÕÌ(€ôì(€½¹ÍĞ¥Í5½¹Ñ¡±ä€ôÉ••¥ÁĞ¹ÑåÁ”€ôôô€µ½¹Ñ¡±äœì(€½¹ÍĞ½¹ÑÉ…Ğ€ô€¡‘…Ñ„¹½¹ÑÉ…ÑÌñğmt¤¹™¥¹¡Œ€ôøŒ¹¥€ôôô‘¥ÍÁ±…åI••¥ÁĞ¹½¹ÑÉ…Ñ%¤ì(€½¹ÍĞÑ•¹…¹Ğ€ô•ÑQ•¹…¹Ñ½ÉI••¥ÁĞ¡‘…Ñ„°‘¥ÍÁ±…åI••¥ÁĞ¤ñğì¹…µ”è€ŸŠPœ°Á¡½¹”è€ŸŠPœôì(€½¹ÍĞÍ•ÑÑ±•µ•¹ÑI•Á½ÉĞ€ô€…¥Í5½¹Ñ¡±ä(€€€€ü€¡‘…Ñ„¹µ½Ù•=ÕÑI•Á½ÉÑÌñğmt¤¹™¥¹¡É•Á½ÉĞ€ôøÉ•Á½ÉĞ¹½¹ÑÉ…Ñ%€ôôô‘¥ÍÁ±…åI••¥ÁĞ¹½¹ÑÉ…Ñ%€˜˜É•Á½ÉĞ¹É½½µ%€ôôô‘¥ÍÁ±…åI••¥ÁĞ¹É½½µ%¤(€€€€è¹Õ±°ì((€™Õ¹Ñ¥½¸¡…¹‘±•AÉ¥¹ÑI••¥ÁĞ ¤ì(€€€½¹ÍĞ½¹Ñ•¹Ğ€ô‘½Õµ•¹Ğ¹•Ñ±•µ•¹Ñ	å% ÁÉ¥¹Ñ…‰±”µÉ••¥ÁĞœ¤ì(€€€¥˜€ …½¹Ñ•¹Ğ¤É•ÑÕÉ¸ì(€€€€(€€€€¼¼É•…Ñ”¥™É…µ”(€€€½¹ÍĞ¥™É…µ”€ô‘½Õµ•¹Ğ¹É•…Ñ•±•µ•¹Ğ ¥™É…µ”œ¤ì(€€€¥™É…µ”¹ÍÑå±”¹Á½Í¥Ñ¥½¸€ô€™¥á•œì(€€€¥™É…µ”¹ÍÑå±”¹É¥¡Ğ€ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹‰½ÑÑ½´€ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹İ¥‘Ñ €ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹¡•¥¡Ğ€ô€œÀœì(€€€¥™É…µ”¹ÍÑå±”¹‰½É‘•È€ô€œÀœì(€€€‘½Õµ•¹Ğ¹‰½‘ä¹…ÁÁ•¹‘¡¥±¡¥™É…µ”¤ì(€€€€(€€€½¹ÍĞ‘½Œ€ô¥™É…µ”¹½¹Ñ•¹Ñ]¥¹‘½Ü¹‘½Õµ•¹Ğì(€€€€(€€€€¼¼½Áä…±°ÍÑå±•Ì(€€€½¹ÍĞÍÑå±•Ì€ô‘½Õµ•¹Ğ¹ÅÕ•ÉåM•±•Ñ½É±° ±¥¹­mÉ•°ô‰ÍÑå±•Í¡••Ğ‰t°ÍÑå±”œ¤ì(€€€‘½Œ¹İÉ¥Ñ” œñ¡Ñµ°øñ¡•…øñÑ¥Ñ±”ù%¸Á¡§†êıÔÑ¡Ôğ½Ñ¥Ñ±”øœ¤ì(€€€ÍÑå±•Ì¹™½É… ¡Ì€ôø‘½Œ¹İÉ¥Ñ”¡Ì¹½ÕÑ•É!Q50¤¤ì(€€€€(€€€€¼¼‘ÔÍÁ•¥™¥ŒÍÑå±”™½È¥™É…µ”(€€€‘½Œ¹İÉ¥Ñ”¡€(€€€€€€ñÍÑå±”ø(€€€€€€€‰½‘äìµ…É¥¸è€ÀìÁ…‘‘¥¹œè€Àì‰…­É½Õ¹èİ¡¥Ñ”ì™½¹Ğµ™…µ¥±äè€%¹Ñ•Èœ°€	”Y¥•Ñ¹…´AÉ¼œ°Í…¹ÌµÍ•É¥˜ìô(€€€€€€€€¹ÁÉ¥¹Ñ…‰±”µÉ••¥ÁĞì€(€€€€€€€€€İ¥‘Ñ è€ÄĞáµ´€…¥µÁ½ÉÑ…¹Ğì€(€€€€€€€€€µ…É¥¸è€À€…¥µÁ½ÉÑ…¹Ğì(€€€€€€€€€Á…‘‘¥¹œè€Éµ´€Ñµ´€…¥µÁ½ÉÑ…¹Ğì€¼¨áÑÉ•µ•±äÑ¥¡ĞÁ…‘‘¥¹œ€¨¼(€€€€€€€€€‰½àµÍ¡…‘½Üè¹½¹”€…¥µÁ½ÉÑ…¹Ğì(€€€€€€€€€‰½É‘•Èè¹½¹”€…¥µÁ½ÉÑ…¹Ğì(€€€€€€€€€™½¹ĞµÍ¥é”è€ÄÉÁàì€¼¨Mµ…±±•È‰…Í”™½¹Ğ€¨¼(€€€€€€€ô(€€€€€€€Á…”ìÍ¥é”èÔÁ½ÉÑÉ…¥Ğìµ…É¥¸è€Àìô(€€€€€€€€¨ì€µİ•‰­¥ĞµÁÉ¥¹Ğµ½±½Èµ…‘©ÕÍĞè•á…Ğ€…¥µÁ½ÉÑ…¹ĞìÁÉ¥¹Ğµ½±½Èµ…‘©ÕÍĞè•á…Ğ€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€(€€€€€€€€¼¨5…á¥µÕ´½µÁÉ•ÍÍ¥½¸€¨¼(€€€€€€€€¹É••¥ÁĞµ¡•…‘•ÈµØĞìµ…É¥¸µ‰½ÑÑ½´è€ÑÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹É••¥ÁĞµ¡•…‘•ÈµØĞ€¹‰É…¹ì™½¹ĞµÍ¥é”è€ÄÑÁà€…¥µÁ½ÉÑ…¹Ğìµ…É¥¸è€À€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹É••¥ÁĞµ¡•…‘•ÈµØĞ€¹ÍÕˆì‘¥ÍÁ±…äè¹½¹”€…¥µÁ½ÉÑ…¹Ğìô€¼¨!¥‘”Í±½…¸Ñ¼Í…Ù”ÍÁ…”€¨¼(€€€€€€€€¹É••¥ÁĞµ¡•…‘•ÈµØĞ Äì™½¹ĞµÍ¥é”è€ÄáÁà€…¥µÁ½ÉÑ…¹Ğìµ…É¥¸è€À€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹Á…¥µÍÑ…µÀµØĞìÑ½Àè€ÈÁµ´€…¥µÁ½ÉÑ…¹ĞìÉ¥¡Ğè€áµ´€…¥µÁ½ÉÑ…¹ĞìÁ…‘‘¥¹œè€ÙÁà€ÄÉÁà€…¥µÁ½ÉÑ…¹Ğì‰½É‘•Èµİ¥‘Ñ è€ÍÁà€…¥µÁ½ÉÑ…¹Ğì‰½É‘•ÈµÉ…‘¥ÕÌè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹Á…¥µÍÑ…µÀµØĞÍÁ…¸ì™½¹ĞµÍ¥é”è€ÄÑÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹Á…¥µÍÑ…µÀµØĞÍµ…±°ì™½¹ĞµÍ¥é”è€åÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€(€€€€€€€€¹¥¹™¼µ‰…ÈµØĞì…Àè€ÑÁà€…¥µÁ½ÉÑ…¹ĞìÁ…‘‘¥¹œè€ÑÁà€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìµ…É¥¸µ‰½ÑÑ½´è€áÁà€…¥µÁ½ÉÑ…¹Ğì‰½É‘•ÈµÉ…‘¥ÕÌè€áÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹¥¹™¼µ‰…ÈµØĞ€¹Ù…±Õ”ì™½¹ĞµÍ¥é”è€ÄÍÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€(€€€€€€€€¹É••¥ÁĞµ‰½‘äµØĞì…Àè€ÄÁÁà€…¥µÁ½ÉÑ…¹ĞìÉ¥µÑ•µÁ±…Ñ”µ½±Õµ¹Ìè€Å™È€ÈØÁÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹É••¥ÁĞµ¥Ñ•µÌµÍ•Ñ¥½¸ Ììµ…É¥¸µ‰½ÑÑ½´è€áÁà€…¥µÁ½ÉÑ…¹ĞìÁ…‘‘¥¹œµ‰½ÑÑ½´è€ÑÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹¡…É”µÉ½ÜµØĞìÁ…‘‘¥¹œè€ÑÁà€À€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹¡…É”µÉ½ÜµØĞ€¹¹…µ”ì™½¹ĞµÍ¥é”è€ÄÍÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹¡…É”µÉ½ÜµØĞ€¹…µ½Õ¹Ğì™½¹ĞµÍ¥é”è€ÄÑÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€(€€€€€€€€¹Á…åµ•¹Ğµ…ÉµØĞìÁ…‘‘¥¹œè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğì…Àè€áÁà€…¥µÁ½ÉÑ…¹Ğì‰½É‘•ÈµÉ…‘¥ÕÌè€ÄÉÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹ÅÈµ‰½àµØĞìÁ…‘‘¥¹œè€áÁà€…¥µÁ½ÉÑ…¹Ğì…Àè€ÑÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹ÅÈµ‰½àµØĞ¥µœìİ¥‘Ñ è€ÄÜÁÁà€…¥µÁ½ÉÑ…¹Ğì¡•¥¡Ğè€ÄÜÁÁà€…¥µÁ½ÉÑ…¹ĞìÁ…‘‘¥¹œè€ÙÁà€…¥µÁ½ÉÑ…¹Ğì¥µ…”µÉ•¹‘•É¥¹œèÉ¥ÍÀµ•‘•Ì€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹ÅÈµ‰½àµØĞÀì™½¹ĞµÍ¥é”è€åÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€(€€€€€€€€¹Ñ½Ñ…°µÍÕµµ…ÉäµØĞìÁ…‘‘¥¹œè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìµ…É¥¸µÑ½Àè€ÑÁà€…¥µÁ½ÉÑ…¹Ğì‰½É‘•ÈµÉ…‘¥ÕÌè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹Ñ½Ñ…°µÍÕµµ…ÉäµØĞ€¹Ñ½Ñ…°µ…µ½Õ¹Ğì™½¹ĞµÍ¥é”è€ÄáÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€(€€€€€€€€¹Í¥¹…ÑÕÉ•ÌµØĞìµ…É¥¸µÑ½Àè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìµ…É¥¸µ‰½ÑÑ½´è€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğì…Àè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹Í¥¹…ÑÕÉ”µÍÁ…”µØĞì¡•¥¡Ğè€ÌÁÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹Í¥¹…ÑÕÉ”µ‰½à Ğì™½¹ĞµÍ¥é”è€ÄÉÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€(€€€€€€€€¹Ñ¡…¹¬µå½ÔµØĞìÁ…‘‘¥¹œµÑ½Àè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìµ…É¥¸µÑ½Àè€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğì™½¹ĞµÍ¥é”è€ÄÁÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€€€¹Ñ•¹…¹Ğµ¥¹™¼µØĞìÁ…‘‘¥¹œè€áÁà€…¥µÁ½ÉÑ…¹Ğìµ…É¥¸µÑ½Àè€áÁà€…¥µÁ½ÉÑ…¹Ğì™½¹ĞµÍ¥é”è€ÄÅÁà€…¥µÁ½ÉÑ…¹Ğìô(€€€€€€ğ½ÍÑå±”ø(€€€€¤ì(€€€€(€€€‘½Œ¹İÉ¥Ñ” œğ½¡•…øñ‰½‘äøœ¤ì(€€€‘½Œ¹İÉ¥Ñ”¡½¹Ñ•¹Ğ¹½ÕÑ•É!Q50¤ì(€€€‘½Œ¹İÉ¥Ñ” œğ½‰½‘äøğ½¡Ñµ°øœ¤ì(€€€‘½Œ¹±½Í” ¤ì(€€€€(€€€¥™É…µ”¹½¹Ñ•¹Ñ]¥¹‘½Ü¹™½ÕÌ ¤ì(€€€Í•ÑQ¥µ•½ÕĞ  ¤€ôøì(€€€€€¥™É…µ”¹½¹Ñ•¹Ñ]¥¹‘½Ü¹ÁÉ¥¹Ğ ¤ì(€€€€€‘½Õµ•¹Ğ¹‰½‘ä¹É•µ½Ù•¡¥±¡¥™É…µ”¤ì(€€€ô°€ÔÀÀ¤ì(€ô((€½¹ÍĞ¡…¹‘±•½ÁåQÉ…¹Í™•È€ô€ ¤€ôøì(€€€¹…Ù¥…Ñ½È¹±¥Á‰½…É¹İÉ¥Ñ•Q•áĞ¡ÑÉ…¹Í™•É½¹Ñ•¹Ğ¡‘¥ÍÁ±…åI••¥ÁĞ¤¤ì(€€€…±•ÉĞ ŸCŒ½Áä»†îe¤‘Õ¹œ¡Õç†î¸­¡¿†ê¸„œ¤ì(€ôì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°¹¼µÁÉ¥¹Ğµ‰…­‘É½Àˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµµ½‘…°µØÌ±¥ÅÕ¥µ±…ÍÌˆ½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•È¹¼µÁÉ¥¹ĞˆÍÑå±”õíìÁ…‘‘¥¹œè€œÄÁÁà€ÈÑÁàœ°‰½É‘•É	½ÑÑ½´è€œÅÁàÍ½±¥É‰„ ÈÔÔ°ÈÔÔ°ÈÔÔ°À¸Ä¤œ°‘¥ÍÁ±…äè€™±•àœ°©ÕÍÑ¥™å½¹Ñ•¹Ğè€ÍÁ…”µ‰•Ñİ••¸œ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœõôø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœ°…Àè€œÄÙÁàœõôø(€€€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…Àè€œÑÁàœõôø(€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹AÉ•Ùô‘¥Í…‰±•õì…½¹AÉ•ÙôÍÑå±”õíì‰½É‘•ÉI…‘¥ÕÌè€œÔÀ”œ°İ¥‘Ñ è€œÌÉÁàœ°¡•¥¡Ğè€œÌÉÁàœ°Á…‘‘¥¹œè€ÀõôûŠ@ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹9•áÑô‘¥Í…‰±•õì…½¹9•áÑôÍÑå±”õíì‰½É‘•ÉI…‘¥ÕÌè€œÔÀ”œ°İ¥‘Ñ è€œÌÉÁàœ°¡•¥¡Ğè€œÌÉÁàœ°Á…‘‘¥¹œè€ÀõôûŠHğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÄáÁàœ°µ…É¥¸è€ÀõôùA¡§†êıÔÑ¡Ôí•ÑQÉ…¹Í™•ÉI½½µ1…‰•°¡‘¥ÍÁ±…åI••¥ÁĞ¥ôğ½ Èø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•Íµ…±°ˆùQ£…¹œí‘¥ÍÁ±…åI••¥ÁĞ¹µ½¹Ñ¡ôğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôÍÑå±”õíì‰½É‘•ÉI…‘¥ÕÌè€œÔÀ”œ°İ¥‘Ñ è€œÌÙÁàœ°¡•¥¡Ğè€œÌÙÁàœ°Á…‘‘¥¹œè€ÀõôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø((€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ‰½‘äµØÌÍÉ½±±…‰±”ˆø(€€€€€€€€€€ñAÉ¥¹Ñ…‰±•I••¥ÁĞ€(€€€€€€€€€€€É••¥ÁĞõí‘¥ÍÁ±…åI••¥ÁÑô(€€€€€€€€€€€É½½´õíÉ½½µô€(€€€€€€€€€€€Ñ•¹…¹ĞõíÑ•¹…¹Ñô€(€€€€€€€€€€€½¹ÑÉ…Ğõí½¹ÑÉ…Ñô(€€€€€€€€€€€‰…¹­%¹™¼õí‰…¹­%¹™½ô€(€€€€€€€€€€€Í•ÑÑ±•µ•¹ÑI•Á½ÉĞõíÍ•ÑÑ±•µ•¹ÑI•Á½ÉÑô(€€€€€€€€€€¼ø(€€€€€€€€ğ½‘¥Øø((€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ™½½Ñ•ÈµØÌ¹¼µÁÉ¥¹ĞˆÍÑå±”õíìÁ…‘‘¥¹œè€œÄÁÁà€ÈÑÁàœ°‰½É‘•ÉQ½Àè€œÅÁàÍ½±¥É‰„ ÈÔÔ°ÈÔÔ°ÈÔÔ°À¸Ä¤œ°‘¥ÍÁ±…äè€™±•àœ°…Àè€œÄÉÁàœ°©ÕÍÑ¥™å½¹Ñ•¹Ğè€™±•àµ•¹œõôø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí¡…¹‘±•½ÁåQÉ…¹Í™•ÉôûÂ~N,½Áä»†îe¤‘Õ¹œ,ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õí¡…¹‘±•AÉ¥¹ÑI••¥ÁÑôûÂ~Z£¾â<%¸Á¡§†êıÔÑ¡Ôğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸M•ÑÑ±•µ•¹ÑI••¥ÁÑ	É•…­‘½İ¸¡ìÉ•Á½ÉĞ°É••¥ÁĞ°É½½´°Ñ…‰±”€ô™…±Í”ô¤ì(€½¹ÍĞÉ½½µ¡…É•…åÌ€ô9Õµ‰•È¡É•Á½ÉĞü¹É½½µ¡…É•…åÌñğ€À¤ì(€½¹ÍĞÉ•Á½ÉÑ¹‘…Ñ”€ôÉ•Á½ÉĞü¹…ÑÕ…±¹‘…Ñ”€ü¹•Ü…Ñ”¡É•Á½ÉĞ¹…ÑÕ…±¹‘…Ñ”¤€è¹Õ±°ì(€½¹ÍĞ¥¹™•ÉÉ•‘5½¹Ñ¡…åÌ€ôÉ•Á½ÉÑ¹‘…Ñ”€˜˜€…9Õµ‰•È¹¥Í9…8¡É•Á½ÉÑ¹‘…Ñ”¹•ÑQ¥µ” ¤¤(€€€€ü¹•Ü…Ñ”¡É•Á½ÉÑ¹‘…Ñ”¹•ÑÕ±±e•…È ¤°É•Á½ÉÑ¹‘…Ñ”¹•Ñ5½¹Ñ  ¤€¬€Ä°€À¤¹•Ñ…Ñ” ¤(€€€€è€ÌÀì(€½¹ÍĞ‰¥±±¥¹5½¹Ñ¡…åÌ€ô9Õµ‰•È¡É•Á½ÉĞü¹‰¥±±¥¹5½¹Ñ¡…åÌñğ¥¹™•ÉÉ•‘5½¹Ñ¡…åÌ¤ì(€½¹ÍĞµ½¹Ñ¡±åI•¹Ğ€ô9Õµ‰•È¡É•Á½ÉĞü¹µ½¹Ñ¡±åI•¹Ğ€üüÉ½½´ü¹É•¹Ğ€üü€À¤ì(€½¹ÍĞµ½¹Ñ¡±åM•ÉÙ¥•Ì€ô9Õµ‰•È¡É•Á½ÉĞü¹µ½¹Ñ¡±å¥á•‘M•ÉÙ¥•Ì€üü€À¤ì(€½¹ÍĞÁÉ½É…Ñ•‘I•¹Ğ€ô9Õµ‰•È¡É•Á½ÉĞü¹ÁÉ½É…Ñ•‘I•¹Ğ€üüÉ••¥ÁĞü¹É•¹Ğ€üü€À¤ì(€½¹ÍĞÁÉ½É…Ñ•‘M•ÉÙ¥•Ì€ô9Õµ‰•È¡É•Á½ÉĞü¹ÁÉ½É…Ñ•‘¥á•‘M•ÉÙ¥•Ì€üüÉ••¥ÁĞü¹™¥á•‘M•ÉÙ¥•Ì€üü€À¤ì(€½¹ÍĞÉ•¹Ñ•Ñ…¥±Ì€ôÉ½½µ¡…É•…åÌ(€€€€ü€‘í™½Éµ…Ñ5½¹•ä¡µ½¹Ñ¡±åI•¹Ğ¥ô€¼€‘í‰¥±±¥¹5½¹Ñ¡…åÍô¹Ÿäƒ\€‘íÉ½½µ¡…É•…åÍô¹Ÿå€(€€€€è€¡µ½¹Ñ¡±åI•¹Ğ€üQ§†î¸Á£É¹œÑ£…¹œè€‘í™½Éµ…Ñ5½¹•ä¡µ½¹Ñ¡±åI•¹Ğ¥õ€€è€œœ¤ì(€½¹ÍĞÍ•ÉÙ¥••Ñ…¥±Ì€ôÉ½½µ¡…É•…åÌ€˜˜µ½¹Ñ¡±åM•ÉÙ¥•Ì(€€€€ü€‘í™½Éµ…Ñ5½¹•ä¡µ½¹Ñ¡±åM•ÉÙ¥•Ì¥ô€¼€‘í‰¥±±¥¹5½¹Ñ¡…åÍô¹Ÿäƒ\€‘íÉ½½µ¡…É•…åÍô¹Ÿå€(€€€€è€œœì(€½¹ÍĞÉ½İ…Ñ„€ôÉ•Á½ÉĞ€ül(€€€lQ§†î¸Á£É¹œÁ£…ĞÍ¥¹ œ°ÁÉ½É…Ñ•‘I•¹Ğ°É•¹Ñ•Ñ…¥±Ít°(€€€l†î- Û†î”Á£…ĞÍ¥¹ œ°ÁÉ½É…Ñ•‘M•ÉÙ¥•Ì°Í•ÉÙ¥••Ñ…¥±Ít°(€€€€¸¸¸¡É•Á½ÉĞ¹Í•ÑÑ±•µ•¹Ñ5½‘”€ôôô€ÁÉ•Á…¥‘}µ½¹Ñ¡}É•™Õ¹‘}‘•Á½Í¥Ğœ€ül(€€€€€lQ§†î¸Á£É¹œƒGŒÑ¡ÔÑ£…¹œ»äœ°É•Á½ÉĞ¹ÁÉ•Á…¥‘I•¹ÑA…¥°€œt°(€€€€€l†î- Û†î”ƒGŒÑ¡ÔÑ£…¹œ»äœ°É•Á½ÉĞ¹ÁÉ•Á…¥‘¥á•‘M•ÉÙ¥•ÍA…¥°€œt°(€€€€€l!¿¸Ñ§†î¸Á£É¹œ£Á„Ï†î´“†î•¹œœ°É•Á½ÉĞ¹ÁÉ•Á…¥‘U¹ÕÍ•‘I•¹ÑI•™Õ¹°€œt°(€€€€€l!¿¸“†î- Û†î”£Á„Ï†î´“†î•¹œœ°É•Á½ÉĞ¹ÁÉ•Á…¥‘U¹ÕÍ•‘M•ÉÙ¥•ÍI•™Õ¹°€œt°(€€€t€èmt¤°(€€€lQ§†î¸ƒE§†î¸œ°É•Á½ÉĞ¹•±•ÑÉ¥µ½Õ¹Ğ°€‘íÉ•Á½ÉĞ¹•±•ÑÉ¥=±€üü€ÁôƒŠH€‘íÉ•Á½ÉĞ¹•±•ÑÉ¥9•Ü€üü€Áô€ ‘íÉ•Á½ÉĞ¹•±•ÑÉ¥UÍ•€üü€Áô­] ¥t°(€€€lQ§†î¸»Ã†îmŒœ°É•Á½ÉĞ¹İ…Ñ•Éµ½Õ¹Ğ°€‘íÉ•Á½ÉĞ¹İ…Ñ•É=±€üü€ÁôƒŠH€‘íÉ•Á½ÉĞ¹İ…Ñ•É9•Ü€üü€Áô€ ‘íÉ•Á½ÉĞ¹İ…Ñ•ÉUÍ•€üü€Áô·
+Ì¥t°(€€€lQ§†î¸Á£É¹œ€¼Ñ¹œ»†îŒ­£…Œœ°É•Á½ÉĞ¹Õ¹Á…¥‘I•¹Ğ°€œt°(€€€lA£´Û†îÍ¥¹ œ°É•Á½ÉĞ¹±•…¹¥¹•”°€œt°(€€€lA£´£À£†î=¹œœ°É•Á½ÉĞ¹‘…µ…••”°€œt°(€€€lA£´­£…Œœ°É•Á½ÉĞ¹½Ñ¡•É•”°€œt°(€t¹™¥±Ñ•È ¡l°…µ½Õ¹Ñt°¥¹‘•à¤€ôø¥¹‘•à€ğ€Ğñğ9Õµ‰•È¡…µ½Õ¹Ğñğ€À¤€„ôô€À¤€èmtì((€¥˜€ …É•Á½ÉĞ¤ì(€€€É•ÑÕÉ¸Ñ…‰±”(€€€€€€ü€ñÑÈøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùA£´£†îEĞÓ†ê•ĞÑ¿…¸ÑË†êŒÁ£É¹œğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôø´ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹Ñ½Ñ…°¥ôğ½Ñøğ½ÑÈø(€€€€€€è€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûÂ~NtA£´Ó†ê•ĞÑ¿…¸ÑË†êŒÁ£É¹œğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹Ñ½Ñ…°¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øøì(€ô((€¥˜€¡Ñ…‰±”¤É•ÑÕÉ¸€ğø(€€€íÉ½İ…Ñ„¹µ…À ¡m±…‰•°°…µ½Õ¹Ğ°‘•Ñ…¥±Ít¤€ôø€ñÑÈ­•äõí±…‰•±ôøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùí±…‰•±ôğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôùí‘•Ñ…¥±Ìñğ€œ´ôğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡…µ½Õ¹Ğñğ€À¥ôğ½Ñøğ½ÑÈø¥ô(€€€€ñÑÈÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œ°‰…­É½Õ¹è€œ˜á™…™ŒœõôøñÑ½±MÁ…¸ôˆÈˆÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡ĞœõôùS†îQ9A#PM%9 ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹Ñ½Ñ…±%¹ÕÉÉ•ñğ€À¥ôğ½Ñøğ½ÑÈø(€€€í9Õµ‰•È¡É•Á½ÉĞ¹‘•Á½Í¥ÑUÍ•ñğ€À¤€ø€À€˜˜€ñÑÈøñÑ½±MÁ…¸ôˆÈˆÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡ĞœõôùQ§†î¸†î5ŒƒG†îE¤ÑË†î¬ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôø´í™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹‘•Á½Í¥ÑUÍ•¥ôğ½Ñøğ½ÑÈùô(€€€í9Õµ‰•È¡É•Á½ÉĞ¹‘•Á½Í¥Ñ½É™•¥Ñ•ñğ€À¤€ø€À€˜˜€ñÑÈøñÑ½±MÁ…¸ôˆÈˆÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôù†î5Œ§†î¼³†ê…¤‘¼ÑË†êŒÏ†îm´ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹‘•Á½Í¥Ñ½É™•¥Ñ•¥ôğ½Ñøğ½ÑÈùô(€€€í9Õµ‰•È¡É•Á½ÉĞ¹µÕÍÑI•™Õ¹ñğ€À¤€ø€À€˜˜€ñÑÈøñÑ½±MÁ…¸ôˆÈˆÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôù£†îœ¹£€¡¿¸­£… ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹µÕÍÑI•™Õ¹¥ôğ½Ñøğ½ÑÈùô(€€ğ¼øì((€É•ÑÕÉ¸€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµ¡…É”µÉ½ÕÀÍ•ÑÑ±•µ•¹Ğµ‰É•…­‘½İ¸ˆø(€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÕÀµÑ¥Ñ±”ˆù!$Q'†êùPS†ê‘PQ?8€¼QK†êˆA#I9ğ½‘¥Øø(€€€íÉ½İ…Ñ„¹µ…À ¡m±…‰•°°…µ½Õ¹Ğ°‘•Ñ…¥±Ít¤€ôø€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆ­•äõí±…‰•±ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆùí±…‰•±ôğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡…µ½Õ¹Ğñğ€À¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€í‘•Ñ…¥±Ì€˜˜€ñÀ±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆùí‘•Ñ…¥±Íôğ½Àùô(€€€€ğ½‘¥Øø¥ô(€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆøñˆùS†îU¹œÁ£…ĞÍ¥¹ ğ½ˆøğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹Ñ½Ñ…±%¹ÕÉÉ•ñğ€À¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øø(€€€í9Õµ‰•È¡É•Á½ÉĞ¹‘•Á½Í¥ÑUÍ•ñğ€À¤€ø€À€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆùQ§†î¸†î5ŒƒG†îE¤ÑË†î¬ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆø´í™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹‘•Á½Í¥ÑUÍ•¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øùô(€€€í9Õµ‰•È¡É•Á½ÉĞ¹‘•Á½Í¥Ñ½É™•¥Ñ•ñğ€À¤€ø€À€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆù†î5Œ§†î¼³†ê…¤‘¼ÑË†êŒÏ†îm´ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹‘•Á½Í¥Ñ½É™•¥Ñ•¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øùô(€€€í9Õµ‰•È¡É•Á½ÉĞ¹µÕÍÑI•™Õ¹ñğ€À¤€ø€À€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆù£†îœ¹£€¡¿¸­£… ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹µÕÍÑI•™Õ¹¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øùô(€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆøñˆù-£… †ê¸Ñ¡…¹ Ñ¿…¸ğ½ˆøğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É•Á½ÉĞ¹µÕÍÑ½±±•Ğñğ€À¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øø(€€ğ½‘¥Øøì)ô()™Õ¹Ñ¥½¸AÉ¥¹Ñ…‰±•I••¥ÁĞ¡ìÉ••¥ÁĞ°É½½´°Ñ•¹…¹Ğ°½¹ÑÉ…Ğ°‰…¹­%¹™¼°Í•ÑÑ±•µ•¹ÑI•Á½ÉĞô¤ì(€½¹ÍĞ¥Í5½¹Ñ¡±ä€ôÉ••¥ÁĞ¹ÑåÁ”€ôôô€µ½¹Ñ¡±äœì(€½¹ÍĞ¥ÍI•¹•İ…±‘©ÕÍÑµ•¹Ğ€ôÉ••¥ÁĞ¹ÑåÁ”€ôôô€É•¹•İ…±}…‘©ÕÍÑµ•¹Ğœì(€½¹ÍĞÁ…åµ•¹ÑMÑ…Ñ”€ô•ÑI••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¡É••¥ÁĞ¤ì(€½¹ÍĞ¹½Éµ…±¥é•‘I••¥ÁĞ€ôì€¸¸¹É••¥ÁĞ°ÍÑ…ÑÕÌèÁ…åµ•¹ÑMÑ…Ñ”¹ÍÑ…ÑÕÌ°‘•‰ĞèÁ…åµ•¹ÑMÑ…Ñ”¹‘•‰Ğôì(€½¹ÍĞ•=±€ô•Ñ±•ÑÉ¥=±¡É••¥ÁĞ¤ì(€½¹ÍĞ•9•Ü€ô•Ñ±•ÑÉ¥9•Ü¡É••¥ÁĞ¤ì(€½¹ÍĞİ=±€ô•Ñ]…Ñ•É=±¡É••¥ÁĞ¤ì(€½¹ÍĞİ9•Ü€ô•Ñ]…Ñ•É9•Ü¡É••¥ÁĞ¤ì(€½¹ÍĞÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä€ôÉ••¥ÁĞ¹ÑÉ…¹Í™•É=±‘I½½µUÑ¥±¥Ñäì(€½¹ÍĞ¥¹™½Éµ…Ñ¥½¹…±•Á½Í¥Ñµ½Õ¹Ğ€ô¥Í%¹™½Éµ…Ñ¥½¹…±•Á½Í¥ÑI••¥ÁÑ1¥¹”¡É••¥ÁĞ¤(€€€€ü9Õµ‰•È¡É••¥ÁĞ¹½Ñ¡•Èñğ€À¤(€€€€è•ÑI••¥ÁÑ½¹ÑÉ…Ñ•Á½Í¥Ğ¡É••¥ÁĞ°½¹ÑÉ…Ğ¤ì(€½¹ÍĞ•áÑÉ…=Ñ¡•È€ô•Ñ	¥±±…‰±•=Ñ¡•Éµ½Õ¹Ğ¡É••¥ÁĞ¤€´9Õµ‰•È¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñäü¹Ñ½Ñ…°ñğ€À¤ì(€½¹ÍĞ¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸€ô¥Í5½¹Ñ¡±ä€˜˜ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñäì(€½¹ÍĞÍ¡½İÕÉÉ•¹Ñ±•ÑÉ¥Œ€ô€…¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸ñğ9Õµ‰•È¡É••¥ÁĞ¹•±•ÑÉ¥µ½Õ¹Ğñğ€À¤€ø€Àñğ9Õµ‰•È¡É••¥ÁĞ¹•±•ÑÉ¥UÍ•ñğ€À¤€ø€Àì(€½¹ÍĞÍ¡½İÕÉÉ•¹Ñ]…Ñ•È€ô€…¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸ñğ9Õµ‰•È¡É••¥ÁĞ¹İ…Ñ•Éµ½Õ¹Ğñğ€À¤€ø€Àñğ9Õµ‰•È¡É••¥ÁĞ¹İ…Ñ•ÉUÍ•ñğ€À¤€ø€Àì(€½¹ÍĞÕÉÉ•¹Ñ5½¹Ñ¡1…‰•°€ôÉ••¥ÁĞ¹µ½¹Ñ €ü€‘íMÑÉ¥¹œ¡9Õµ‰•È¡É••¥ÁĞ¹µ½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÁt¤¥ô¼‘íÉ••¥ÁĞ¹µ½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÅuõ€€è€œœì(€€(€½¹ÍĞÍÑ…ÑÕÍ½±½È€ô¹½Éµ…±¥é•‘I••¥ÁĞ¹ÍÑ…ÑÕÌ€ôôô€ŸCŒÑ¡…¹ Ñ¿…¸œ€ü€œŒÄØØÔÌĞœ€è¹½Éµ…±¥é•‘I••¥ÁĞ¹ÍÑ…ÑÕÌ€ôôô€;†îŒ·†îeĞÁ£†ê¸œ€ü€œŒäÈĞÀÁ”œ€è€œŒääÅˆÅˆœì(€½¹ÍĞÍÑ…ÑÕÍ	œ€ô¹½Éµ…±¥é•‘I••¥ÁĞ¹ÍÑ…ÑÕÌ€ôôô€ŸCŒÑ¡…¹ Ñ¿…¸œ€ü€œ‘™”Üœ€è¹½Éµ…±¥é•‘I••¥ÁĞ¹ÍÑ…ÑÕÌ€ôôô€;†îŒ·†îeĞÁ£†ê¸œ€ü€œ™•˜ÍŒÜœ€è€œ™•”É”Èœì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø¥ô‰ÁÉ¥¹Ñ…‰±”µÉ••¥ÁĞˆ±…ÍÍ9…µ”ô‰ÁÉ¥¹Ñ…‰±”µÉ••¥ÁĞˆø(€€€€€íÁ…åµ•¹ÑMÑ…Ñ”¹¥ÍA…¥€˜˜€ (€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…¥µÍÑ…µÀµØĞˆø(€€€€€€€€€€ñÍÁ…¸ûCQ!9 Q?8ğ½ÍÁ…¸ø(€€€€€€€€€€ñÍµ…±°ùí™½Éµ…Ñ5½¹•ä¡Á…åµ•¹ÑMÑ…Ñ”¹Á…¥‘µ½Õ¹Ğ¥ôğ½Íµ…±°ø(€€€€€€€€ğ½‘¥Øø(€€€€€€¥ô(€€€€€€ñ¡•…‘•È±…ÍÍ9…µ”ô‰É••¥ÁĞµ¡•…‘•ÈµØĞˆø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‰É…¹µ‰½àˆø(€€€€€€€€€€ñ Ì±…ÍÍ9…µ”ô‰‰É…¹ˆùI==459Hğ½ Ìø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÕˆˆù#†îÑ£†îE¹œÅ×†ê¸³ôÁ£É¹œÑË†î4¡Õç©¸¹¡§†îÀğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…ÑÕÌµÍ•Ñ¥½¸ˆø(€€€€€€€€€€ñ Ä±…ÍÍ9…µ”ô‰Ñ¥Ñ±”ˆùí¥Í5½¹Ñ¡±ä€ü€A!'†êùTQ!TQ'†î8A#I9œ€è¥ÍI•¹•İ…±‘©ÕÍÑµ•¹Ğ€ü€A!'†êùTQ!TƒA'†îT#†î!9 %#†ê8œ€è€A!'†êùTS†ê‘PQ?8ôğ½ Äø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…Àè€œÄÉÁàœ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœõôø(€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ô‰ÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥ˆÍÑå±”õíì‰…­É½Õ¹èÍÑ…ÑÕÍ	œ°½±½ÈèÍÑ…ÑÕÍ½±½È°™½¹ÑM¥é”è€œÄÅÁàœõôø(€€€€€€€€€€€€€í¹½Éµ…±¥é•‘I••¥ÁĞ¹ÍÑ…ÑÕÌ¹Ñ½UÁÁ•É…Í” ¥ô(€€€€€€€€€€€€ğ½ÍÁ…¸ø(€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ô‰½‘”ˆÍÑå±”õíì™½¹ÑM¥é”è€œÄÉÁàœ°½±½Èè€œŒØĞÜĞáˆœõôùíÉ••¥ÁÑ½‘”¡É••¥ÁĞ¥ôğ½ÍÁ…¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½¡•…‘•Èø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¥¹™¼µ‰…ÈµØĞˆø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆùA£É¹œğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…±Õ”ˆùí•ÑQÉ…¹Í™•ÉI½½µ1…‰•°¡É••¥ÁĞ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆùQ£…¹œÑ¡Ôğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…±Õ”ˆùíÉ••¥ÁĞ¹µ½¹Ñ¡ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆù9Ÿä³†êµÀğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…±Õ”ˆùí¹•Ü…Ñ”¡É••¥ÁĞ¹É•…Ñ•‘Ğ¤¹Ñ½1½…±•…Ñ•MÑÉ¥¹œ Ù¤µY8œ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¥Ñ•´ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆù#†ê…¸ÑË†êŒğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…±Õ”ˆùQÉ½¹œ€Ô¹Ÿäğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµÑ•¹…¹Ğµ¹½Ñ”µØĞˆø(€€€€€€€€ñÀøñˆù-£… Ñ¡×¨èğ½ˆøíÑ•¹…¹Ğ¹¹…µ•ôƒŠˆ€ñˆùOAPèğ½ˆøíÑ•¹…¹Ğ¹Á¡½¹•ôğ½Àø(€€€€€€€€ñÀøñˆù¡¤£èèğ½ˆøíÉ••¥ÁĞ¹¹½Ñ”ñğ€YÕ¤³É¹œÑ¡…¹ Ñ¿…¸ÑÉ½¹œÛÉ¹œ€Ô¹Ÿä¯†îÓ†î¬¹Ÿä¹£†êµ¸Á¡§†êıÔ¸a¥¸†ê´ƒ…¸„ôğ½Àø(€€€€€€ğ½‘¥Øø((€€€€€í¥Í5½¹Ñ¡±ä€˜˜¥¹™½Éµ…Ñ¥½¹…±•Á½Í¥Ñµ½Õ¹Ğ€ø€À€˜˜€ (€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµÑ•¹…¹Ğµ¹½Ñ”µØĞˆÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥€‘‰•…™”œ°‰…­É½Õ¹è€œ•™˜Ù™˜œõôø(€€€€€€€€€€ñÀøñˆùQ£Ñ¹œÑ¥¸†î5Œ£†îÀƒG†îM¹œèğ½ˆøí™½Éµ…Ñ5½¹•ä¡¥¹™½Éµ…Ñ¥½¹…±•Á½Í¥Ñµ½Õ¹Ğ¥ôğ½Àø(€€€€€€€€€€ñÀøñˆù3ÁÔƒôèğ½ˆø-¡¿†ê¸†î5Œ£†î$¡¤¹£†êµ¸ƒG†îÑ¡•¼“Õ¤£†îÀƒG†îM¹œ°­£Ñ¹œ†îe¹œÛ¼Ó†îU¹œÑ§†î¸Á¡§†êıÔÑ£…¹œ¸ğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€¥ô((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµ‰½‘äµØĞˆø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµ¥Ñ•µÌµÍ•Ñ¥½¸ˆø(€€€€€€€€€€ñ Ìù!$Q'†êùP-!?†ê‰8Q!Tğ½ Ìø(€€€€€€€€€€(€€€€€€€€€í¥Í5½¹Ñ¡±ä€ü€ (€€€€€€€€€€€€ğø(€€€€€€€€€€€€€í¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸€˜˜€ (€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµ¡…É”µÉ½ÕÀ½±µÉ½½´ˆø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÕÀµÑ¥Ñ±”ˆù$¸¡¤Á£´Á£É¹œ¤£Á„Ñ¡…¹ Ñ¿…¸ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÕÀµµ•Ñ„ˆø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùA£É¹œ¤è€ñˆùAíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ%‘ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùQ£†îu¤¥…¸ƒ†î|è€ñˆùí™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘MÑ…åÉ½´¥ôğ½ˆø€´€ñˆùí™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘MÑ…åQ¼¥ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùO†îD¹ŸäÓµ¹ Ñ§†î¸è€ñˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ…åÌñğ€Áô¹Ÿäğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûÂ~>€Q§†î¸Ñ¡×¨Á£É¹œ¤Ñ£…¹œíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘	¥±±¥¹5½¹Ñ¡ôğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I•¹Ñµ½Õ¹Ğñğ€À¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡±åI•¹Ğñğ€À¥ô€¼íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡…åÌñğ€ÌÁôàíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ…åÌñğ€Áô¹Ÿäğ½Àø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€€€€€ì¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘M•ÉÙ¥•µ½Õ¹Ğñğ€À¤€ø€À€˜˜€ (€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûÂ~nƒ¾â<†î- Û†î”Á£É¹œ¤ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘M•ÉÙ¥•µ½Õ¹Ğñğ€À¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰‘•Ñ…¥±ÌˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘M•ÉÙ¥•5½‘”€ôôô€µ½¹Ñ¡±äœ€ü€Q¡Ô†îDƒG†î-¹ Ñ¡•¼Ñ£…¹œœ€è€‘í™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡±åM•ÉÙ¥••”ñğ€À¥ô€¼€‘íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡…åÌñğ€ÌÁôà€‘íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ…åÌñğ€Áô¹Ÿåôğ½Àø(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€¥ô((€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûŠj„ƒA§†î¸Á£É¹œ¤ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥µ½Õ¹Ğñğ€À¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùL¤è€ñˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥=±‘ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ù7†îm¤è€ñˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥9•İôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùO†î´“†î•¹œè€ñˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥UÍ•‘ôğ½ˆø­] ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûÂ~Jœ;Ã†îmŒÁ£É¹œ¤ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•Éµ½Õ¹Ğñğ€À¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùL¤è€ñˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•É=±‘ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ù7†îm¤è€ñˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•É9•İôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùO†î´“†î•¹œè€ñˆùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•ÉUÍ•‘ôğ½ˆø·
+Ìğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€¥ô((€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õí¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸€ü€É••¥ÁĞµ¡…É”µÉ½ÕÀÕÉÉ•¹ĞµÉ½½´œ€è€œôø(€€€€€€€€€€€€€€€í¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸€˜˜€ (€€€€€€€€€€€€€€€€€€ğø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÕÀµÑ¥Ñ±”ˆù%$¸¡¤Á£´Á£É¹œ¡§†î¸Ó†ê…¤ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÕÀµµ•Ñ„ˆø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùA£É¹œ¡§†î¸Ó†ê…¤è€ñˆùAíÉ••¥ÁĞ¹É½½µ%‘ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùQ£…¹œÑ¡Ôè€ñˆùíÉ••¥ÁĞ¹µ½¹Ñ¡ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€íÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÌ€˜˜É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÌ€˜˜É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÌ€„ôôÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÌ€˜˜€ñÍÁ…¸ùO†îD¹ŸäÓµ¹ Ñ§†î¸è€ñˆùíÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÍô¹Ÿäğ½ˆøğ½ÍÁ…¸ùô(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ¼ø(€€€€€€€€€€€€€€€€¥ô((€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûÂ~>€Q§†î¸Ñ¡×¨Á£É¹íÕÉÉ•¹Ñ5½¹Ñ¡1…‰•°€ü€Ñ£…¹œ€‘íÕÉÉ•¹Ñ5½¹Ñ¡1…‰•±õ€€è€œôğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹É•¹Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€íÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÌ€˜˜É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÌ€˜˜É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÌ€„ôôÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÌ€˜˜€ (€€€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆø(€€€€€€€€€€€€€€€€€€€€€íÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•É½´€˜˜É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•Q¼€˜˜€ğùS†î¬í™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•É½´¥ôƒG†êı¸í™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•Q¼¥ô¸€ğ¼ùô(€€€€€€€€€€€€€€€€€€€€€í™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡±åI•¹ĞñğÉ½½´¹É•¹Ğñğ€À¥ô€¼íÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÍôàíÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÍô¹Ÿä(€€€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûÂ~nƒ¾â<í¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸€ü€†î- Û†î”œ€è€†î- Û†î”†îDƒG†î-¹ õíÕÉÉ•¹Ñ5½¹Ñ¡1…‰•°€ü€Ñ£…¹œ€‘íÕÉÉ•¹Ñ5½¹Ñ¡1…‰•±õ€€è€œôğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹™¥á•‘M•ÉÙ¥•Ì¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆø(€€€€€€€€€€€€€€€€€€€íÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÌ€˜˜É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÌ€˜˜É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÌ€„ôôÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÌ(€€€€€€€€€€€€€€€€€€€€€€ü€‘í™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡±åM•ÉÙ¥••”ñğ€À¥ô€¼€‘íÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ5½¹Ñ¡…åÍôà€‘íÉ••¥ÁĞ¹ÕÉÉ•¹ÑI½½µ¡…É•…åÍô¹Ÿä¸€(€€€€€€€€€€€€€€€€€€€€€€è€œô(€€€€€€€€€€€€€€€€€€€€ Ä¹ŸÃ†îu¤è€ÈÀÀ¸ÀÀÃD½Ñ£…¹œìÓ†î¬€È¹ŸÃ†îu¤ÑË†î|³©¸è€ĞÀÀ¸ÀÀÃD½Ñ£…¹œ¤(€€€€€€€€€€€€€€€€€€ğ½Àø(€€€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€€€íÍ¡½İÕÉÉ•¹Ñ±•ÑÉ¥Œ€˜˜€ (€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûŠj„Q§†î¸ƒE§†î¸ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹•±•ÑÉ¥µ½Õ¹Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùL¤è€ñˆùí•=±‘ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ù7†îm¤è€ñˆùí•9•İôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùO†î´“†î•¹œè€ñˆùíÉ••¥ÁĞ¹•±•ÑÉ¥UÍ•‘ôğ½ˆø­] ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ûC…¸§„è€ñˆùí™½Éµ…Ñ5½¹•ä¡É½½´¹•±•ÑÉ¥AÉ¥”¥ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€¥ô((€€€€€€€€€€€€€€€íÍ¡½İÕÉÉ•¹Ñ]…Ñ•È€˜˜€ (€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆûÂ~JœQ§†î¸»Ã†îmŒğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹İ…Ñ•Éµ½Õ¹Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥±Ìˆø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùL¤è€ñˆùíİ=±‘ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ù7†îm¤è€ñˆùíİ9•İôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùO†î´“†î•¹œè€ñˆùíÉ••¥ÁĞ¹İ…Ñ•ÉUÍ•‘ôğ½ˆø·
+Ìğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ûC…¸§„è€ñˆùí™½Éµ…Ñ5½¹•ä¡É½½´¹İ…Ñ•ÉAÉ¥”¥ôğ½ˆøğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€€í•áÑÉ…=Ñ¡•È€„ôô€À€˜˜€ (€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµ¡…É”µÉ½ÕÀˆø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÕÀµÑ¥Ñ±”ˆùí¡…ÍQÉ…¹Í™•É	É•…­‘½İ¸€ü€%%$¸-¡¿†ê¸Á£…ĞÍ¥¹ ­£…Œœ€è€-¡¿†ê¸Á£…ĞÍ¥¹ ­£…Œôğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆùí•Ñ=Ñ¡•ÉI••¥ÁÑ1…‰•°¡É••¥ÁĞ¥ôğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡•áÑÉ…=Ñ¡•È¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€ğ¼ø(€€€€€€€€€€¤€è¥ÍI•¹•İ…±‘©ÕÍÑµ•¹Ğ€ü€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµ¡…É”µÉ½ÕÀÉ•¹•İ…°µ…‘©ÕÍÑµ•¹Ğµ‰É•…­‘½İ¸ˆø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÕÀµÑ¥Ñ±”ˆù!$Q'†êùPƒA'†îT#†î!9 %#†ê8ğ½‘¥Øø(€€€€€€€€€€€€€í9Õµ‰•È¡É••¥ÁĞ¹É•¹Ğñğ€À¤€ø€À€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆù£©¹ ³†î Ó¹œ§„Ñ¡×¨ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹É•¹Ğ¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øùô(€€€€€€€€€€€€€í9Õµ‰•È¡É••¥ÁĞ¹½Ñ¡•Èñğ€À¤€ø€À€˜˜€ñ‘¥Ø±…ÍÍ9…µ”ô‰¡…É”µÉ½ÜµØĞˆøñ‘¥Ø±…ÍÍ9…µ”ô‰É½Üµµ…¥¸ˆøñÍÁ…¸±…ÍÍ9…µ”ô‰¹…µ”ˆù£©¹ ³†î Ó¹œÑ§†î¸†î5Œğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁĞ¹½Ñ¡•È¥ôğ½ÍÁ…¸øğ½‘¥Øøğ½‘¥Øùô(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¤€è€ (€€€€€€€€€€€€ñM•ÑÑ±•µ•¹ÑI••¥ÁÑ	É•…­‘½İ¸É•Á½ÉĞõíÍ•ÑÑ±•µ•¹ÑI•Á½ÉÑôÉ••¥ÁĞõíÉ••¥ÁÑôÉ½½´õíÉ½½µô€¼ø(€€€€€€€€€€¥ô(€€€€€€€€ğ½‘¥Øø((€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…åµ•¹Ğµ½±Õµ¸µØĞˆø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…åµ•¹Ğµ…ÉµØĞˆø(€€€€€€€€€€€íÁ…åµ•¹ÑMÑ…Ñ”¹¥ÍA…¥€ü€ (€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…¥µ½¹™¥É´µ…ÉµØĞˆø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…¥µ¡•­µ…É¬µØĞˆûŠrLğ½‘¥Øø(€€€€€€€€€€€€€€€€ñÀùA¡§†êıÔƒGŒÑ¡…¹ Ñ¿…¸ƒG†îœğ½Àø(€€€€€€€€€€€€€€€€ñÍÁ…¸ù-£Ñ¹œ†ê¸Å×¥ĞEHÑ¡…¹ Ñ¿…¸³†ê…¤ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€¤€è€ (€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÅÈµ‰½àµØĞˆø(€€€€€€€€€€€€€€€€ñ¥µœÍÉŒõí‰Õ¥±‘Y¥•ÑEÉUÉ°¡‰…¹­%¹™¼°É••¥ÁĞ¥ô…±Ğô‰EHY¥•ÑEHˆ€¼ø(€€€€€€€€€€€€€€€€ñ‘¥ØÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœõôø(€€€€€€€€€€€€€€€€€€ñÀÍÑå±”õíì™½¹ÑM¥é”è€œÄÅÁàœ°™½¹Ñ]•¥¡Ğè€œÜÀÀœ°µ…É¥¸è€ÀõôùEW%P7Q!9 Q?8ğ½Àø(€€€€€€€€€€€€€€€€€€ñÀÍÑå±”õíì™½¹ÑM¥é”è€œÄÁÁàœ°½±½Èè€œŒØĞÜĞáˆœõôùS†îÄƒG†îe¹œƒE§†î¸Ï†îDÑ§†î¸€˜»†îe¤‘Õ¹œğ½Àø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€¥ô((€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Á…åµ•¹Ğµ‘•Ñ…¥±ÌµØĞˆø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆù9Ÿ‰¸£¹œğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆùí‰…¹­%¹™¼¹‰…¹­9…µ•ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆùO†îDÓ¤­¡¿†ê¸ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆùí‰…¹­%¹™¼¹…½Õ¹Ñ9½ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆù£†îœÓ¤­¡¿†ê¸ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆùí‰…¹­%¹™¼¹…½Õ¹Ñ9…µ•ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É½ÜˆøñÍÁ…¸±…ÍÍ9…µ”ô‰±…‰•°ˆù;†îe¤‘Õ¹œ,ğ½ÍÁ…¸øñÍÁ…¸±…ÍÍ9…µ”ô‰Ù…°ˆÍÑå±”õíì½±½Èè€œŒÅ”ĞÁ…˜œõôùíÑÉ…¹Í™•É½¹Ñ•¹Ğ¡É••¥ÁĞ¥ôğ½ÍÁ…¸øğ½‘¥Øø(€€€€€€€€€€€€ğ½‘¥Øø((€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Ñ½Ñ…°µÍÕµµ…ÉäµØĞˆø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰±…‰•°ˆùíÁ…åµ•¹ÑMÑ…Ñ”¹¥ÍA…¥€ü€S†îU¹œ†îe¹œƒGŒÑ¡Ôœ€èÁ…åµ•¹ÑMÑ…Ñ”¹¥Í‘©ÕÍÑµ•¹Ğ€ü€†ê¸Ñ¡ÔÑ£©´œ€è€S†îU¹œ†îe¹œ†ê¸ÑË†êŒôğ½Àø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰Ñ½Ñ…°µ…µ½Õ¹Ğˆùí™½Éµ…Ñ5½¹•ä¡Á…åµ•¹ÑMÑ…Ñ”¹¥ÍA…¥€üÉ••¥ÁĞ¹Ñ½Ñ…°€è€¡Á…åµ•¹ÑMÑ…Ñ”¹‘•‰ĞñğÉ••¥ÁĞ¹Ñ½Ñ…°¤¥ôğ½Àø(€€€€€€€€€€€€€íÁ…åµ•¹ÑMÑ…Ñ”¹¥Í‘©ÕÍÑµ•¹Ğ€˜˜Á…åµ•¹ÑMÑ…Ñ”¹‰…Í•A…¥‘µ½Õ¹Ğ€ø€À€˜˜€ñÀ±…ÍÍ9…µ”ô‰É•µ…¥¹¥¹œµ…µ½Õ¹ĞµØĞˆÍÑå±”õíì½±½Èè€œŒĞÜÔÔØäœõôûCŒÑ¡ÔÑËÃ†îmŒƒGÌèí™½Éµ…Ñ5½¹•ä¡Á…åµ•¹ÑMÑ…Ñ”¹‰…Í•A…¥‘µ½Õ¹Ğ¥ôğ½Àùô(€€€€€€€€€€€€€íÁ…åµ•¹ÑMÑ…Ñ”¹¥ÍA…ÉÑ¥…°€˜˜€ñÀ±…ÍÍ9…µ”ô‰É•µ…¥¹¥¹œµ…µ½Õ¹ĞµØĞˆùÉ¸»†îŒèí™½Éµ…Ñ5½¹•ä¡Á…åµ•¹ÑMÑ…Ñ”¹‘•‰Ğ¥ôğ½Àùô(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø((€€€€€€ñ™½½Ñ•È±…ÍÍ9…µ”ô‰É••¥ÁĞµ™½½Ñ•ÈµØĞˆø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í¥¹…ÑÕÉ•ÌµØĞÍÉ••¸µ½ÁÑ¥½¹…°µÍ¥¹…ÑÕÉ•Ìˆø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í¥¹…ÑÕÉ”µ‰½àˆø(€€€€€€€€€€€€ñ Ğù9¿†îq$Q!TQ'†î8ğ½ Ğø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆø¡/ôÛ€¡¤ËÔ£†î4Ó©¸¤ğ½Àø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í¥¹…ÑÕÉ”µÍÁ…”µØĞˆøğ½‘¥Øø(€€€€€€€€€€€€ñÀøñˆù'†î4Q#†î(19 ğ½ˆøğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í¥¹…ÑÕÉ”µ‰½àˆø(€€€€€€€€€€€€ñ Ğù9¿†îq$;†îa@Q'†î8ğ½ Ğø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆù9Ÿä€¸¸¸¸¸Ñ£…¹œ€¸¸¸¸¸»´€ÈÀ¸¸¸ğ½Àø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í¥¹…ÑÕÉ”µÍÁ…”µØĞˆøğ½‘¥Øø(€€€€€€€€€€€€ñÀøñˆùíÑ•¹…¹Ğ¹¹…µ•ôğ½ˆøğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø((€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Ñ¡…¹¬µå½ÔµØĞˆø(€€€€€€€€€YÕ¤³É¹œÑ¡…¹ Ñ¿…¸ƒGé¹œ£†ê…¸ƒG†îƒG†ê´‹†ê¼ÅÕç†î¸³†î¤“†î- Û†î”¸QË‰¸ÑË†î5¹œ†ê´ƒ…¸„(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½™½½Ñ•Èø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸I••¥ÁÑ%Ñ•´¡ìÉ••¥ÁĞ°É½½´°½¹ÑÉ…Ğ°‰…¹­%¹™¼°‘…Ñ„ô¤ì(€½¹ÍĞ‘¥ÍÁ±…åI••¥ÁĞ€ô•¹É¥¡I••¥ÁÑ]¥Ñ¡QÉ…¹Í™•ÉUÑ¥±¥Ñä¡É••¥ÁĞ°‘…Ñ„¤ì(€½¹ÍĞÑ•¹…¹Ğ€ô•ÑQ•¹…¹Ñ½ÉI••¥ÁĞ¡‘…Ñ„°‘¥ÍÁ±…åI••¥ÁĞ¤ñğì¹…µ”è€8½œôì(€½¹ÍĞ¥Í5½¹Ñ¡±ä€ô‘¥ÍÁ±…åI••¥ÁĞ¹ÑåÁ”€ôôô€µ½¹Ñ¡±äœì(€½¹ÍĞ¥ÍI•¹•İ…±‘©ÕÍÑµ•¹Ğ€ô‘¥ÍÁ±…åI••¥ÁĞ¹ÑåÁ”€ôôô€É•¹•İ…±}…‘©ÕÍÑµ•¹Ğœì(€½¹ÍĞÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä€ô‘¥ÍÁ±…åI••¥ÁĞ¹ÑÉ…¹Í™•É=±‘I½½µUÑ¥±¥Ñäì(€½¹ÍĞ¥¹™½Éµ…Ñ¥½¹…±•Á½Í¥Ñµ½Õ¹Ğ€ô¥Í%¹™½Éµ…Ñ¥½¹…±•Á½Í¥ÑI••¥ÁÑ1¥¹”¡‘¥ÍÁ±…åI••¥ÁĞ¤(€€€€ü9Õµ‰•È¡‘¥ÍÁ±…åI••¥ÁĞ¹½Ñ¡•Èñğ€À¤(€€€€è•ÑI••¥ÁÑ½¹ÑÉ…Ñ•Á½Í¥Ğ¡‘¥ÍÁ±…åI••¥ÁĞ°½¹ÑÉ…Ğ¤ì(€½¹ÍĞ•áÑÉ…=Ñ¡•È€ô•Ñ	¥±±…‰±•=Ñ¡•Éµ½Õ¹Ğ¡‘¥ÍÁ±…åI••¥ÁĞ¤€´9Õµ‰•È¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñäü¹Ñ½Ñ…°ñğ€À¤ì(€½¹ÍĞÍ¡½İÕÉÉ•¹Ñ±•ÑÉ¥Œ€ô€…ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñäñğ9Õµ‰•È¡‘¥ÍÁ±…åI••¥ÁĞ¹•±•ÑÉ¥µ½Õ¹Ğñğ€À¤€ø€Àñğ9Õµ‰•È¡‘¥ÍÁ±…åI••¥ÁĞ¹•±•ÑÉ¥UÍ•ñğ€À¤€ø€Àì(€½¹ÍĞÍ¡½İÕÉÉ•¹Ñ]…Ñ•È€ô€…ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñäñğ9Õµ‰•È¡‘¥ÍÁ±…åI••¥ÁĞ¹İ…Ñ•Éµ½Õ¹Ğñğ€À¤€ø€Àñğ9Õµ‰•È¡‘¥ÍÁ±…åI••¥ÁĞ¹İ…Ñ•ÉUÍ•ñğ€À¤€ø€Àì(€½¹ÍĞÍ•ÑÑ±•µ•¹ÑI•Á½ÉĞ€ô€…¥Í5½¹Ñ¡±ä(€€€€ü€¡‘…Ñ„¹µ½Ù•=ÕÑI•Á½ÉÑÌñğmt¤¹™¥¹¡É•Á½ÉĞ€ôøÉ•Á½ÉĞ¹½¹ÑÉ…Ñ%€ôôô‘¥ÍÁ±…åI••¥ÁĞ¹½¹ÑÉ…Ñ%€˜˜É•Á½ÉĞ¹É½½µ%€ôôô‘¥ÍÁ±…åI••¥ÁĞ¹É½½µ%¤(€€€€è¹Õ±°ì(€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰É••¥ÁĞµÁ…”ˆÍÑå±”õíìÁ…‘‘¥¹œè€œĞÁÁàœ°‰…­É½Õ¹è€İ¡¥Ñ”œ°½±½Èè€‰±…¬œ°™½¹Ñ…µ¥±äè€Í•É¥˜œ°Á½Í¥Ñ¥½¸è€É•±…Ñ¥Ù”œ°‰½É‘•É	½ÑÑ½´è€œÅÁà‘…Í¡•€••”œõôø(€€€€€€ñ‘¥ØÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°µ…É¥¹	½ÑÑ½´è€œÈÁÁàœõôøñ ÄÍÑå±”õíì™½¹ÑM¥é”è€œÈÁÁàœ°™½¹Ñ]•¥¡Ğè€‰½±œ°µ…É¥¸è€Àõôùí¥Í5½¹Ñ¡±ä€ü€A!'†êùTQ!TQ'†î8A#I9œ€è¥ÍI•¹•İ…±‘©ÕÍÑµ•¹Ğ€ü€A!'†êùTQ!TƒA'†îT#†î!9 %#†ê8œ€è€A!'†êùT#†îAPS†ê‘PQ?8ôğ½ ÄøñÀÍÑå±”õíì™½¹ÑM¥é”è€œÄÑÁàœõôùí¥Í5½¹Ñ¡±ä€üQ£…¹œ€‘í‘¥ÍÁ±…åI••¥ÁĞ¹µ½¹Ñ¡õ€€è¥ÍI•¹•İ…±‘©ÕÍÑµ•¹Ğ€üƒÀ“†î•¹œÑ£…¹œ€‘í‘¥ÍÁ±…åI••¥ÁĞ¹µ½¹Ñ¡õ€€è€EÕç†êıĞÑ¿…¸ÑË†êŒÁ£É¹œôğ½Àøğ½‘¥Øø(€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°©ÕÍÑ¥™å½¹Ñ•¹Ğè€ÍÁ…”µ‰•Ñİ••¸œ°µ…É¥¹	½ÑÑ½´è€œÈÁÁàœõôøñ‘¥ØøñÀùA£É¹œè€ñˆùí•ÑQÉ…¹Í™•ÉI½½µ1…‰•°¡‘¥ÍÁ±…åI••¥ÁĞ¥ôğ½ˆøğ½ÀøñÀù-£… Ñ¡×¨è€ñˆùíÑ•¹…¹Ğ¹¹…µ•ôğ½ˆøğ½ÀøñÀù9Ÿä³†êµÀèí¹•Ü…Ñ”¡‘¥ÍÁ±…åI••¥ÁĞ¹É•…Ñ•‘Ğ¤¹Ñ½1½…±•…Ñ•MÑÉ¥¹œ Ù¤µY8œ¥ôğ½Àøğ½‘¥Øøñ‘¥ØÍÑå±”õíìÑ•áÑ±¥¸è€É¥¡ĞœõôøñÀùQË†ê…¹œÑ£…¤è€ñˆùí‘¥ÍÁ±…åI••¥ÁĞ¹ÍÑ…ÑÕÍôğ½ˆøğ½Àøğ½‘¥Øøğ½‘¥Øø(€€€€€í¥Í5½¹Ñ¡±ä€˜˜¥¹™½Éµ…Ñ¥½¹…±•Á½Í¥Ñµ½Õ¹Ğ€ø€À€˜˜€ñ‘¥ØÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥€‰™‘‰™”œ°‰…­É½Õ¹è€œ•™˜Ù™˜œ°Á…‘‘¥¹œè€œáÁà€ÄÁÁàœ°µ…É¥¹	½ÑÑ½´è€œÄÑÁàœ°™½¹ÑM¥é”è€œÄÍÁàœõôøñˆùQ£Ñ¹œÑ¥¸†î5Œ£†îÀƒG†îM¹œèğ½ˆøí™½Éµ…Ñ5½¹•ä¡¥¹™½Éµ…Ñ¥½¹…±•Á½Í¥Ñµ½Õ¹Ğ¥ô¸-¡¿†ê¸»ä£†î$ƒG†îÑ¡•¼“Õ¤£†îÀƒG†îM¹œ°­£Ñ¹œ†îe¹œÛ¼Ó†îU¹œÑ§†î¸Á¡§†êıÔÑ£…¹œ¸ğ½‘¥Øùô(€€€€€€ñÑ…‰±”±…ÍÍ9…µ”ô‰½¹ÑÉ…ĞµÑ…‰±”ˆÍÑå±”õíìİ¥‘Ñ è€œÄÀÀ”œ°‰½É‘•É½±±…ÁÍ”è€½±±…ÁÍ”œ°µ…É¥¹	½ÑÑ½´è€œÈÁÁàœõôø(€€€€€€€€ñÑ¡•…øñÑÈÍÑå±”õíì‰…­É½Õ¹è€œ˜á™…™ŒœõôøñÑ ÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôù;†îe¤‘Õ¹œğ½Ñ øñÑ ÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôù£†î$Ï†îDğ½Ñ øñÑ ÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡ĞœõôùQ£¹ Ñ§†î¸ğ½Ñ øğ½ÑÈøğ½Ñ¡•…ø(€€€€€€€€ñÑ‰½‘äø(€€€€€€€€€í¥Í5½¹Ñ¡±ä€ü€ (€€€€€€€€€€€€ğø(€€€€€€€€€€€€€€ñÑÈøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùQ§†î¸Á£É¹œğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôø´ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åI••¥ÁĞ¹É•¹Ğ¥ôğ½Ñøğ½ÑÈø(€€€€€€€€€€€€€€ñÑÈøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä€ü€†î- Û†î”Ñ£…¹œœ€è€†î- Û†î”†îDƒG†î-¹ ôğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•ÈœõôøÄ¹ŸÃ†îu¤è€ÈÀÀ¸ÀÀÃD½Ñ£…¹œìÓ†î¬€È¹ŸÃ†îu¤è€ĞÀÀ¸ÀÀÃD½Ñ£…¹œğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åI••¥ÁĞ¹™¥á•‘M•ÉÙ¥•Ì¥ôğ½Ñøğ½ÑÈø(€€€€€€€€€€€€€íÍ¡½İÕÉÉ•¹Ñ±•ÑÉ¥Œ€˜˜€ (€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùQ§†î¸ƒE§†î¸ğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôø(€€€€€€€€€€€€€€€€€€€L¤èí‘¥ÍÁ±…åI••¥ÁĞ¹•±•ÑÉ¥=±‘ôƒŠHL·†îm¤èí‘¥ÍÁ±…åI••¥ÁĞ¹•±•ÑÉ¥9•İôñ‰È¼ø(€€€€€€€€€€€€€€€€€€€€¡O†î´“†î•¹œèí‘¥ÍÁ±…åI••¥ÁĞ¹•±•ÑÉ¥UÍ•‘ô­] ¤(€€€€€€€€€€€€€€€€€€ğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åI••¥ÁĞ¹•±•ÑÉ¥µ½Õ¹Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€íÍ¡½İÕÉÉ•¹Ñ]…Ñ•È€˜˜€ (€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùQ§†î¸»Ã†îmŒğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôø(€€€€€€€€€€€€€€€€€€€L¤èí‘¥ÍÁ±…åI••¥ÁĞ¹İ…Ñ•É=±‘ôƒŠHL·†îm¤èí‘¥ÍÁ±…åI••¥ÁĞ¹İ…Ñ•É9•İôñ‰È¼ø(€€€€€€€€€€€€€€€€€€€€¡O†î´“†î•¹œèí‘¥ÍÁ±…åI••¥ÁĞ¹İ…Ñ•ÉUÍ•‘ô·
+Ì¤(€€€€€€€€€€€€€€€€€€ğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åI••¥ÁĞ¹İ…Ñ•Éµ½Õ¹Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä€˜˜€ (€€€€€€€€€€€€€€€€ğø(€€€€€€€€€€€€€€€€€€ñÑÈÍÑå±”õíì‰…­É½Õ¹è€œ˜á™…™Œœ°™½¹Ñ]•¥¡Ğè€‰½±œõôøñÑ½±MÁ…¸ôˆÌˆÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôù¡¤Á£´Á£É¹œ¤£Á„Ñ¡…¹ Ñ¿…¸€´AíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ%‘ô€¡í™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘MÑ…åÉ½´¥ô€´í™½Éµ…Ñ¥ÍÁ±…å…Ñ”¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘MÑ…åQ¼¥ô°íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ…åÌñğ€Áô¹Ÿä¤ğ½Ñøğ½ÑÈø(€€€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùQ§†î¸Ñ¡×¨Á£É¹œ¤Ñ£…¹œíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘	¥±±¥¹5½¹Ñ¡ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡±åI•¹Ğñğ€À¥ô€¼íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡…åÌñğ€ÌÁôàíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ…åÌñğ€Áô¹Ÿäğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I•¹Ñµ½Õ¹Ğñğ€À¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€€ì¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘M•ÉÙ¥•µ½Õ¹Ğñğ€À¤€ø€À€˜˜€ (€€€€€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôù†î- Û†î”Á£É¹œ¤ğ½Ñø(€€€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•ÈœõôùíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘M•ÉÙ¥•5½‘”€ôôô€µ½¹Ñ¡±äœ€ü€Q¡Ô†îDƒG†î-¹ Ñ¡•¼Ñ£…¹œœ€è€‘í™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡±åM•ÉÙ¥••”ñğ€À¥ô€¼€‘íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘5½¹Ñ¡…åÌñğ€ÌÁôà€‘íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ…åÌñğ€Áô¹Ÿåôğ½Ñø(€€€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘M•ÉÙ¥•µ½Õ¹Ğñğ€À¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôûA§†î¸Á£É¹œ¤AíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ%‘ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•ÈœõôûA§†î¸èíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥=±‘ôƒŠHíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥9•İô€¡íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥UÍ•‘ô­] ¤ğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹•±•ÑÉ¥µ½Õ¹Ğñğ€À¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€€€ñÑÈø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôù;Ã†îmŒÁ£É¹œ¤AíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹½±‘I½½µ%‘ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôù;Ã†îmŒèíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•É=±‘ôƒŠHíÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•É9•İô€¡íÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•ÉUÍ•‘ô·
+Ì¤ğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡ÑÉ…¹Í™•É=±‘UÑ¥±¥Ñä¹İ…Ñ•Éµ½Õ¹Ğñğ€À¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€ğ¼ø(€€€€€€€€€€€€€€¥ô(€€€€€€€€€€€€€í•áÑÉ…=Ñ¡•È€„ôô€À€˜˜€ñÑÈøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôùí•Ñ=Ñ¡•ÉI••¥ÁÑ1…‰•°¡‘¥ÍÁ±…åI••¥ÁĞ¥ôğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõôùí‘¥ÍÁ±…åI••¥ÁĞ¹½Ñ¡•É9½Ñ”ñğ€œ´ôğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡•áÑÉ…=Ñ¡•È¥ôğ½Ñøğ½ÑÈùô(€€€€€€€€€€€€ğ¼ø(€€€€€€€€€€¤€è¥ÍI•¹•İ…±‘©ÕÍÑµ•¹Ğ€ü€ (€€€€€€€€€€€€ğø(€€€€€€€€€€€€€í9Õµ‰•È¡‘¥ÍÁ±…åI••¥ÁĞ¹É•¹Ğñğ€À¤€ø€À€˜˜€ñÑÈøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôù£©¹ ³†î Ó¹œ§„Ñ¡×¨ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•ÈœõôùQ¡•¼Á£†î”³†î•Œ¥„£†ê…¸ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åI••¥ÁĞ¹É•¹Ğ¥ôğ½Ñøğ½ÑÈùô(€€€€€€€€€€€€€í9Õµ‰•È¡‘¥ÍÁ±…åI••¥ÁĞ¹½Ñ¡•Èñğ€À¤€ø€À€˜˜€ñÑÈøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœõôù£©¹ ³†î Ó¹œÑ§†î¸†î5Œğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•ÈœõôùQ¡•¼Á£†î”³†î•Œ¥„£†ê…¸ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åI••¥ÁĞ¹½Ñ¡•È¥ôğ½Ñøğ½ÑÈùô(€€€€€€€€€€€€ğ¼ø(€€€€€€€€€€¤€è€ (€€€€€€€€€€€€ñM•ÑÑ±•µ•¹ÑI••¥ÁÑ	É•…­‘½İ¸É•Á½ÉĞõíÍ•ÑÑ±•µ•¹ÑI•Á½ÉÑôÉ••¥ÁĞõí‘¥ÍÁ±…åI••¥ÁÑôÉ½½´õíÉ½½µôÑ…‰±”€¼ø(€€€€€€€€€€¥ô(€€€€€€€€€€ñÑÈÍÑå±”õíì™½¹Ñ]•¥¡Ğè€‰½±œõôøñÑ½±MÁ…¸ôˆÈˆÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡ĞœõôùS†îQ9†îa9ğ½ÑøñÑÍÑå±”õíì‰½É‘•Èè€œÅÁàÍ½±¥‰±…¬œ°Á…‘‘¥¹œè€œáÁàœ°Ñ•áÑ±¥¸è€É¥¡Ğœõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åI••¥ÁĞ¹Ñ½Ñ…°¥ôğ½Ñøğ½ÑÈø(€€€€€€€€ğ½Ñ‰½‘äø(€€€€€€ğ½Ñ…‰±”ø(€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°©ÕÍÑ¥™å½¹Ñ•¹Ğè€ÍÁ…”µ‰•Ñİ••¸œ°…±¥¹%Ñ•µÌè€™±•àµÍÑ…ÉĞœõôøñ‘¥ØÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°İ¥‘Ñ è€œÈÀÁÁàœõôøñÀøñˆùEW%P7Q!9 Q?8ğ½ˆøğ½Àøñ¥µœÍÉŒõí‰Õ¥±‘Y¥•ÑEÉUÉ°¡‰…¹­%¹™¼°‘¥ÍÁ±…åI••¥ÁĞ¥ô…±Ğô‰EHˆÍÑå±”õíìİ¥‘Ñ è€œÄÈÁÁàœ°‰½É‘•Èè€œÅÁàÍ½±¥€••”œ°Á…‘‘¥¹œè€œÕÁàœõô€¼øñÀÍÑå±”õíì™½¹ÑM¥é”è€œÄÁÁàœõôùí‰…¹­%¹™¼¹‰…¹­9…µ•ô€´í‰…¹­%¹™¼¹…½Õ¹Ñ9½ôğ½Àøğ½‘¥Øøñ‘¥ØÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°İ¥‘Ñ è€œÈÀÁÁàœõôøñÀøñˆù#†î˜9# /tS)8ğ½ˆøğ½Àøñ‘¥ØÍÑå±”õíì¡•¥¡Ğè€œàÁÁàœõôøğ½‘¥ØøñÀøñˆù'†î4Q#†î(19 ğ½ˆøğ½Àøğ½‘¥Øøğ½‘¥Øø(€€€€€€ñÀÍÑå±”õíì™½¹ÑMÑå±”è€¥Ñ…±¥Œœ°™½¹ÑM¥é”è€œÄÉÁàœ°µ…É¥¹Q½Àè€œÈÁÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•ÈœõôùE×ô­£… ÙÕ¤³É¹œÑ¡…¹ Ñ¿…¸ÑÉ½¹œÛÉ¹œ€Ô¹Ÿä¯†îÓ†î¬¹Ÿä¹£†êµ¸Á¡§†êıÔ¸QË‰¸ÑË†î5¹œ„ğ½Àø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸I½½µ=ÁÍ5½‘…°¡ìµ½‘”°É½½´°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞÑ½‘…ä€ô¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤ì(€½¹ÍĞ½±‘±•ÑÉ¥Œ€ôÉ½½´¹•±•ÑÉ¥9•Ü€üüÉ½½´¹•±•ÑÉ¥=±€üüÉ½½´¹•±•ÑÉ¥MÑ…ÉĞ€üüÉ½½´¹¥¹¥Ñ¥…±±•ÑÉ¥Œ€üü€Àì(€½¹ÍĞ½±‘]…Ñ•È€ôÉ½½´¹İ…Ñ•É9•Ü€üüÉ½½´¹İ…Ñ•É=±€üüÉ½½´¹İ…Ñ•ÉMÑ…ÉĞ€üüÉ½½´¹¥¹¥Ñ¥…±]…Ñ•È€üü€Àì(€½¹ÍĞ½¹™¥Ì€ôì(€€€…ÍÍ•Ğèì(€€€€€Ñ¥Ñ±”èQ£©´Ó¤Ï†ê¸ƒŠˆA£É¹œ€‘íÉ½½´¹¥‘õ€°(€€€€€ÍÕ‰µ¥Ğè€œ¬Q£©´Ó¤Ï†ê¸œ°(€€€€€¥¹¥Ñ¥…°èì(€€€€€€€¹…µ”è€œœ°(€€€€€€€…Ñ•½Éäè€;†îe¤Ñ£†ê•Ğœ°(€€€€€€€ÅÕ…¹Ñ¥Ñäè€Ä°(€€€€€€€¡…¹‘½Ù•ÉMÑ…ÑÕÌè€S†îEĞœ°(€€€€€€€ÕÉÉ•¹ÑMÑ…ÑÕÌè€S†îEĞœ°(€€€€€€€¡…¹‘½Ù•É…Ñ”èÑ½‘…ä°(€€€€€€€Ù…±Õ”è€À°(€€€€€€€‘•‘ÕÑ•Á½Í¥Ğè™…±Í”°(€€€€€€€¹½Ñ”è€œœ(€€€€€ô(€€€ô°(€€€µ…¥¹Ñ•¹…¹”èì(€€€€€Ñ¥Ñ±”èS†ê…¼ç©Ô†êÔ‹†ê¼ÑË°ƒŠˆA£É¹œ€‘íÉ½½´¹¥‘õ€°(€€€€€ÍÕ‰µ¥Ğè€œ¬S†ê…¼‹†ê¼ÑË°œ°(€€€€€¥¹¥Ñ¥…°èì(€€€€€€€Ñ¥Ñ±”è€œœ°(€€€€€€€…Ñ•½Éäè€Q¡§†êıĞ‹†î,œ°(€€€€€€€ÁÉ¥½É¥Ñäè€QÉÕ¹œ‹±¹ œ°(€€€€€€€É•Á½ÉÑ•Èè€-£… Ñ¡×¨œ°(€€€€€€€…ÍÍ¥¹•”è€œœ°(€€€€€€€½ÍĞè€À°(€€€€€€€½ÍÑ=İ¹•Èè€£†îœÑË†î4œ°(€€€€€€€ÍÑ…ÑÕÌè€7†îm¤Ó†ê…¼œ°(€€€€€€€É•…Ñ•‘…Ñ”èÑ½‘…ä°(€€€€€€€¹½Ñ”è€œœ(€€€€€ô(€€€ô°(€€€™¥±”èì(€€€€€Ñ¥Ñ±”èS†ê¤Ó†îÀ³©¸ƒŠˆA£É¹œ€‘íÉ½½´¹¥‘õ€°(€€€€€ÍÕ‰µ¥Ğè€œ¬3ÁÔÓ†îÀœ°(€€€€€¥¹¥Ñ¥…°èì(€€€€€€€¹…µ”è€œœ°(€€€€€€€É½ÕÀè€#†îÀƒG†îM¹œœ°(€€€€€€€Í¥é”è€œœ°(€€€€€€€ÕÁ±½…‘•Èè€‘µ¥¸œ°(€€€€€€€ÕÁ±½…‘•‘ĞèÑ½‘…ä°(€€€€€€€¹½Ñ”è€œœ(€€€€€ô(€€€ô°(€€€µ•Ñ•Èèì(€€€€€Ñ¥Ñ±”è¡¤£†î$Ï†îDƒE§†î¸»Ã†îmŒƒŠˆA£É¹œ€‘íÉ½½´¹¥‘õ€°(€€€€€ÍÕ‰µ¥Ğè€3ÁÔ£†î$Ï†îDœ°(€€€€€¥¹¥Ñ¥…°èì(€€€€€€€•±•ÑÉ¥=±è½±‘±•ÑÉ¥Œ°(€€€€€€€•±•ÑÉ¥9•Üè½±‘±•ÑÉ¥Œ°(€€€€€€€İ…Ñ•É=±è½±‘]…Ñ•È°(€€€€€€€İ…Ñ•É9•Üè½±‘]…Ñ•È°(€€€€€€€É•…‘¥¹…Ñ”èÑ½‘…ä°(€€€€€€€É•…‘•Èè€‘µ¥¸œ°(€€€€€€€•±•ÑÉ¥A¡½Ñ¼è€œœ°(€€€€€€€İ…Ñ•ÉA¡½Ñ¼è€œœ°(€€€€€€€¹½Ñ”è€œœ(€€€€€ô(€€€ô(€ôì(€½¹ÍĞ½¹™¥œ€ô½¹™¥Ímµ½‘•tì(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡½¹™¥œ¹¥¹¥Ñ¥…°¤ì(€½¹ÍĞÕÁ‘…Ñ”€ô€¡­•ä°Ù…±Õ”¤€ôøÍ•Ñ½É´¡ÁÉ•Ø€ôø€¡ì€¸¸¹ÁÉ•Ø°m­•åtèÙ…±Õ”ô¤¤ì((€½¹ÍĞ¡…¹‘±•MÕ‰µ¥Ğ€ô€ ¤€ôøì(€€€¥˜€¡µ½‘”€ôôô€…ÍÍ•Ğœ€˜˜€…™½É´¹¹…µ”¹ÑÉ¥´ ¤¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀÓ©¸Ó¤Ï†ê¸¸œ¤ì(€€€¥˜€¡µ½‘”€ôôô€µ…¥¹Ñ•¹…¹”œ€˜˜€…™½É´¹Ñ¥Ñ±”¹ÑÉ¥´ ¤¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀÑ§©ÔƒG†îÏ†îÄ†îD¸œ¤ì(€€€¥˜€¡µ½‘”€ôôô€™¥±”œ€˜˜€…™½É´¹¹…µ”¹ÑÉ¥´ ¤¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀÓ©¸Ó†îÀ¸œ¤ì(€€€¥˜€¡µ½‘”€ôôô€µ•Ñ•Èœ€˜˜€¡9Õµ‰•È¡™½É´¹•±•ÑÉ¥9•Ü¤€ğ9Õµ‰•È¡™½É´¹•±•ÑÉ¥=±¤ñğ9Õµ‰•È¡™½É´¹İ…Ñ•É9•Ü¤€ğ9Õµ‰•È¡™½É´¹İ…Ñ•É=±¤¤¤ì(€€€€€É•ÑÕÉ¸…±•ÉĞ £†î$Ï†îD·†îm¤­£Ñ¹œƒGÃ†îŒ¹£†î<£…¸£†î$Ï†îD¤¸œ¤ì(€€€ô(€€€½¹M…Ù”¡ì(€€€€€€¸¸¹™½É´°(€€€€€¥èÕ¥¡µ½‘”¤°(€€€€€É½½µ%èÉ½½´¹¥°(€€€€€ÅÕ…¹Ñ¥Ñäè9Õµ‰•È¡™½É´¹ÅÕ…¹Ñ¥Ñäñğ€À¤°(€€€€€Ù…±Õ”è9Õµ‰•È¡™½É´¹Ù…±Õ”ñğ€À¤°(€€€€€½ÍĞè9Õµ‰•È¡™½É´¹½ÍĞñğ€À¤°(€€€€€•±•ÑÉ¥=±è9Õµ‰•È¡™½É´¹•±•ÑÉ¥=±ñğ€À¤°(€€€€€•±•ÑÉ¥9•Üè9Õµ‰•È¡™½É´¹•±•ÑÉ¥9•Üñğ€À¤°(€€€€€İ…Ñ•É=±è9Õµ‰•È¡™½É´¹İ…Ñ•É=±ñğ€À¤°(€€€€€İ…Ñ•É9•Üè9Õµ‰•È¡™½É´¹İ…Ñ•É9•Üñğ€À¤°(€€€€€É•…Ñ•‘Ğè¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤(€€€ô¤ì(€ôì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œØàÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øø(€€€€€€€€€€€€ñ Èùí½¹™¥œ¹Ñ¥Ñ±•ôğ½ Èø(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•Íµ…±°ˆù†î¼±§†îÔƒGÃ†îŒ³ÁÔÑË†îÅŒÑ§†êıÀÛ¼£†îLÏ„Á£É¹œÛ€†êµÀ¹£†êµĞ‰…‘”ÓÃ…¹œƒ†î¥¹œ¸ğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆÍÑå±”õíì…Àè€œÄáÁàœõôø(€€€€€€€€€íµ½‘”€ôôô€…ÍÍ•Ğœ€˜˜€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€ÈœõôùS©¸Ó¤Ï†ê¸€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹¹…µ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¹…µ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôÁ±…•¡½±‘•Èô‰§Ã†îu¹œ°Ó†îœ°·…ä³†ê…¹ ¸¸¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù1¿†ê…¤€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹…Ñ•½Éåô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” …Ñ•½Éäœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ùO†îD³Ã†î¹œ€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹ÅÕ…¹Ñ¥Ñåô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ÅÕ…¹Ñ¥Ñäœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ùS±¹ ÑË†ê…¹œ‹¸¥…¼€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹¡…¹‘½Ù•ÉMÑ…ÑÕÍô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¡…¹‘½Ù•ÉMÑ…ÑÕÌœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ùS±¹ ÑË†ê…¹œ¡§†î¸Ó†ê…¤€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹ÕÉÉ•¹ÑMÑ…ÑÕÍô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ÕÉÉ•¹ÑMÑ…ÑÕÌœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9Ÿä‹¸¥…¼€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹¡…¹‘½Ù•É…Ñ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¡…¹‘½Ù•É…Ñ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù§„ÑË†î,ƒÃ†îmŒÓµ¹ €ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹Ù…±Õ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” Ù…±Õ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœ°™±•á¥É•Ñ¥½¸è€É½Üœ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœõôøñ¥¹ÁÕĞÑåÁ”ô‰¡•­‰½àˆ¡•­•õí™½É´¹‘•‘ÕÑ•Á½Í¥Ñô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ‘•‘ÕÑ•Á½Í¥Ğœ°”¹Ñ…É•Ğ¹¡•­•¥ô€¼øÌÑË†î¬†î5Œ»†êıÔ£†î=¹œğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù¡¤£è€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¹½Ñ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¥ô(€€€€€€€€€íµ½‘”€ôôô€µ…¥¹Ñ•¹…¹”œ€˜˜€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€ÈœõôùQ§©ÔƒG†îÏ†îÄ†îD€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹Ñ¥Ñ±•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” Ñ¥Ñ±”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôÁ±…•¡½±‘•Èô‰7…ä³†ê…¹ ­£Ñ¹œ³†ê…¹ °ËÈ»Ã†îmŒ¸¸¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù1¿†ê…¤Ï†îÄ†îD€ñÍ•±•ĞÙ…±Õ”õí™½É´¹…Ñ•½Éåô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” …Ñ•½Éäœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôøñ½ÁÑ¥½¸ûA§†î¸ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù;Ã†îmŒğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ùQ¡§†êıĞ‹†î,ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù[†îÍ¥¹ ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù-£…Œğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù7†î¥ŒƒG†îd€ñÍ•±•ĞÙ…±Õ”õí™½É´¹ÁÉ¥½É¥Ñåô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ÁÉ¥½É¥Ñäœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôøñ½ÁÑ¥½¸ùQ£†ê•Àğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ùQÉÕ¹œ‹±¹ ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù-£†ê¥¸†ê•Àğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9ŸÃ†îu¤‹…¼€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹É•Á½ÉÑ•Éô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” É•Á½ÉÑ•Èœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9ŸÃ†îu¤ã†î´³ô€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹…ÍÍ¥¹••ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” …ÍÍ¥¹•”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù¡¤Á£´€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹½ÍÑô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ½ÍĞœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù©¸£†î-ÔÁ£´€ñÍ•±•ĞÙ…±Õ”õí™½É´¹½ÍÑ=İ¹•Éô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ½ÍÑ=İ¹•Èœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôøñ½ÁÑ¥½¸ù£†îœÑË†î4ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù-£… Ñ¡×¨ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù¡¥„Ï†êìğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ùQË†ê…¹œÑ£…¤€ñÍ•±•ĞÙ…±Õ”õí™½É´¹ÍÑ…ÑÕÍô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ÍÑ…ÑÕÌœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôøñ½ÁÑ¥½¸ù7†îm¤Ó†ê…¼ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ûA…¹œã†î´³ôğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù£†ît±¥¹ ­§†î¸ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù!¿¸Ó†ê•Ğğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ûCŒ£†îäğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9ŸäÓ†ê…¼€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹É•…Ñ•‘…Ñ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” É•…Ñ•‘…Ñ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù¡¤£è€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¹½Ñ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¥ô(€€€€€€€€€íµ½‘”€ôôô€™¥±”œ€˜˜€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€ÈœõôùS©¸Ó†îÀ€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹¹…µ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¹…µ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôÁ±…•¡½±‘•Èô‰!½Àµ‘½¹œµ@ÈÀÈ¹Á‘˜ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9£Í´Ó†îÀ€ñÍ•±•ĞÙ…±Õ”õí™½É´¹É½ÕÁô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” É½ÕÀœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôøñ½ÁÑ¥½¸ù#†îÀƒG†îM¹œğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ùğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ùQ¡…¹ Ñ¿…¸ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ûA§†î¸»Ã†îmŒğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ùS¤Ï†ê¸ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù†ê¼ÑË°ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸ù-£…Œğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ùÕ¹œ³Ã†î¹œ€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹Í¥é•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” Í¥é”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôÁ±…•¡½±‘•ÈôˆÈ¸Ğ5ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9ŸÃ†îu¤Ó†ê¤³©¸€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹ÕÁ±½…‘•Éô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ÕÁ±½…‘•Èœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9ŸäÓ†ê¤³©¸€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹ÕÁ±½…‘•‘Ñô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ÕÁ±½…‘•‘Ğœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù¡¤£è¿GÃ†îu¹œ“†ê­¸€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¹½Ñ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¥ô(€€€€€€€€€íµ½‘”€ôôô€µ•Ñ•Èœ€˜˜€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€€€ñ±…‰•°ûA§†î¸¤€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹•±•ÑÉ¥=±‘ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” •±•ÑÉ¥=±œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ûA§†î¸·†îm¤€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹•±•ÑÉ¥9•İô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” •±•ÑÉ¥9•Üœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù;Ã†îmŒ¤€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹İ…Ñ•É=±‘ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” İ…Ñ•É=±œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù;Ã†îmŒ·†îm¤€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹İ…Ñ•É9•İô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” İ…Ñ•É9•Üœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9Ÿä¡¤€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹É•…‘¥¹…Ñ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” É•…‘¥¹…Ñ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ù9ŸÃ†îu¤¡¤€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹É•…‘•Éô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” É•…‘•Èœ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°û†ê‰¹ ƒG†îM¹œ£†îLƒE§†î¸€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹•±•ÑÉ¥A¡½Ñ½ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” •±•ÑÉ¥A¡½Ñ¼œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôÁ±…•¡½±‘•Èô‰S©¸™¥±”¡¿†êİŒƒGÃ†îu¹œ“†ê­¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°û†ê‰¹ ƒG†îM¹œ£†îL»Ã†îmŒ€ñ¥¹ÁÕĞÙ…±Õ”õí™½É´¹İ…Ñ•ÉA¡½Ñ½ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” İ…Ñ•ÉA¡½Ñ¼œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ôÁ±…•¡½±‘•Èô‰S©¸™¥±”¡¿†êİŒƒGÃ†îu¹œ“†ê­¸ˆ€¼øğ½±…‰•°ø(€€€€€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìÉ¥‘½±Õµ¸è€ÍÁ…¸€Èœõôù¡¤£è€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÕÁ‘…Ñ” ¹½Ñ”œ°”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼øğ½±…‰•°ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¥ô(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‰Ñ¸µÉ½ÕÀˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôù#†îäğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õí¡…¹‘±•MÕ‰µ¥Ñôùí½¹™¥œ¹ÍÕ‰µ¥Ñôğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸A…åµ•¹Ñ5½‘…°¡ìÉ••¥ÁĞ°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞÉ••¥ÁÑA…åµ•¹ÑMÑ…Ñ”€ô•ÑI••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¡É••¥ÁĞñğíô¤ì(€½¹ÍĞmÁ…¥‘µ½Õ¹Ğ°Í•ÑA…¥‘µ½Õ¹Ñt€ôÕÍ•MÑ…Ñ”¡É••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹‘•‰ĞñğÉ••¥ÁĞü¹Ñ½Ñ…°ñğ€À¤ì(€½¹ÍĞmÁ…¥‘…Ñ”°Í•ÑA…¥‘…Ñ•t€ôÕÍ•MÑ…Ñ”¡¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹ÍÁ±¥Ğ Pœ¥lÁt¤ì(€€(€¥˜€ …É••¥ÁĞ¤É•ÑÕÉ¸¹Õ±°ì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìµ…á]¥‘Ñ è€œĞÀÁÁàœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ Èùc…Œ¹£†êµ¸Ñ¡…¹ Ñ¿…¸ğ½ Èø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‰…­É½Õ¹è€œ˜á™…™Œœ°Á…‘‘¥¹œè€œÄÙÁàœ°‰½É‘•ÉI…‘¥ÕÌè€œÄÉÁàœõôø(€€€€€€€€€€€€ñÀùA£É¹œè€ñˆùí•ÑQÉ…¹Í™•ÉI½½µ1…‰•°¡É••¥ÁĞ¥ôğ½ˆøğ½Àø(€€€€€€€€€€€€ñÀùíÉ••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹¥Í‘©ÕÍÑµ•¹Ğ€ü€-¡¿†ê¸†ê¸Ñ¡ÔÑ£©´œ€è€S†îU¹œÑ§†î¸ôè€ñˆùí™½Éµ…Ñ5½¹•ä¡É••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹‘•‰ĞñğÉ••¥ÁĞ¹Ñ½Ñ…°¥ôğ½ˆøğ½Àø(€€€€€€€€€€€íÉ••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹¥Í‘©ÕÍÑµ•¹Ğ€˜˜€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•Íµ…±°ˆûCŒÑ¡ÔÑËÃ†îmŒƒGÌèí™½Éµ…Ñ5½¹•ä¡É••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹‰…Í•A…¥‘µ½Õ¹Ğ¥ôğ½Àùô(€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰µÕÑ•Íµ…±°ˆùQ£…¹œíÉ••¥ÁĞ¹µ½¹Ñ¡ôğ½Àø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ±…‰•°ø(€€€€€€€€€€€O†îDÑ§†î¸­£… ÑË†êŒ€(€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õíÁ…¥‘µ½Õ¹Ñô½¹¡…¹”õí”€ôøÍ•ÑA…¥‘µ½Õ¹Ğ¡”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼ø(€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ñ±…‰•°ø(€€€€€€€€€€€9ŸäÑ¡…¹ Ñ¿…¸€(€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õíÁ…¥‘…Ñ•ô½¹¡…¹”õí”€ôøÍ•ÑA…¥‘…Ñ”¡”¹Ñ…É•Ğ¹Ù…±Õ”¥ô€¼ø(€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíìµ…É¥¹Q½Àè€œÄÁÁàœõôø(€€€€€€€€€€€í9Õµ‰•È¡Á…¥‘µ½Õ¹Ğ¤€øô€¡É••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹‘•‰ĞñğÉ••¥ÁĞ¹Ñ½Ñ…°¤€ü€(€€€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ô‰ÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥…Ñ¥Ù”ˆùQ¡…¹ Ñ¿…¸ƒG†îœğ½ÍÁ…¸ø€è€(€€€€€€€€€€€€€9Õµ‰•È¡Á…¥‘µ½Õ¹Ğ¤€ø€À€ü€(€€€€€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ô‰ÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥¹½Ñ¥”ˆùQ¡…¹ Ñ¿…¸·†îeĞÁ£†ê¸ğ½ÍÁ…¸ø€è€(€€€€€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ô‰ÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥‘•‰Ğˆù£Á„ÑË†êŒÑ§†î¸ğ½ÍÁ…¸ø(€€€€€€€€€€€ô(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸İ¥‘”ˆ½¹±¥¬õì ¤€ôøì€(€€€€€€€€€€€¥˜€¡É••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹¥Í‘©ÕÍÑµ•¹Ğ¤ì(€€€€€€€€€€€€€½¹ÍĞ…‘©ÕÍÑµ•¹ÑÕ”€ô9Õµ‰•È¡É••¥ÁĞ¹…‘©ÕÍÑµ•¹ÑÕ•µ½Õ¹ĞñğÉ••¥ÁÑA…åµ•¹ÑMÑ…Ñ”¹…‘©ÕÍÑµ•¹ÑÕ”ñğÉ••¥ÁĞ¹Ñ½Ñ…°ñğ€À¤ì(€€€€€€€€€€€€€½¹ÍĞ¹•áÑ‘©ÕÍÑµ•¹ÑA…¥€ô9Õµ‰•È¡É••¥ÁĞ¹…‘©ÕÍÑµ•¹ÑA…¥‘µ½Õ¹Ğñğ€À¤€¬9Õµ‰•È¡Á…¥‘µ½Õ¹Ğñğ€À¤ì(€€€€€€€€€€€€€±•ĞÍÑ…ÑÕÌ€ô€£Á„Ñ¡…¹ Ñ¿…¸œì(€€€€€€€€€€€€€¥˜€¡¹•áÑ‘©ÕÍÑµ•¹ÑA…¥€øô…‘©ÕÍÑµ•¹ÑÕ”¤ÍÑ…ÑÕÌ€ô€ŸCŒÑ¡…¹ Ñ¿…¸œì(€€€€€€€€€€€€€•±Í”¥˜€¡¹•áÑ‘©ÕÍÑµ•¹ÑA…¥€ø€À¤ÍÑ…ÑÕÌ€ô€;†îŒ·†îeĞÁ£†ê¸œì(€€€€€€€€€€€€€½¹M…Ù”¡ì(€€€€€€€€€€€€€€€€¸¸¹É••¥ÁĞ°(€€€€€€€€€€€€€€€…‘©ÕÍÑµ•¹ÑÕ•µ½Õ¹Ğè…‘©ÕÍÑµ•¹ÑÕ”°(€€€€€€€€€€€€€€€…‘©ÕÍÑµ•¹ÑA…¥‘µ½Õ¹Ğè¹•áÑ‘©ÕÍÑµ•¹ÑA…¥°(€€€€€€€€€€€€€€€…‘©ÕÍÑµ•¹ÑA…¥‘…Ñ”èÁ…¥‘…Ñ”°(€€€€€€€€€€€€€€€ÍÑ…ÑÕÌ(€€€€€€€€€€€€€ô¤ì(€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€ô(€€€€€€€€€€€±•ĞÍÑ…ÑÕÌ€ô€£Á„Ñ¡…¹ Ñ¿…¸œì€(€€€€€€€€€€€¥˜€¡9Õµ‰•È¡Á…¥‘µ½Õ¹Ğ¤€øôÉ••¥ÁĞ¹Ñ½Ñ…°¤ÍÑ…ÑÕÌ€ô€ŸCŒÑ¡…¹ Ñ¿…¸œì€(€€€€€€€€€€€•±Í”¥˜€¡9Õµ‰•È¡Á…¥‘µ½Õ¹Ğ¤€ø€À¤ÍÑ…ÑÕÌ€ô€;†îŒ·†îeĞÁ£†ê¸œì€(€€€€€€€€€€€½¹M…Ù”¡ì€¸¸¹É••¥ÁĞ°Á…¥‘µ½Õ¹Ğè9Õµ‰•È¡Á…¥‘µ½Õ¹Ğ¤°Á…¥‘…Ñ”°ÍÑ…ÑÕÌô¤ì€(€€€€€€€€€õôùc…Œ¹£†êµ¸ğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸áÁ•¹Í•ÍQ…ˆ¡ì‘…Ñ„°½¹Ñ¥½¸°™½ÕÍ¥±Ñ•È°½¹½ÕÍ½¹ÍÕµ•ô¤ì(€½¹ÍĞm™¥±Ñ•È°Í•Ñ¥±Ñ•Ét€ôÕÍ•MÑ…Ñ”  ¤€ôø€¡ìÍÕÁÁ±¥•É%è€œœ°…Ñ•½Éå%è€œœ°ÍÑ…ÑÕÌè€…±°œ°µ½¹Ñ è•ÑÕÉÉ•¹Ñ5½¹Ñ¡1…‰•° ¤ô¤¤ì((€ÕÍ•™™•Ğ  ¤€ôøì(€€€¥˜€ …™½ÕÍ¥±Ñ•È¤É•ÑÕÉ¸ì(€€€Í•Ñ¥±Ñ•È¡ÁÉ•Ø€ôø€¡ì€¸¸¹ÁÉ•Ø°€¸¸¹™½ÕÍ¥±Ñ•Èô¤¤ì(€€€½¹½ÕÍ½¹ÍÕµ•ü¸ ¤ì(€ô°m™½ÕÍ¥±Ñ•È°½¹½ÕÍ½¹ÍÕµ•‘t¤ì((€½¹ÍĞ™¥±Ñ•É•‘áÁ•¹Í•Ì€ôÕÍ•5•µ¼  ¤€ôøì(€€€É•ÑÕÉ¸€¡‘…Ñ„¹•áÁ•¹Í•A…åµ•¹ÑÌñğmt¤¹™¥±Ñ•È¡”€ôøì(€€€€€¥˜€¡™¥±Ñ•È¹µ½¹Ñ €˜˜”¹µ½¹Ñ €„ôô™¥±Ñ•È¹µ½¹Ñ ¤É•ÑÕÉ¸™…±Í”ì(€€€€€¥˜€¡™¥±Ñ•È¹ÍÕÁÁ±¥•É%€˜˜”¹ÍÕÁÁ±¥•É%€„ôô™¥±Ñ•È¹ÍÕÁÁ±¥•É%¤É•ÑÕÉ¸™…±Í”ì(€€€€€¥˜€¡™¥±Ñ•È¹…Ñ•½Éå%€˜˜”¹…Ñ•½Éå%€„ôô™¥±Ñ•È¹…Ñ•½Éå%¤É•ÑÕÉ¸™…±Í”ì(€€€€€¥˜€¡™¥±Ñ•È¹ÍÑ…ÑÕÌ€„ôô€…±°œ€˜˜”¹ÍÑ…ÑÕÌ€„ôô™¥±Ñ•È¹ÍÑ…ÑÕÌ¤É•ÑÕÉ¸™…±Í”ì(€€€€€É•ÑÕÉ¸ÑÉÕ”ì(€€€ô¤¹Í½ÉĞ ¡„°ˆ¤€ôø¹•Ü…Ñ”¡ˆ¹Á…åµ•¹Ñ…Ñ”¤€´¹•Ü…Ñ”¡„¹Á…åµ•¹Ñ…Ñ”¤¤ì(€ô°m‘…Ñ„¹•áÁ•¹Í•A…åµ•¹ÑÌ°™¥±Ñ•Ét¤ì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…¬ˆÍÑå±”õíì…Àè€œÄÙÁàœõôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ¥‘•Ğ±¥ÅÕ¥µ±…ÍÌ¹¼µÁÉ¥¹ĞˆÍÑå±”õíìÁ…‘‘¥¹œè€œÄÙÁàœõôø(€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…Àè€œÄÙÁàœ°™±•á]É…Àè€İÉ…Àœ°…±¥¹%Ñ•µÌè€™±•àµ•¹œõôø(€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìµ…É¥¸è€ÀõôùQ£…¹œ€ñ¥¹ÁÕĞÑåÁ”ô‰µ½¹Ñ ˆÙ…±Õ”õí™¥±Ñ•È¹µ½¹Ñ €ü€‘í™¥±Ñ•È¹µ½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÅuô´‘í™¥±Ñ•È¹µ½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÁuõ€€è€œô½¹¡…¹”õí”€ôøì(€€€€€€€€€€€¥˜€ …”¹Ñ…É•Ğ¹Ù…±Õ”¤É•ÑÕÉ¸Í•Ñ¥±Ñ•È¡ì¸¸¹™¥±Ñ•È°µ½¹Ñ è€œô¤ì(€€€€€€€€€€€½¹ÍĞmä°µt€ô”¹Ñ…É•Ğ¹Ù…±Õ”¹ÍÁ±¥Ğ œ´œ¤ì€(€€€€€€€€€€€Í•Ñ¥±Ñ•È¡ì¸¸¹™¥±Ñ•È°µ½¹Ñ è€‘íµô¼‘íåõô¤ì€(€€€€€€€€€õô€¼øğ½±…‰•°ø(€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìµ…É¥¸è€Àõôù9£€€¼9£€Õ¹œ†ê•À€ñÍ•±•ĞÙ…±Õ”õí™¥±Ñ•È¹ÍÕÁÁ±¥•É%‘ô½¹¡…¹”õí”€ôøÍ•Ñ¥±Ñ•È¡ì¸¸¹™¥±Ñ•È°ÍÕÁÁ±¥•É%è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôøñ½ÁÑ¥½¸Ù…±Õ”ôˆˆùS†ê•Ğ†êŒğ½½ÁÑ¥½¸ùì¡‘…Ñ„¹ÍÕÁÁ±¥•ÉÌñğmt¤¹µ…À¡Ì€ôø€ñ½ÁÑ¥½¸­•äõíÌ¹¥‘ôÙ…±Õ”õíÌ¹¥‘ôùíÌ¹¹…µ•ôğ½½ÁÑ¥½¸ø¥ôğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìµ…É¥¸è€Àõôù1¿†ê…¤¡¤Á£´€ñÍ•±•ĞÙ…±Õ”õí™¥±Ñ•È¹…Ñ•½Éå%‘ô½¹¡…¹”õí”€ôøÍ•Ñ¥±Ñ•È¡ì¸¸¹™¥±Ñ•È°…Ñ•½Éå%è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôøñ½ÁÑ¥½¸Ù…±Õ”ôˆˆùS†ê•Ğ†êŒğ½½ÁÑ¥½¸ùì¡‘…Ñ„¹•áÁ•¹Í•…Ñ•½É¥•Ìñğmt¤¹µ…À¡Œ€ôø€ñ½ÁÑ¥½¸­•äõíŒ¹¥‘ôÙ…±Õ”õíŒ¹¥‘ôùíŒ¹¹…µ•ôğ½½ÁÑ¥½¸ø¥ôğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€ñ±…‰•°ÍÑå±”õíìµ…É¥¸è€ÀõôùQË†ê…¹œÑ£…¤€ñÍ•±•ĞÙ…±Õ”õí™¥±Ñ•È¹ÍÑ…ÑÕÍô½¹¡…¹”õí”€ôøÍ•Ñ¥±Ñ•È¡ì¸¸¹™¥±Ñ•È°ÍÑ…ÑÕÌè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôøñ½ÁÑ¥½¸Ù…±Õ”ô‰…±°ˆùS†ê•Ğ†êŒğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ô‰Á…¥ˆûCŒÑ¡…¹ Ñ¿…¸ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ô‰Á…ÉÑ¥…°ˆùQ¡…¹ Ñ¿…¸·†îeĞÁ£†ê¸ğ½½ÁÑ¥½¸øñ½ÁÑ¥½¸Ù…±Õ”ô‰Õ¹Á…¥ˆù£Á„Ñ¡…¹ Ñ¿…¸ğ½½ÁÑ¥½¸øğ½Í•±•Ğøğ½±…‰•°ø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…Àè€œáÁàœõôø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ É•…Ñ•}•áÁ•¹Í”œ¥ôø¬S†ê…¼Á¡§†êıÔ¡¤ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ µ…¹…•}ÍÕÁÁ±¥•ÉÌœ¥ôûÂ~>ˆE×†ê¸³ô9£€ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ¥‘•Ğ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìÁ…‘‘¥¹œè€Àõôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Ñ…‰±”µİÉ…Àˆø(€€€€€€€€€€ñÑ…‰±”ø(€€€€€€€€€€€€ñÑ¡•…øñÑÈøñÑ ù7ŒÁ¡§†êıÔğ½Ñ øñÑ ù9Ÿäğ½Ñ øñÑ ù9£€ğ½Ñ øñÑ ù1¿†ê…¤ğ½Ñ øñÑ ù;†îe¤‘Õ¹œğ½Ñ øñÑ ùS†îU¹œÑ§†î¸ğ½Ñ øñÑ ûCŒÑË†êŒğ½Ñ øñÑ ùQË†ê…¹œÑ£…¤ğ½Ñ øñÑ ùQ¡…¼Ó…Œğ½Ñ øğ½ÑÈøğ½Ñ¡•…ø(€€€€€€€€€€€€ñÑ‰½‘äø(€€€€€€€€€€€€€í™¥±Ñ•É•‘áÁ•¹Í•Ì¹µ…À¡”€ôøì(€€€€€€€€€€€€€€€½¹ÍĞÍÕÁÁ±¥•È€ô€¡‘…Ñ„¹ÍÕÁÁ±¥•ÉÌñğmt¤¹™¥¹¡Ì€ôøÌ¹¥€ôôô”¹ÍÕÁÁ±¥•É%¤ì(€€€€€€€€€€€€€€€½¹ÍĞ…Ñ•½Éä€ô€¡‘…Ñ„¹•áÁ•¹Í•…Ñ•½É¥•Ìñğmt¤¹™¥¹¡Œ€ôøŒ¹¥€ôôô”¹…Ñ•½Éå%¤ì(€€€€€€€€€€€€€€€É•ÑÕÉ¸€ (€€€€€€€€€€€€€€€€€€ñÑÈ­•äõí”¹¥‘ôø(€€€€€€€€€€€€€€€€€€€€ñÑøñÍÁ…¸±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•µ½¹¼ˆùí”¹•áÁ•¹Í•½‘•ôğ½ÍÁ…¸øğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑùí”¹Á…åµ•¹Ñ…Ñ”€ü”¹Á…åµ•¹Ñ…Ñ”¹ÍÁ±¥Ğ œ´œ¤¹É•Ù•ÉÍ” ¤¹©½¥¸ œ¼œ¤€è€8½ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑøñˆùíÍÕÁÁ±¥•Èü¹¹…µ”ñğ”¹É•¥Á¥•¹Ñ9…µ”ñğ€[¹œ±…¤ôğ½ˆøğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑøñÍÁ…¸±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆùí…Ñ•½Éäü¹¹…µ•ôğ½ÍÁ…¸øğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑùí”¹Ñ¥Ñ±•ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì™½¹Ñ]•¥¡Ğè€œÜÀÀœõôùí™½Éµ…Ñ5½¹•ä¡”¹Ñ½Ñ…±µ½Õ¹Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑùí™½Éµ…Ñ5½¹•ä¡”¹Á…¥‘µ½Õ¹Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑø(€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥€‘í”¹ÍÑ…ÑÕÌ€ôôô€Á…¥œ€ü€…Ñ¥Ù”œ€è”¹ÍÑ…ÑÕÌ€ôôô€Á…ÉÑ¥…°œ€ü€¹½Ñ¥”œ€è€‘•‰Ğõôø(€€€€€€€€€€€€€€€€€€€€€€€í”¹ÍÑ…ÑÕÌ€ôôô€Á…¥œ€ü€ŸCQ!9 Q?8œ€è”¹ÍÑ…ÑÕÌ€ôôô€Á…ÉÑ¥…°œ€ü€Q!9 Q?87†îaPA#†ê™8œ€è€#½Q!9 Q?8ô(€€€€€€€€€€€€€€€€€€€€€€ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑø(€€€€€€€€€€€€€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…Àè€œÑÁàœõôø(€€€€€€€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆ½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ •‘¥Ñ}•áÁ•¹Í”œ°”¥ôûŠr?¾â<ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆ½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ Ù¥•İ}ÅÈœ°”¥ôûÂ~NÄğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆÍÑå±”õíì½±½Èè€œ•˜ĞĞĞĞœõô½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ ‘•±•Ñ•}•áÁ•¹Í”œ°”¥ôûÂ~^G¾â<ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ğ½Ñø(€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€ô¥ô(€€€€€€€€€€€€€í™¥±Ñ•É•‘áÁ•¹Í•Ì¹±•¹Ñ €ôôô€À€˜˜€ñÑÈøñÑ½±MÁ…¸ôˆäˆÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°Á…‘‘¥¹œè€œĞÁÁàœõôù-£Ñ¹œÌ“†î¼±§†îÔ¡¤Á£´¸ğ½Ñøğ½ÑÈùô(€€€€€€€€€€€€ğ½Ñ‰½‘äø(€€€€€€€€€€ğ½Ñ…‰±”ø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸MÕÁÁ±¥•ÉÍQ…ˆ¡ì‘…Ñ„°½¹Ñ¥½¸ô¤ì(€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…¬ˆÍÑå±”õíì…Àè€œÄÙÁàœõôø(€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°©ÕÍÑ¥™å½¹Ñ•¹Ğè€ÍÁ…”µ‰•Ñİ••¸œ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœõôø(€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ ‰…¬œ¥ôûŠ²EÕ…ä³†ê…¤¡¤Á£´ğ½‰ÕÑÑ½¸ø(€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ …‘‘}ÍÕÁÁ±¥•Èœ¥ôø¬Q£©´9£€ğ½‰ÕÑÑ½¸ø(€€€€€€ğ½‘¥Øø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ¥‘•Ğ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìÁ…‘‘¥¹œè€Àõôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Ñ…‰±”µİÉ…Àˆø(€€€€€€€€€€ñÑ…‰±”ø(€€€€€€€€€€€€ñÑ¡•…øñÑÈøñÑ ùS©¸9£€ğ½Ñ øñÑ ùOAPğ½Ñ øñÑ ù9Ÿ‰¸£¹œğ½Ñ øñÑ ùO†îDÓ¤­¡¿†ê¸ğ½Ñ øñÑ ù¡¤£èğ½Ñ øñÑ ùQ¡…¼Ó…Œğ½Ñ øğ½ÑÈøğ½Ñ¡•…ø(€€€€€€€€€€€€ñÑ‰½‘äø(€€€€€€€€€€€€€í‘…Ñ„¹ÍÕÁÁ±¥•ÉÌ¹µ…À¡Ì€ôø€ (€€€€€€€€€€€€€€€€ñÑÈ­•äõíÌ¹¥‘ôø(€€€€€€€€€€€€€€€€€€ñÑøñˆùíÌ¹¹…µ•ôğ½ˆøğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑùíÌ¹Á¡½¹•ôğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑùíÌ¹‰…¹­9…µ•ôğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑùíÌ¹‰…¹­½Õ¹Ñôğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑøñÍÁ…¸±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆùíÌ¹¹½Ñ•ôğ½ÍÁ…¸øğ½Ñø(€€€€€€€€€€€€€€€€€€ñÑø(€€€€€€€€€€€€€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…Àè€œÑÁàœõôø(€€€€€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆ½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ •‘¥Ñ}ÍÕÁÁ±¥•Èœ°Ì¥ôûŠr?¾â<O†îµ„ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆÍÑå±”õíì½±½Èè€œ•˜ĞĞĞĞœõô½¹±¥¬õì ¤€ôø½¹Ñ¥½¸ ‘•±•Ñ•}ÍÕÁÁ±¥•Èœ°Ì¥ôûÂ~^G¾â<ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ğ½Ñø(€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€¤¥ô(€€€€€€€€€€€€€í‘…Ñ„¹ÍÕÁÁ±¥•ÉÌ¹±•¹Ñ €ôôô€À€˜˜€ñÑÈøñÑ½±MÁ…¸ôˆØˆÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°Á…‘‘¥¹œè€œĞÁÁàœõôù£Á„Ì¹£€Õ¹œ†ê•À»¼¸ğ½Ñøğ½ÑÈùô(€€€€€€€€€€€€ğ½Ñ‰½‘äø(€€€€€€€€€€ğ½Ñ…‰±”ø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸¥¹…¹¥…±I•Á½ÉÑQ…ˆ¡ì‘…Ñ„°½¹Ñ¥½¸ô¤ì(€½¹ÍĞmÍ•±•Ñ•‘5½¹Ñ °Í•ÑM•±•Ñ•‘5½¹Ñ¡t€ôÕÍ•MÑ…Ñ”  ¤€ôø•ÑÕÉÉ•¹Ñ5½¹Ñ¡1…‰•° ¤¤ì((€½¹ÍĞÍÑ…ÑÌ€ôÕÍ•5•µ¼  ¤€ôøì(€€€½¹ÍĞµ½¹Ñ¡%¹½µ”€ô€¡‘…Ñ„¹É••¥ÁÑÌñğmt¤¹™¥±Ñ•È¡È€ôøÈ¹µ½¹Ñ €ôôôÍ•±•Ñ•‘5½¹Ñ ¤ì(€€€½¹ÍĞÑ½Ñ…±%¹½µ”€ôµ½¹Ñ¡%¹½µ”¹É•‘Õ” ¡ÍÕ´°È¤€ôøÍÕ´€¬€¡È¹Á…¥‘µ½Õ¹Ğñğ€À¤°€À¤ì(€€€½¹ÍĞ¥¹½µ••‰Ğ€ôµ½¹Ñ¡%¹½µ”¹É•‘Õ” ¡ÍÕ´°È¤€ôøÍÕ´€¬€¡È¹Ñ½Ñ…°€´€¡È¹Á…¥‘µ½Õ¹Ğñğ€À¤¤°€À¤ì((€€€½¹ÍĞµ½¹Ñ¡áÁ•¹Í”€ô€¡‘…Ñ„¹•áÁ•¹Í•A…åµ•¹ÑÌñğmt¤¹™¥±Ñ•È¡”€ôø”¹µ½¹Ñ €ôôôÍ•±•Ñ•‘5½¹Ñ ¤ì(€€€½¹ÍĞÑ½Ñ…±áÁ•¹Í”€ôµ½¹Ñ¡áÁ•¹Í”¹É•‘Õ” ¡ÍÕ´°”¤€ôøÍÕ´€¬€¡”¹Á…¥‘µ½Õ¹Ğñğ€À¤°€À¤ì(€€€½¹ÍĞ•áÁ•¹Í••‰Ğ€ôµ½¹Ñ¡áÁ•¹Í”¹É•‘Õ” ¡ÍÕ´°”¤€ôøÍÕ´€¬€¡”¹Ñ½Ñ…±µ½Õ¹Ğ€´€¡”¹Á…¥‘µ½Õ¹Ğñğ€À¤¤°€À¤ì((€€€É•ÑÕÉ¸ì(€€€€€Ñ½Ñ…±%¹½µ”°(€€€€€Ñ½Ñ…±áÁ•¹Í”°(€€€€€ÁÉ½™¥ĞèÑ½Ñ…±%¹½µ”€´Ñ½Ñ…±áÁ•¹Í”°(€€€€€¥¹½µ••‰Ğ°(€€€€€•áÁ•¹Í••‰Ğ°(€€€€€¥¹½µ•Y½Õ¡•ÉÌèµ½¹Ñ¡%¹½µ”°(€€€€€•áÁ•¹Í•Y½Õ¡•ÉÌèµ½¹Ñ¡áÁ•¹Í”(€€€ôì(€ô°m‘…Ñ„°Í•±•Ñ•‘5½¹Ñ¡t¤ì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…¬ˆÍÑå±”õíì…Àè€œÈÑÁàœõôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ¥‘•Ğ±¥ÅÕ¥µ±…ÍÌ¹¼µÁÉ¥¹ĞˆÍÑå±”õíìÁ…‘‘¥¹œè€œÄÙÁàœõôø(€€€€€€€€ñ‘¥ØÍÑå±”õíì‘¥ÍÁ±…äè€™±•àœ°…Àè€œÄÙÁàœ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœõôø(€€€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÄáÁàœ°µ…É¥¸è€Àõôù…¼…¼Ñ£…¹œğ½ Èø(€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰µ½¹Ñ ˆÙ…±Õ”õíÍ•±•Ñ•‘5½¹Ñ €ü€‘íÍ•±•Ñ•‘5½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÅuô´‘íÍ•±•Ñ•‘5½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÁuõ€€è€œô½¹¡…¹”õí”€ôøì(€€€€€€€€€€€¥˜€ …”¹Ñ…É•Ğ¹Ù…±Õ”¤É•ÑÕÉ¸ì(€€€€€€€€€€€½¹ÍĞmä°µt€ô”¹Ñ…É•Ğ¹Ù…±Õ”¹ÍÁ±¥Ğ œ´œ¤ì€(€€€€€€€€€€€Í•ÑM•±•Ñ•‘5½¹Ñ ¡€‘íµô¼‘íåõ€¤ì€(€€€€€€€€€õô€¼ø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…ÑÌµÉ¥ˆø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…Ğµ…Éµ±¥ÅÕ¥ˆÍÑå±”õíì‰½É‘•É1•™Ğè€œÑÁàÍ½±¥Ù…È ´µÍÕ•ÍÌ¤œõôø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ±…‰•°ˆùS†îU¹œÑ¡Ôğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…ĞµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡ÍÑ…ÑÌ¹Ñ½Ñ…±%¹½µ”¥ôğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ¹½Ñ”ˆùQ§†î¸Ñ£†îÅŒ¹£†êµ¸Ó†î¬­£… ğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…Ğµ…Éµ±¥ÅÕ¥ˆÍÑå±”õíì‰½É‘•É1•™Ğè€œÑÁàÍ½±¥Ù…È ´µ‘…¹•È¤œõôø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ±…‰•°ˆùS†îU¹œ¡¤ğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…ĞµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡ÍÑ…ÑÌ¹Ñ½Ñ…±áÁ•¹Í”¥ôğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ¹½Ñ”ˆùQ§†î¸Ñ£†îÅŒ¡¤¡¼¹£€ğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…Ğµ…Éµ±¥ÅÕ¥ˆÍÑå±”õíì‰½É‘•É1•™Ğè€œÑÁàÍ½±¥Ù…È ´µÁÉ¥µ…Éä¤œõôø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ±…‰•°ˆù3†î¤¹¡×†êµ¸ğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…ĞµÙ…±Õ”ˆÍÑå±”õíì½±½ÈèÍÑ…ÑÌ¹ÁÉ½™¥Ğ€øô€À€ü€Ù…È ´µÍÕ•ÍÌ¤œ€è€Ù…È ´µ‘…¹•È¤œõôùí™½Éµ…Ñ5½¹•ä¡ÍÑ…ÑÌ¹ÁÉ½™¥Ğ¥ôğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ¹½Ñ”ˆùQ¡Ô€´¡¤ğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…Ğµ…Éµ±¥ÅÕ¥ˆÍÑå±”õíì‰½É‘•É1•™Ğè€œÑÁàÍ½±¥€˜ĞÍ˜Õ”œõôø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ±…‰•°ˆù;†îŒ­£… Ñ¡×¨ğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…ĞµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡ÍÑ…ÑÌ¹¥¹½µ••‰Ğ¥ôğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ¹½Ñ”ˆù£Á„Ñ¡ÔÓ†î¬­£… ğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰ÍÑ…Ğµ…Éµ±¥ÅÕ¥ˆÍÑå±”õíì‰½É‘•É1•™Ğè€œÑÁàÍ½±¥€ŒáˆÕ˜Øœõôø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ±…‰•°ˆù;†îŒ¹£€Õ¹œ†ê•Àğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…ĞµÙ…±Õ”ˆùí™½Éµ…Ñ5½¹•ä¡ÍÑ…ÑÌ¹•áÁ•¹Í••‰Ğ¥ôğ½Àø(€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰ÍÑ…Ğµ¹½Ñ”ˆù£Á„ÑË†êŒ¡¼9ğ½Àø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø((€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘…Í¡‰½…ÉµÉ¥µµ…¥¸ˆÍÑå±”õíìÉ¥‘Q•µÁ±…Ñ•½±Õµ¹Ìè€œÅ™È€Å™Èœõôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ¥‘•Ğ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìÁ…‘‘¥¹œè€Àõôø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíìÁ…‘‘¥¹œè€œÄÙÁàœ°‰½É‘•É	½ÑÑ½´è€œÅÁàÍ½±¥É‰„ À°À°À°À¸ÀÔ¤œõôø(€€€€€€€€€€€€ñ ÌÍÑå±”õíì™½¹ÑM¥é”è€œÄÙÁàœõôûÂ~N”¡¤Ñ§†êıĞ­¡¿†ê¸Ñ¡Ôğ½ Ìø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Ñ…‰±”µİÉ…Àˆø(€€€€€€€€€€€€ñÑ…‰±”ø(€€€€€€€€€€€€€€ñÑ¡•…øñÑÈøñÑ ùA£É¹œğ½Ñ øñÑ ù1¿†ê…¤ğ½Ñ øñÑ ùS†îU¹œğ½Ñ øñÑ ûCŒÑ¡Ôğ½Ñ øğ½ÑÈøğ½Ñ¡•…ø(€€€€€€€€€€€€€€ñÑ‰½‘äø(€€€€€€€€€€€€€€€íÍÑ…ÑÌ¹¥¹½µ•Y½Õ¡•ÉÌ¹µ…À¡È€ôø€ (€€€€€€€€€€€€€€€€€€ñÑÈ­•äõíÈ¹¥‘ôø(€€€€€€€€€€€€€€€€€€€€ñÑøñˆùAíÈ¹É½½µ%‘ôğ½ˆøğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑøñÍÁ…¸±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆùíÉ••¥ÁÑQåÁ•1…‰•°¡È¹ÑåÁ”¥ôğ½ÍÁ…¸øğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑùí™½Éµ…Ñ5½¹•ä¡È¹Ñ½Ñ…°¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì½±½Èè€Ù…È ´µÍÕ•ÍÌ¤œ°™½¹Ñ]•¥¡Ğè€œØÀÀœõôùí™½Éµ…Ñ5½¹•ä¡È¹Á…¥‘µ½Õ¹Ğ¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€¤¥ô(€€€€€€€€€€€€€€€íÍÑ…ÑÌ¹¥¹½µ•Y½Õ¡•ÉÌ¹±•¹Ñ €ôôô€À€˜˜€ñÑÈøñÑ½±MÁ…¸ôˆĞˆÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°Á…‘‘¥¹œè€œÈÁÁàœõôù-£Ñ¹œÌ­¡¿†ê¸Ñ¡Ô»¼¸ğ½Ñøğ½ÑÈùô(€€€€€€€€€€€€€€ğ½Ñ‰½‘äø(€€€€€€€€€€€€ğ½Ñ…‰±”ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø((€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ¥‘•Ğ±¥ÅÕ¥µ±…ÍÌˆÍÑå±”õíìÁ…‘‘¥¹œè€Àõôø(€€€€€€€€€€ñ‘¥ØÍÑå±”õíìÁ…‘‘¥¹œè€œÄÙÁàœ°‰½É‘•É	½ÑÑ½´è€œÅÁàÍ½±¥É‰„ À°À°À°À¸ÀÔ¤œõôø(€€€€€€€€€€€€ñ ÌÍÑå±”õíì™½¹ÑM¥é”è€œÄÙÁàœõôûÂ~N¡¤Ñ§†êıĞ­¡¿†ê¸¡¤ğ½ Ìø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Ñ…‰±”µİÉ…Àˆø(€€€€€€€€€€€€ñÑ…‰±”ø(€€€€€€€€€€€€€€ñÑ¡•…øñÑÈøñÑ ù9£€ğ½Ñ øñÑ ù1¿†ê…¤ğ½Ñ øñÑ ùS†îU¹œğ½Ñ øñÑ ûCŒÑË†êŒğ½Ñ øğ½ÑÈøğ½Ñ¡•…ø(€€€€€€€€€€€€€€ñÑ‰½‘äø(€€€€€€€€€€€€€€€íÍÑ…ÑÌ¹•áÁ•¹Í•Y½Õ¡•ÉÌ¹µ…À¡”€ôøì(€€€€€€€€€€€€€€€€€½¹ÍĞÍÕÁÁ±¥•È€ô€¡‘…Ñ„¹ÍÕÁÁ±¥•ÉÌñğmt¤¹™¥¹¡Ì€ôøÌ¹¥€ôôô”¹ÍÕÁÁ±¥•É%¤ì(€€€€€€€€€€€€€€€€€½¹ÍĞ…Ñ•½Éä€ô€¡‘…Ñ„¹•áÁ•¹Í•…Ñ•½É¥•Ìñğmt¤¹™¥¹¡Œ€ôøŒ¹¥€ôôô”¹…Ñ•½Éå%¤ì(€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€ (€€€€€€€€€€€€€€€€€€€€ñÑÈ­•äõí”¹¥‘ôø(€€€€€€€€€€€€€€€€€€€€€€ñÑøñˆùíÍÕÁÁ±¥•Èü¹¹…µ”ñğ€[¹œ±…¤ôğ½ˆøğ½Ñø(€€€€€€€€€€€€€€€€€€€€€€ñÑøñÍÁ…¸±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆùí…Ñ•½Éäü¹¹…µ•ôğ½ÍÁ…¸øğ½Ñø(€€€€€€€€€€€€€€€€€€€€€€ñÑùí™½Éµ…Ñ5½¹•ä¡”¹Ñ½Ñ…±µ½Õ¹Ğñğ€À¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€€€ñÑÍÑå±”õíì½±½Èè€Ù…È ´µ‘…¹•È¤œ°™½¹Ñ]•¥¡Ğè€œØÀÀœõôùí™½Éµ…Ñ5½¹•ä¡”¹Á…¥‘µ½Õ¹Ğñğ€À¥ôğ½Ñø(€€€€€€€€€€€€€€€€€€€€ğ½ÑÈø(€€€€€€€€€€€€€€€€€€¤ì(€€€€€€€€€€€€€€€ô¥ô(€€€€€€€€€€€€€€€íÍÑ…ÑÌ¹•áÁ•¹Í•Y½Õ¡•ÉÌ¹±•¹Ñ €ôôô€À€˜˜€ñÑÈøñÑ½±MÁ…¸ôˆĞˆÍÑå±”õíìÑ•áÑ±¥¸è€•¹Ñ•Èœ°Á…‘‘¥¹œè€œÈÁÁàœõôù-£Ñ¹œÌ­¡¿†ê¸¡¤»¼¸ğ½Ñøğ½ÑÈùô(€€€€€€€€€€€€€€ğ½Ñ‰½‘äø(€€€€€€€€€€€€ğ½Ñ…‰±”ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸áÁ•¹Í•5½‘…°¡ì•áÁ•¹Í”°‘…Ñ„°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡•áÁ•¹Í”ñğì(€€€¥èÕ¥ •áÀœ¤°(€€€ÍÕÁÁ±¥•É%è€œœ°(€€€…Ñ•½Éå%è€…Ñ}½Ñ¡•Èœ°(€€€µ½¹Ñ è•ÑÕÉÉ•¹Ñ5½¹Ñ¡1…‰•° ¤°(€€€Á…åµ•¹Ñ…Ñ”è¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¤°(€€€Ñ¥Ñ±”è€œœ°(€€€‘•ÍÉ¥ÁÑ¥½¸è€œœ°(€€€Ñ½Ñ…±µ½Õ¹Ğè€À°(€€€Á…¥‘µ½Õ¹Ğè€À°(€€€ÍÑ…ÑÕÌè€Õ¹Á…¥œ°(€€€Á…åµ•¹Ñ5•Ñ¡½è€ÑÉ…¹Í™•Èœ°(€€€¹½Ñ”è€œœ(€ô¤ì((€€¼¼S†îÄÍ¥¹ ·ŒÁ¡§†êıÔ¡¤(€ÕÍ•™™•Ğ  ¤€ôøì(€€€¥˜€ …•áÁ•¹Í”€˜˜€…™½É´¹•áÁ•¹Í•½‘”¤ì(€€€€€½¹ÍĞm´°åt€ô€¡™½É´¹µ½¹Ñ ñğ•ÑÕÉÉ•¹Ñ5½¹Ñ¡1…‰•° ¤¤¹ÍÁ±¥Ğ œ¼œ¤ì(€€€€€½¹ÍĞÁÉ•™¥à€ôA´‘íåô‘íµõ€ì(€€€€€½¹ÍĞ½Õ¹Ğ€ô€¡‘…Ñ„¹•áÁ•¹Í•A…åµ•¹ÑÌñğmt¤¹™¥±Ñ•È¡”€ôø”¹•áÁ•¹Í•½‘”€˜˜”¹•áÁ•¹Í•½‘”¹ÍÑ…ÉÑÍ]¥Ñ ¡ÁÉ•™¥à¤¤¹±•¹Ñ €¬€Äì(€€€€€½¹ÍĞ½‘”€ô€‘íÁÉ•™¥áô´‘íMÑÉ¥¹œ¡½Õ¹Ğ¤¹Á…‘MÑ…ÉĞ Ì°€œÀœ¥õ€ì(€€€€€Í•Ñ½É´¡ÁÉ•Ø€ôø€¡ì€¸¸¹ÁÉ•Ø°•áÁ•¹Í•½‘”è½‘”ô¤¤ì(€€€ô(€ô°m™½É´¹µ½¹Ñ °•áÁ•¹Í”°‘…Ñ„¹•áÁ•¹Í•A…åµ•¹ÑÍt¤ì((€ÕÍ•™™•Ğ  ¤€ôøì(€€€±•ĞÍÑ…ÑÕÌ€ô€Õ¹Á…¥œì(€€€¥˜€¡™½É´¹Á…¥‘µ½Õ¹Ğ€øô™½É´¹Ñ½Ñ…±µ½Õ¹Ğ€˜˜™½É´¹Ñ½Ñ…±µ½Õ¹Ğ€ø€À¤ÍÑ…ÑÕÌ€ô€Á…¥œì(€€€•±Í”¥˜€¡™½É´¹Á…¥‘µ½Õ¹Ğ€ø€À¤ÍÑ…ÑÕÌ€ô€Á…ÉÑ¥…°œì(€€€Í•Ñ½É´¡ÁÉ•Ø€ôø€¡ì€¸¸¹ÁÉ•Ø°ÍÑ…ÑÕÌô¤¤ì(€ô°m™½É´¹Ñ½Ñ…±µ½Õ¹Ğ°™½É´¹Á…¥‘µ½Õ¹Ñt¤ì((€€¼¼S†îÄ£†î5¸±¿†ê…¤¡¤Á£´Ñ¡•¼¹£€Õ¹œ†ê•À(€½¹ÍĞ¡…¹‘±•MÕÁÁ±¥•É¡…¹”€ô€¡Ù…°¤€ôøì(€€€½¹ÍĞÍÕÀ€ô€¡‘…Ñ„¹ÍÕÁÁ±¥•ÉÌñğmt¤¹™¥¹¡Ì€ôøÌ¹¥€ôôôÙ…°¤ì(€€€½¹ÍĞÕÁ‘…Ñ•Ì€ôìÍÕÁÁ±¥•É%èÙ…°ôì(€€€¥˜€¡ÍÕÀ€˜˜ÍÕÀ¹‘•™…Õ±Ñ…Ñ•½Éä¤ì(€€€€€ÕÁ‘…Ñ•Ì¹…Ñ•½Éå%€ôÍÕÀ¹‘•™…Õ±Ñ…Ñ•½Éäì(€€€ô(€€€€¼¼;†êıÔ£†î5¸Û¹œ±…¤°ãÍ„Ó©¸¹ŸÃ†îu¤¹£†êµ¸¤(€€€¥˜€ …Ù…°¤ÕÁ‘…Ñ•Ì¹É•¥Á¥•¹Ñ9…µ”€ô€œœì(€€€Í•Ñ½É´¡ÁÉ•Ø€ôø€¡ì€¸¸¹ÁÉ•Ø°€¸¸¹ÕÁ‘…Ñ•Ìô¤¤ì(€ôì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈˆÍÑå±”õíìµ…á]¥‘Ñ è€œÜÀÁÁàœõôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øøñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÈÁÁàœõôùí•áÁ•¹Í”€ü€O†îµ„Á¡§†êıÔ¡¤œ€è€S†ê…¼Á¡§†êıÔ¡¤·†îm¤ôğ½ ÈøñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆùE×†ê¸³ô­¡¿†ê¸Ñ¡…¹ Ñ¿…¸¡¼¹£€Õ¹œ†ê•Àğ½Àøğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆÍÑå±”õíì…Àè€œÈÁÁàœõôø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ù7ŒÁ¡§†êıÔ¡¤€¡S†îÄÍ¥¹ ¤(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÙ…±Õ”õí™½É´¹•áÁ•¹Í•½‘”ñğ€œôÉ•…‘=¹±äÍÑå±”õíì‰…­É½Õ¹è€œ˜á™…™Œœ°™½¹Ñ]•¥¡Ğè€‰½±œõô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù9£€€¼9£€Õ¹œ†ê•À(€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹ÍÕÁÁ±¥•É%‘ô½¹¡…¹”õí”€ôø¡…¹‘±•MÕÁÁ±¥•É¡…¹”¡”¹Ñ…É•Ğ¹Ù…±Õ”¥ôø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ôˆˆø´´[¹œ±…¤€¼-£Ñ¹œÌÑÉ½¹œ‘…¹ Ï… €´´ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€ì¡‘…Ñ„¹ÍÕÁÁ±¥•ÉÌñğmt¤¹µ…À¡Ì€ôø€ñ½ÁÑ¥½¸­•äõíÌ¹¥‘ôÙ…±Õ”õíÌ¹¥‘ôùíÌ¹¹…µ•ôğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€(€€€€€€€€€ì…™½É´¹ÍÕÁÁ±¥•É%€˜˜€ (€€€€€€€€€€€€ñ±…‰•°ùS©¸¹ŸÃ†îu¤¹£†êµ¸€¼ƒC…¸Û†î,¹£†êµ¸Ñ§†î¸€¡†ê½Ğ‰×†îeŒ­¡¤Û¹œ±…¤¤(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÙ…±Õ”õí™½É´¹É•¥Á¥•¹Ñ9…µ”ñğ€œô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°É•¥Á¥•¹Ñ9…µ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰9£†êµÀÓ©¸¹ŸÃ†îu¤¹£†êµ¸Ñ§†î¸¸¸¸ˆ€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€¥ô((€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ù1¿†ê…¤¡¤Á£´(€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹…Ñ•½Éå%‘ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°…Ñ•½Éå%è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôø(€€€€€€€€€€€€€€€í‘…Ñ„¹•áÁ•¹Í•…Ñ•½É¥•Ì¹µ…À¡Œ€ôø€ñ½ÁÑ¥½¸­•äõíŒ¹¥‘ôÙ…±Õ”õíŒ¹¥‘ôùíŒ¹¹…µ•ôğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùQ£…¹œƒ…À“†î•¹œ(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰µ½¹Ñ ˆÙ…±Õ”õí™½É´¹µ½¹Ñ €ü€‘í™½É´¹µ½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÅuô´‘í™½É´¹µ½¹Ñ ¹ÍÁ±¥Ğ œ¼œ¥lÁuõ€€è€œô½¹¡…¹”õí”€ôøì(€€€€€€€€€€€€€€€¥˜€ …”¹Ñ…É•Ğ¹Ù…±Õ”¤É•ÑÕÉ¸ì(€€€€€€€€€€€€€€€½¹ÍĞmä°µt€ô”¹Ñ…É•Ğ¹Ù…±Õ”¹ÍÁ±¥Ğ œ´œ¤ì€(€€€€€€€€€€€€€€€Í•Ñ½É´¡ì¸¸¹™½É´°µ½¹Ñ è€‘íµô¼‘íåõô¤ì€(€€€€€€€€€€€€€õô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ù9ŸäÑ¡…¹ Ñ¿…¸(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰‘…Ñ”ˆÙ…±Õ”õí™½É´¹Á…åµ•¹Ñ…Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Á…åµ•¹Ñ…Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ±…‰•°ù;†îe¤‘Õ¹œ¡¤(€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÁ±…•¡½±‘•Èô‰YèQ§†î¸ƒE§†î¸Ñ£…¹œ€Ô°O†îµ„ÛÉ¤»Ã†îmŒ¸¸¸ˆÙ…±Õ”õí™½É´¹Ñ¥Ñ±•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Ñ¥Ñ±”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ùS†îU¹œÑ§†î¸€¡Y9¤(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹Ñ½Ñ…±µ½Õ¹Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Ñ½Ñ…±µ½Õ¹Ğè9Õµ‰•È¡”¹Ñ…É•Ğ¹Ù…±Õ”¥ô¥ô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ûCŒÑË†êŒ€¡Y9¤(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰¹Õµ‰•ÈˆÙ…±Õ”õí™½É´¹Á…¥‘µ½Õ¹Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Á…¥‘µ½Õ¹Ğè9Õµ‰•È¡”¹Ñ…É•Ğ¹Ù…±Õ”¥ô¥ô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùA£Ã…¹œÑ£†î¥Œ(€€€€€€€€€€€€€€ñÍ•±•ĞÙ…±Õ”õí™½É´¹Á…åµ•¹Ñ5•Ñ¡½‘ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Á…åµ•¹Ñ5•Ñ¡½è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰ÑÉ…¹Í™•Èˆù¡Õç†î¸­¡¿†ê¸ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰…Í ˆùQ§†î¸·†êİĞğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô‰ÅÈˆùE×¥Ğ·ŒEHğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùQË†ê…¹œÑ£…¤Ó†îÄÓµ¹ (€€€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑ…ÑÕÌµ‰…‘”µ±¥ÅÕ¥€‘í™½É´¹ÍÑ…ÑÕÌ€ôôô€Á…¥œ€ü€…Ñ¥Ù”œ€è™½É´¹ÍÑ…ÑÕÌ€ôôô€Á…ÉÑ¥…°œ€ü€¹½Ñ¥”œ€è€‘•‰ĞõôÍÑå±”õíì¡•¥¡Ğè€œĞáÁàœ°‘¥ÍÁ±…äè€™±•àœ°…±¥¹%Ñ•µÌè€•¹Ñ•Èœ°©ÕÍÑ¥™å½¹Ñ•¹Ğè€•¹Ñ•Èœõôø(€€€€€€€€€€€€€€€í™½É´¹ÍÑ…ÑÕÌ€ôôô€Á…¥œ€ü€ŸCŒÑ¡…¹ Ñ¿…¸œ€è™½É´¹ÍÑ…ÑÕÌ€ôôô€Á…ÉÑ¥…°œ€ü€Q¡…¹ Ñ¿…¸·†îeĞÁ£†ê¸œ€è€£Á„Ñ¡…¹ Ñ¿…¸ô(€€€€€€€€€€€€€€ğ½ÍÁ…¸ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ±…‰•°ù¡¤£è(€€€€€€€€€€€€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰Q£©´¡¤£è»†êıÔ†ê¸¸¸¸ˆøğ½Ñ•áÑ…É•„ø(€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Ñ¥½¸µ™½½Ñ•Èˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôù#†îäğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôøì(€€€€€€€€€€€€€¥˜€ …™½É´¹Ñ¥Ñ±”¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀ»†îe¤‘Õ¹œ¡¤¸œ¤ì(€€€€€€€€€€€€€¥˜€ …™½É´¹ÍÕÁÁ±¥•É%€˜˜€…™½É´¹É•¥Á¥•¹Ñ9…µ”¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀÓ©¸¹ŸÃ†îu¤¹£†êµ¸­¡¤£†î5¸[¹œ±…¤¸œ¤ì(€€€€€€€€€€€€€½¹M…Ù”¡™½É´¤ì(€€€€€€€€€€€õôù3ÁÔÁ¡§†êıÔ¡¤ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸MÕÁÁ±¥•É5½‘…°¡ìÍÕÁÁ±¥•È°½¹±½Í”°½¹M…Ù”ô¤ì(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”¡ÍÕÁÁ±¥•Èñğì(€€€¥èÕ¥ ÍÕÀœ¤°(€€€¹…µ”è€œœ°(€€€Á¡½¹”è€œœ°(€€€•µ…¥°è€œœ°(€€€…‘‘É•ÍÌè€œœ°(€€€‰…¹­9…µ”è€œœ°(€€€‰…¹­½Õ¹Ğè€œœ°(€€€‰…¹­=İ¹•Èè€œœ°(€€€¹½Ñ”è€œœ(€ô¤ì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°ˆø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈˆø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ‘¥Øøñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÈÁÁàœõôùíÍÕÁÁ±¥•È€ü€O†îµ„9£€Õ¹œ†ê•Àœ€è€Q£©´9£€Õ¹œ†ê•Àôğ½ ÈøñÀ±…ÍÍ9…µ”ô‰µÕÑ•ˆùQ£Ñ¹œÑ¥¸ƒG†îE¤Ó…Œ€¼¹ŸÃ†îu¤¹£†êµ¸Ñ¡…¹ Ñ¿…¸ğ½Àøğ½‘¥Øø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆÍÑå±”õíì…Àè€œÈÁÁàœõôø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ùS©¸9£€Õ¹œ†ê•À€¼S©¸É§©¹œ(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÙ…±Õ”õí™½É´¹¹…µ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹…µ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰YèƒA§†î¸³†îÅŒ°%¹Ñ•É¹•ĞY9AP¸¸¸ˆ€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùO†îDƒE§†î¸Ñ¡¿†ê…¤(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÙ…±Õ”õí™½É´¹Á¡½¹•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°Á¡½¹”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰™½É´µÉ¥µØÈˆø(€€€€€€€€€€€€ñ±…‰•°ùS©¸9Ÿ‰¸£¹œ(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÙ…±Õ”õí™½É´¹‰…¹­9…µ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‰…¹­9…µ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôÁ±…•¡½±‘•Èô‰Yè5°Y¸¸¸ˆ€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùO†îDÓ¤­¡¿†ê¸(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÙ…±Õ”õí™½É´¹‰…¹­½Õ¹Ñô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‰…¹­½Õ¹Ğè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€ñ±…‰•°ùS©¸£†îœÓ¤­¡¿†ê¸(€€€€€€€€€€€€€€ñ¥¹ÁÕĞÑåÁ”ô‰Ñ•áĞˆÙ…±Õ”õí™½É´¹‰…¹­=İ¹•Éô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°‰…¹­=İ¹•Èè”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ô€¼ø(€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€ñ±…‰•°ù¡¤£è(€€€€€€€€€€€€ñÑ•áÑ…É•„Ù…±Õ”õí™½É´¹¹½Ñ•ô½¹¡…¹”õí”€ôøÍ•Ñ½É´¡ì¸¸¹™½É´°¹½Ñ”è”¹Ñ…É•Ğ¹Ù…±Õ•ô¥ôøğ½Ñ•áÑ…É•„ø(€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰½Àµ…Ñ¥½¸µ™½½Ñ•Èˆø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸ˆ½¹±¥¬õí½¹±½Í•ôù#†îäğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸ˆ½¹±¥¬õì ¤€ôøì(€€€€€€€€€€€€€¥˜€ …™½É´¹¹…µ”¤É•ÑÕÉ¸…±•ÉĞ YÕ¤³É¹œ¹£†êµÀÓ©¸¹£€Õ¹œ†ê•À¸œ¤ì(€€€€€€€€€€€€€½¹M…Ù”¡™½É´¤ì(€€€€€€€€€€€õôù3ÁÔÑ£Ñ¹œÑ¥¸ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()™Õ¹Ñ¥½¸áÁ•¹Í•EI5½‘…°¡ì•áÁ•¹Í”°ÍÕÁÁ±¥•È°½¹±½Í”ô¤ì(€½¹ÍĞÉ•¥Á¥•¹Ñ9…µ”€ôÍÕÁÁ±¥•Èü¹¹…µ”ñğ•áÁ•¹Í”¹É•¥Á¥•¹Ñ9…µ”ñğ€[¹œ±…¤œì(€½¹ÍĞ‰…¹­9…µ”€ôÍÕÁÁ±¥•Èü¹‰…¹­9…µ”ñğ•áÁ•¹Í”¹É•¥Á¥•¹Ñ	…¹­9…µ”ñğ€œœì(€½¹ÍĞ‰…¹­½Õ¹Ğ€ôÍÕÁÁ±¥•Èü¹‰…¹­½Õ¹Ğñğ•áÁ•¹Í”¹É•¥Á¥•¹Ñ	…¹­½Õ¹Ğñğ€œœì(€½¹ÍĞ‰…¹­=İ¹•È€ôÍÕÁÁ±¥•Èü¹‰…¹­=İ¹•Èñğ•áÁ•¹Í”¹É•¥Á¥•¹Ñ	…¹­=İ¹•ÈñğÉ•¥Á¥•¹Ñ9…µ”ì(€½¹ÍĞÅÉ%µ…•UÉ°€ô•áÁ•¹Í”¹É•¥Á¥•¹ÑEÉ%µ…•UÉ°ñğ•áÁ•¹Í”¹ÅÉ%µ…•UÉ°ñğ€œœì(€½¹ÍĞÉ•µ…¥¹¥¹µ½Õ¹Ğ€ô5…Ñ ¹µ…à À°9Õµ‰•È¡•áÁ•¹Í”¹Ñ½Ñ…±µ½Õ¹Ğñğ€À¤€´9Õµ‰•È¡•áÁ•¹Í”¹Á…¥‘µ½Õ¹Ğñğ€À¤¤ì(€½¹ÍĞ‘¥ÍÁ±…åµ½Õ¹Ğ€ôÉ•µ…¥¹¥¹µ½Õ¹Ğ€ø€À€üÉ•µ…¥¹¥¹µ½Õ¹Ğ€è9Õµ‰•È¡•áÁ•¹Í”¹Ñ½Ñ…±µ½Õ¹Ğñğ€À¤ì(€½¹ÍĞÑÉ…¹Í™•ÉQ•áĞ€ô€‘í•áÁ•¹Í”¹•áÁ•¹Í•½‘”ñğ€œô€‘í•áÁ•¹Í”¹Ñ¥Ñ±”ñğ€œõ€¹ÑÉ¥´ ¤ì(€½¹ÍĞ½ÁåáÁ•¹Í•QÉ…¹Í™•È€ô€ ¤€ôøì(€€€½¹ÍĞÑ•áĞ€ô€‘í‰…¹­9…µ•õq¹MQ,è€‘í‰…¹­½Õ¹Ñõq¹£†îœQ,è€‘í‰…¹­=İ¹•Éõq¹O†îDÑ§†î¸è€‘í™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åµ½Õ¹Ğ¥õq¹;†îe¤‘Õ¹œè€‘íÑÉ…¹Í™•ÉQ•áÑõ€ì(€€€¹…Ù¥…Ñ½È¹±¥Á‰½…É¹İÉ¥Ñ•Q•áĞ¡Ñ•áĞ¤ì(€€€…±•ÉĞ ŸCŒ½ÁäÑ£Ñ¹œÑ¥¸¡Õç†î¸­¡¿†ê¸Á¡§†êıÔ¡¤¸œ¤ì(€ôì((€É•ÑÕÉ¸€ (€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°¹¼µÁÉ¥¹Ğˆ½¹±¥¬õí½¹±½Í•ôø(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µµ½‘…°µØÈˆÍÑå±”õíìµ…á]¥‘Ñ è€œĞÀÁÁàœ°Ñ•áÑ±¥¸è€•¹Ñ•Èœõô½¹±¥¬õí”€ôø”¹ÍÑ½ÁAÉ½Á……Ñ¥½¸ ¥ôø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰µ½‘…°µ¡•…‘•Èˆø(€€€€€€€€€€ñ ÈÍÑå±”õíì™½¹ÑM¥é”è€œÄáÁàœõôù7ŒEHQ¡…¹ Ñ¿…¸ğ½ Èø(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸Í´ˆ½¹±¥¬õí½¹±½Í•ôûŠrTğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰‘•Ñ…¥°µ‰½‘äµØÈÍÑ…¬ˆÍÑå±”õíì…±¥¹%Ñ•µÌè€•¹Ñ•Èœõôø(€€€€€€€€€€ñÀùQ¡…¹ Ñ¿…¸¡¼è€ñˆùíÉ•¥Á¥•¹Ñ9…µ•ôğ½ˆøğ½Àø(€€€€€€€€€€ñÀÍÑå±”õíì™½¹ÑM¥é”è€œÈÑÁàœ°™½¹Ñ]•¥¡Ğè€œàÀÀœ°½±½Èè€Ù…È ´µÁÉ¥µ…Éä¤œõôùí™½Éµ…Ñ5½¹•ä¡‘¥ÍÁ±…åµ½Õ¹Ğ¥ôğ½Àø(€€€€€€€€€€(€€€€€€€€€íÅÉ%µ…•UÉ°€˜˜€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰Í•ÑÑ±•µ•¹ĞµÅÈµ…ÉˆÍÑå±”õíìİ¥‘Ñ è€œÄÀÀ”œõôø(€€€€€€€€€€€€€€ñ ĞùEH¹ŸÃ†îu¤¹£†êµ¸ğ½ Ğø(€€€€€€€€€€€€€€ñ¥µœÍÉŒõíÅÉ%µ…•UÉ±ô…±Ğô‰EH¹ŸÃ†îu¤¹£†êµ¸Ñ§†î¸ˆ€¼ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¥ô((€€€€€€€€€í‰…¹­½Õ¹Ğ€ü€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ¥‘•ĞˆÍÑå±”õíì‰…­É½Õ¹è€œ˜á™…™Œœ°Á…‘‘¥¹œè€œÈÁÁàœ°‰½É‘•ÉI…‘¥ÕÌè€œÄÙÁàœ°‰½É‘•Èè€œÅÁà‘…Í¡•€‰Õ”Äœõôø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô‰Íµ…±°µÕÑ•ˆùQ#Q9Q%8!Ug†î	8-!?†ê‰8ğ½Àø(€€€€€€€€€€€€€€ñÀÍÑå±”õíìµ…É¥¹Q½Àè€œÄÁÁàœõôù9Ÿ‰¸£¹œè€ñˆùí‰…¹­9…µ”ñğ€£Á„†êµÀ¹£†êµĞôğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀùO†îDQ,è€ñˆùí‰…¹­½Õ¹Ñôğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀù£†îœQ,è€ñˆùí‰…¹­=İ¹•Èñğ€£Á„†êµÀ¹£†êµĞôğ½ˆøğ½Àø(€€€€€€€€€€€€€€ñÀÍÑå±”õíìµ…É¥¹Q½Àè€œÄÁÁàœõô±…ÍÍ9…µ”ô‰Íµ…±°ˆù;†îe¤‘Õ¹œè€ñˆùíÑÉ…¹Í™•ÉQ•áÑôğ½ˆøğ½Àø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€¤€è€ (€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ô‰İ…É¹¥¹œµ‰½àˆùA¡§†êıÔ¡¤»ä£Á„ÌÑ£Ñ¹œÑ¥¸¹Ÿ‰¸£¹œ¸ÌÑ£†î³ÁÔ±¥¹¬ƒ†ê¹ EH¡¿†êİŒ†êµÀ¹£†êµĞMQ,¹ŸÃ†îu¤¹£†êµ¸¸ğ½‘¥Øø(€€€€€€€€€€¥ô(€€€€€€€€€€(€€€€€€€€€ì¡‰…¹­½Õ¹ĞñğÅÉ%µ…•UÉ°¤€˜˜€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰Í•½¹‘…Éäµ‰Ñ¸İ¥‘”ˆ½¹±¥¬õí½ÁåáÁ•¹Í•QÉ…¹Í™•ÉôûÂ~N,½Áä»†îe¤‘Õ¹œ,ğ½‰ÕÑÑ½¸ùô(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô‰ÁÉ¥µ…Éäµ‰Ñ¸İ¥‘”ˆÍÑå±”õíìµ…É¥¹Q½Àè€œÈÁÁàœõô½¹±¥¬õì ¤€ôøİ¥¹‘½Ü¹ÁÉ¥¹Ğ ¥ôûÂ~Z£¾â<%¸£†î¥¹œÓ†î¬ğ½‰ÕÑÑ½¸ø(€€€€€€€€ğ½‘¥Øø(€€€€€€ğ½‘¥Øø(€€€€ğ½‘¥Øø(€€¤ì)ô()•áÁ½ÉĞ‘•™…Õ±ĞÁÀì(
