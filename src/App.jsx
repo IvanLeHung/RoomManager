@@ -1687,7 +1687,7 @@ function AppMain() {
   const [roomOpsModal, setRoomOpsModal] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
-  const [cloudEnabled, setCloudEnabled] = useState(true);
+  const [cloudEnabled, setCloudEnabled] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
   const fileInputRef = React.useRef(null);
   const cloudFailureRef = React.useRef(0);
@@ -2045,6 +2045,29 @@ function AppMain() {
       a.click();
     } else if (type === 'import_json') {
       fileInputRef.current.click();
+    } else if (type === 'export_license_plates') {
+      try {
+        const rows = (data.tenants || []).map(t => {
+          const membership = (data.memberships || []).filter(m => m.tenantId === t.id && ['active', 'notice'].includes(m.status)).sort((a, b) => String(b.joinedDate || '').localeCompare(String(a.joinedDate || '')))[0];
+          return {
+            'Phòng': membership?.roomId || t.lastRoomId || '',
+            'Họ tên': t.name || '',
+            'SĐT': t.phone || '',
+            'Biển kiểm soát': t.licensePlate || t.vehicle || '',
+            'Loại xe': t.vehicleType || '',
+            'Trạng thái thuê': membership?.status === 'notice' ? 'Sắp rời' : membership ? 'Đang ở' : 'Đã rời',
+            'Ghi chú': t.note || ''
+          };
+        }).filter(row => row['Biển kiểm soát']);
+        rows.sort((a, b) => String(a['Phòng']).localeCompare(String(b['Phòng']), 'vi', { numeric: true }) || String(a['Biển kiểm soát']).localeCompare(String(b['Biển kiểm soát'])));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Thông báo': 'Chưa có người thuê nào được cập nhật biển kiểm soát.' }]), 'Bien kiem soat xe');
+        XLSX.writeFile(wb, `bao-cao-bien-kiem-soat-${new Date().toISOString().slice(0, 10)}.xlsx`);
+        alert(`Đã xuất báo cáo ${rows.length} xe máy.`);
+      } catch (err) {
+        console.error(err);
+        alert('Không thể xuất báo cáo biển kiểm soát. Vui lòng thử lại.');
+      }
     } else if (type === 'export_excel') {
       try {
         const wb = XLSX.utils.book_new();
@@ -2380,6 +2403,8 @@ function AppMain() {
               onRoomClick={(id) => { setTab('rooms'); setQuery(id); }} 
               onAction={handleAction} 
               isSyncing={isSyncing} 
+              cloudEnabled={cloudEnabled}
+              hasLoadedCloud={hasLoadedCloud}
               lastSynced={lastSynced} 
             />
           )}
@@ -3250,7 +3275,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
   );
 }
 
-function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
+function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced, cloudEnabled, hasLoadedCloud }) {
   const today = new Date();
   const [periodMode, setPeriodMode] = useState('month');
   const [periodMonth, setPeriodMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
@@ -3397,8 +3422,8 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
         <div className="stack">
           <h2 style={{ fontSize: '24px' }}>Tổng quan hệ thống</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSyncing ? 'var(--warning)' : 'var(--success)' }}></span>
-            {isSyncing ? 'Đang đồng bộ...' : lastSynced ? `Đã lưu: ${lastSynced.toLocaleTimeString()}` : 'Chế độ Local'}
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: !cloudEnabled || isSyncing ? 'var(--warning)' : 'var(--success)' }}></span>
+            {!hasLoadedCloud ? 'Đang kiểm tra kết nối...' : !cloudEnabled ? 'Chỉ lưu trên trình duyệt · Chưa đồng bộ' : isSyncing ? 'Đang đồng bộ...' : lastSynced ? `Đã đồng bộ: ${lastSynced.toLocaleTimeString()}` : 'Chờ đồng bộ'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -3635,6 +3660,10 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced }) {
               <button className="action-btn" style={{ background: 'var(--primary-gradient)', color: 'white' }} onClick={() => onAction('export_excel')}>
                 <span className="icon">📊</span>
                 <span>Xuất Excel</span>
+              </button>
+              <button className="action-btn" onClick={() => onAction('export_license_plates')}>
+                <span className="icon">🏍️</span>
+                <span>Biển kiểm soát xe</span>
               </button>
               <button className="action-btn" onClick={() => onAction('export_json')}>
                 <span className="icon">🧩</span>
@@ -7623,3 +7652,4 @@ function ExpenseQRModal({ expense, supplier, onClose }) {
 }
 
 export default App;
+
