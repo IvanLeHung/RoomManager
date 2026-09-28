@@ -1202,16 +1202,7 @@ function getReceiptPaymentState(receipt) {
   const total = Number(receipt?.total || 0);
   const paidAmount = Number(receipt?.paidAmount || 0);
   const explicitAdjustmentDue = Number(receipt?.adjustmentDueAmount || 0);
-  const looksLikeUtilityCheckoutAdjustment =
-    receipt?.type === 'monthly' &&
-    receipt?.isFinalized &&
-    paidAmount >= total &&
-    total > 0 &&
-    Number(receipt?.rent || 0) === 0 &&
-    Number(receipt?.fixedServices || 0) === 0 &&
-    (Number(receipt?.electricAmount || 0) + Number(receipt?.waterAmount || 0) + Number(receipt?.other || 0)) > 0 &&
-    !receipt?.adjustmentPaidAmount;
-  const adjustmentDue = explicitAdjustmentDue > 0 ? explicitAdjustmentDue : looksLikeUtilityCheckoutAdjustment ? total : 0;
+  const adjustmentDue = Math.max(0, explicitAdjustmentDue);
   if (adjustmentDue > 0) {
     const adjustmentPaidAmount = Number(receipt?.adjustmentPaidAmount || 0);
     const adjustmentDebt = Math.max(0, adjustmentDue - adjustmentPaidAmount);
@@ -1225,6 +1216,19 @@ function getReceiptPaymentState(receipt) {
   if (total > 0 && paidAmount >= total) return { status: 'Đã thanh toán', debt: 0, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: true, isPartial: false, isAdjustment: false };
   if (paidAmount > 0) return { status: 'Nợ một phần', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: true, isAdjustment: false };
   return { status: 'Chưa thanh toán', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: false, isAdjustment: false };
+}
+
+function recordReceiptPayment(receipt, amount, paidDate) {
+  const state = getReceiptPaymentState(receipt);
+  const payment = Number(amount);
+  if (state.status === 'Đã hủy' || !Number.isSafeInteger(payment) || payment <= 0 || payment > state.debt || !/^\d{4}-\d{2}-\d{2}$/.test(paidDate || '')) {
+    throw new Error('Nhập số tiền thu hợp lệ, không vượt số nợ còn lại, và ngày thanh toán.');
+  }
+  const updated = state.isAdjustment
+    ? { ...receipt, adjustmentDueAmount: state.adjustmentDue, adjustmentPaidAmount: state.paidAmount + payment, adjustmentPaidDate: paidDate }
+    : { ...receipt, paidAmount: state.paidAmount + payment, paidDate };
+  const nextState = getReceiptPaymentState(updated);
+  return { ...updated, status: nextState.status, debt: nextState.debt };
 }
 
 const OTHER_RECEIPT_TYPES = [
@@ -4024,9 +4028,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
     
     const finalizedReceipts = monthlyReceipts.map(r => {
       const paid = r.paidAmount || 0;
-      let status = 'Chưa thanh toán';
-      if (paid >= r.total) status = 'Đã thanh toán';
-      else if (paid > 0) status = 'Nợ một phần';
+      const paymentState = getReceiptPaymentState(r);
 
       return {
         ...r,
@@ -4034,7 +4036,8 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
         savedAt: new Date().toISOString(),
         type: 'monthly',
         paidAmount: paid,
-        status: status
+        status: paymentState.status,
+        debt: paymentState.debt
       };
     });
 
@@ -4043,7 +4046,6 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
 
     // Tính toán thống kê cho modal
     const totalAmount = finalizedReceipts.reduce((sum, r) => sum + r.total, 0);
-    const totalPaid = finalizedReceipts.reduce((sum, r) => sum + r.paidAmount, 0);
     const unpaidCount = finalizedReceipts.filter(r => r.status !== 'Đã thanh toán').length;
 
     setSaveModal({
@@ -4051,7 +4053,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
       count: finalizedReceipts.length,
       totalAmount,
       unpaidCount,
-      totalDebt: totalAmount - totalPaid
+      totalDebt: finalizedReceipts.reduce((sum, r) => sum + r.debt, 0)
     });
   }
 
@@ -4065,17 +4067,18 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
       
       if (!window.confirm(msg)) return;
       const originalState = getReceiptPaymentState(original);
-      if (originalState.isPaid) {
+      if (originalState.isAdjustment) {
         updated = {
           ...updated,
-          adjustmentDueAmount: Number(updated.total || 0),
+          adjustmentDueAmount: Math.max(0, originalState.adjustmentDue + Number(updated.total || 0) - Number(original.total || 0)),
           adjustmentPaidAmount: Number(updated.adjustmentPaidAmount || 0),
           adjustmentCreatedAt: updated.adjustmentCreatedAt || new Date().toISOString(),
           adjustmentReason: updated.adjustmentReason || 'Phát sinh/chỉnh lại điện nước sau khi phiếu đã thanh toán'
         };
       }
     }
-    onUpdateReceipt(updated);
+    const paymentState = getReceiptPaymentState(updated);
+    onUpdateReceipt({ ...updated, status: paymentState.status, debt: paymentState.debt });
   }
   return (
     <div className="receipts-tab stack">
@@ -7072,7 +7075,7 @@ function RoomOpsModal({ mode, room, onClose, onSave }) {
 
 function PaymentModal({ receipt, onClose, onSave }) {
   const receiptPaymentState = getReceiptPaymentState(receipt || {});
-  const [paidAmount, setPaidAmount] = useState(receiptPaymentState.debt || receipt?.total || 0);
+  const [paidAmount, setPaidAmount] = useState(receiptPaymentState.debt);
   const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
   
   if (!receipt) return null;
@@ -7087,20 +7090,20 @@ function PaymentModal({ receipt, onClose, onSave }) {
         <div className="detail-body-v2 stack">
           <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
             <p>Phòng: <b>{getTransferRoomLabel(receipt)}</b></p>
-            <p>{receiptPaymentState.isAdjustment ? 'Khoản cần thu thêm' : 'Tổng tiền'}: <b>{formatMoney(receiptPaymentState.debt || receipt.total)}</b></p>
+            <p>Số tiền còn phải thu: <b>{formatMoney(receiptPaymentState.debt)}</b></p>
             {receiptPaymentState.isAdjustment && <p className="muted small">Đã thu trước đó: {formatMoney(receiptPaymentState.basePaidAmount)}</p>}
             <p className="muted small">Tháng {receipt.month}</p>
           </div>
           <label>
             Số tiền khách trả 
-            <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} />
+            <input type="number" min="1" max={receiptPaymentState.debt} step="1" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} />
           </label>
           <label>
             Ngày thanh toán 
             <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} />
           </label>
           <div style={{ marginTop: '10px' }}>
-            {Number(paidAmount) >= (receiptPaymentState.debt || receipt.total) ? 
+            {Number(paidAmount) > 0 && Number(paidAmount) === receiptPaymentState.debt ?
               <span className="status-badge-liquid active">Thanh toán đủ</span> : 
               Number(paidAmount) > 0 ? 
                 <span className="status-badge-liquid notice">Thanh toán một phần</span> : 
@@ -7108,25 +7111,11 @@ function PaymentModal({ receipt, onClose, onSave }) {
             }
           </div>
           <button className="primary-btn wide" onClick={() => { 
-            if (receiptPaymentState.isAdjustment) {
-              const adjustmentDue = Number(receipt.adjustmentDueAmount || receiptPaymentState.adjustmentDue || receipt.total || 0);
-              const nextAdjustmentPaid = Number(receipt.adjustmentPaidAmount || 0) + Number(paidAmount || 0);
-              let status = 'Chưa thanh toán';
-              if (nextAdjustmentPaid >= adjustmentDue) status = 'Đã thanh toán';
-              else if (nextAdjustmentPaid > 0) status = 'Nợ một phần';
-              onSave({
-                ...receipt,
-                adjustmentDueAmount: adjustmentDue,
-                adjustmentPaidAmount: nextAdjustmentPaid,
-                adjustmentPaidDate: paidDate,
-                status
-              });
-              return;
+            try {
+              onSave(recordReceiptPayment(receipt, paidAmount, paidDate));
+            } catch (error) {
+              alert(error.message);
             }
-            let status = 'Chưa thanh toán'; 
-            if (Number(paidAmount) >= receipt.total) status = 'Đã thanh toán'; 
-            else if (Number(paidAmount) > 0) status = 'Nợ một phần'; 
-            onSave({ ...receipt, paidAmount: Number(paidAmount), paidDate, status }); 
           }}>Xác nhận</button>
         </div>
       </div>
