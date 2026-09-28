@@ -107,6 +107,8 @@ model Receipt {
   note           String?
   createdAt      String
   savedAt        String?
+  isFinalized    Boolean @default(false)
+  paidDate       String?
 }
 
 model MoveOutReport {

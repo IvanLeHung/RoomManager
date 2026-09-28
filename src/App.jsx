@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import './styles.css';
+import { trackChanges, restoreChanges, acknowledgeChanges } from './pending-sync.mjs';
 
 const STORAGE_KEY = 'room_manager_qr_app_v1';
 const BANK_KEY = 'room_manager_bank_v1';
 const PIN_KEY = 'room_manager_pin_v1';
+const PENDING_SYNC_KEY = 'room_manager_pending_sync_v1';
+const RECEIPT_MONTH_KEY = 'room_manager_receipt_month_v1';
 
 const DEFAULT_BANK = {
   bankName: 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam',
@@ -1202,16 +1205,7 @@ function getReceiptPaymentState(receipt) {
   const total = Number(receipt?.total || 0);
   const paidAmount = Number(receipt?.paidAmount || 0);
   const explicitAdjustmentDue = Number(receipt?.adjustmentDueAmount || 0);
-  const looksLikeUtilityCheckoutAdjustment =
-    receipt?.type === 'monthly' &&
-    receipt?.isFinalized &&
-    paidAmount >= total &&
-    total > 0 &&
-    Number(receipt?.rent || 0) === 0 &&
-    Number(receipt?.fixedServices || 0) === 0 &&
-    (Number(receipt?.electricAmount || 0) + Number(receipt?.waterAmount || 0) + Number(receipt?.other || 0)) > 0 &&
-    !receipt?.adjustmentPaidAmount;
-  const adjustmentDue = explicitAdjustmentDue > 0 ? explicitAdjustmentDue : looksLikeUtilityCheckoutAdjustment ? total : 0;
+  const adjustmentDue = Math.max(0, explicitAdjustmentDue);
   if (adjustmentDue > 0) {
     const adjustmentPaidAmount = Number(receipt?.adjustmentPaidAmount || 0);
     const adjustmentDebt = Math.max(0, adjustmentDue - adjustmentPaidAmount);
@@ -1225,6 +1219,19 @@ function getReceiptPaymentState(receipt) {
   if (total > 0 && paidAmount >= total) return { status: 'Đã thanh toán', debt: 0, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: true, isPartial: false, isAdjustment: false };
   if (paidAmount > 0) return { status: 'Nợ một phần', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: true, isAdjustment: false };
   return { status: 'Chưa thanh toán', debt, paidAmount, basePaidAmount: paidAmount, adjustmentDue: 0, isPaid: false, isPartial: false, isAdjustment: false };
+}
+
+function recordReceiptPayment(receipt, amount, paidDate) {
+  const state = getReceiptPaymentState(receipt);
+  const payment = Number(amount);
+  if (state.status === 'Đã hủy' || !Number.isSafeInteger(payment) || payment <= 0 || payment > state.debt || !/^\d{4}-\d{2}-\d{2}$/.test(paidDate || '')) {
+    throw new Error('Nhập số tiền thu hợp lệ, không vượt số nợ còn lại, và ngày thanh toán.');
+  }
+  const updated = state.isAdjustment
+    ? { ...receipt, adjustmentDueAmount: state.adjustmentDue, adjustmentPaidAmount: state.paidAmount + payment, adjustmentPaidDate: paidDate }
+    : { ...receipt, paidAmount: state.paidAmount + payment, paidDate };
+  const nextState = getReceiptPaymentState(updated);
+  return { ...updated, status: nextState.status, debt: nextState.debt };
 }
 
 const OTHER_RECEIPT_TYPES = [
@@ -1684,6 +1691,19 @@ function AppMain() {
   const [lastSynced, setLastSynced] = useState(null);
   const fileInputRef = React.useRef(null);
   const cloudFailureRef = React.useRef(0);
+  const previousDataRef = React.useRef(data);
+  const pendingSyncRef = React.useRef(safeRead(PENDING_SYNC_KEY, {}));
+  const syncInFlightRef = React.useRef(false);
+  const latestDataRef = React.useRef(data);
+  const [syncRevision, setSyncRevision] = useState(0);
+
+  useEffect(() => {
+    pendingSyncRef.current = trackChanges(previousDataRef.current, data, pendingSyncRef.current);
+    previousDataRef.current = data;
+    latestDataRef.current = data;
+    localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingSyncRef.current));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, [data]);
 
   // Initial Fetch from Cloud
   useEffect(() => {
@@ -1698,10 +1718,9 @@ function AppMain() {
         }
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
-          // Cloud is authoritative after a successful fetch. Choosing the newer
-          // local timestamp can resurrect records that were intentionally deleted
-          // or restored directly on the server.
-          setData(prev => ({
+          // Replay only unacknowledged edits over the server snapshot.
+          setData(prev => {
+            const restored = restoreChanges({
             ...prev,
             ...cloudData,
             suppliers: cloudData.suppliers || prev.suppliers || [],
@@ -1709,7 +1728,10 @@ function AppMain() {
             expensePayments: cloudData.expensePayments || prev.expensePayments || [],
             contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
             roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
-          }));
+            }, pendingSyncRef.current);
+            previousDataRef.current = restored;
+            return restored;
+          });
           setLastSynced(new Date());
           setCloudEnabled(true);
         }
@@ -1729,6 +1751,9 @@ function AppMain() {
     const timer = setTimeout(() => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       if (!data || data === DEFAULT_DATA || !hasLoadedCloud || !cloudEnabled) return;
+      if (syncInFlightRef.current) return;
+      syncInFlightRef.current = true;
+      const sentChanges = pendingSyncRef.current;
       
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
@@ -1742,6 +1767,8 @@ function AppMain() {
       .then(async res => {
         if (res.ok) {
           cloudFailureRef.current = 0;
+          pendingSyncRef.current = acknowledgeChanges(pendingSyncRef.current, sentChanges);
+          localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingSyncRef.current));
           setLastSynced(new Date());
         } else {
           const errData = await res.json().catch(async () => ({ raw: await res.text().catch(() => '') }));
@@ -1760,11 +1787,14 @@ function AppMain() {
         setIsSyncing(false);
         console.info("Cloud sync unavailable; local data was saved.", err?.message || err);
         setCloudEnabled(false);
+      }).finally(() => {
+        syncInFlightRef.current = false;
+        if (latestDataRef.current !== data) setSyncRevision(value => value + 1);
       });
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [data, hasLoadedCloud, cloudEnabled]);
+  }, [data, hasLoadedCloud, cloudEnabled, syncRevision]);
   useEffect(() => {
     if (!data || !data.contracts || !data.memberships) return;
     
@@ -3969,7 +3999,11 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
 }
 
 function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onDeleteReceipt, onGoToPayment }) {
-  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthLabel());
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const saved = safeRead(RECEIPT_MONTH_KEY, '');
+    return /^(0[1-9]|1[0-2])\/\d{4}$/.test(saved) ? saved : getCurrentMonthLabel();
+  });
+  useEffect(() => { localStorage.setItem(RECEIPT_MONTH_KEY, JSON.stringify(selectedMonth)); }, [selectedMonth]);
   const [activeTab, setActiveTab] = useState('entry');
   const [saveModal, setSaveModal] = useState(null);
 
@@ -4053,9 +4087,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
     
     const finalizedReceipts = monthlyReceipts.map(r => {
       const paid = r.paidAmount || 0;
-      let status = 'Chưa thanh toán';
-      if (paid >= r.total) status = 'Đã thanh toán';
-      else if (paid > 0) status = 'Nợ một phần';
+      const paymentState = getReceiptPaymentState(r);
 
       return {
         ...r,
@@ -4063,7 +4095,8 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
         savedAt: new Date().toISOString(),
         type: 'monthly',
         paidAmount: paid,
-        status: status
+        status: paymentState.status,
+        debt: paymentState.debt
       };
     });
 
@@ -4072,7 +4105,6 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
 
     // Tính toán thống kê cho modal
     const totalAmount = finalizedReceipts.reduce((sum, r) => sum + r.total, 0);
-    const totalPaid = finalizedReceipts.reduce((sum, r) => sum + r.paidAmount, 0);
     const unpaidCount = finalizedReceipts.filter(r => r.status !== 'Đã thanh toán').length;
 
     setSaveModal({
@@ -4080,7 +4112,7 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
       count: finalizedReceipts.length,
       totalAmount,
       unpaidCount,
-      totalDebt: totalAmount - totalPaid
+      totalDebt: finalizedReceipts.reduce((sum, r) => sum + r.debt, 0)
     });
   }
 
@@ -4094,17 +4126,18 @@ function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, o
       
       if (!window.confirm(msg)) return;
       const originalState = getReceiptPaymentState(original);
-      if (originalState.isPaid) {
+      if (originalState.isAdjustment) {
         updated = {
           ...updated,
-          adjustmentDueAmount: Number(updated.total || 0),
+          adjustmentDueAmount: Math.max(0, originalState.adjustmentDue + Number(updated.total || 0) - Number(original.total || 0)),
           adjustmentPaidAmount: Number(updated.adjustmentPaidAmount || 0),
           adjustmentCreatedAt: updated.adjustmentCreatedAt || new Date().toISOString(),
           adjustmentReason: updated.adjustmentReason || 'Phát sinh/chỉnh lại điện nước sau khi phiếu đã thanh toán'
         };
       }
     }
-    onUpdateReceipt(updated);
+    const paymentState = getReceiptPaymentState(updated);
+    onUpdateReceipt({ ...updated, status: paymentState.status, debt: paymentState.debt });
   }
   return (
     <div className="receipts-tab stack">
@@ -7101,7 +7134,7 @@ function RoomOpsModal({ mode, room, onClose, onSave }) {
 
 function PaymentModal({ receipt, onClose, onSave }) {
   const receiptPaymentState = getReceiptPaymentState(receipt || {});
-  const [paidAmount, setPaidAmount] = useState(receiptPaymentState.debt || receipt?.total || 0);
+  const [paidAmount, setPaidAmount] = useState(receiptPaymentState.debt);
   const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
   
   if (!receipt) return null;
@@ -7116,20 +7149,20 @@ function PaymentModal({ receipt, onClose, onSave }) {
         <div className="detail-body-v2 stack">
           <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
             <p>Phòng: <b>{getTransferRoomLabel(receipt)}</b></p>
-            <p>{receiptPaymentState.isAdjustment ? 'Khoản cần thu thêm' : 'Tổng tiền'}: <b>{formatMoney(receiptPaymentState.debt || receipt.total)}</b></p>
+            <p>Số tiền còn phải thu: <b>{formatMoney(receiptPaymentState.debt)}</b></p>
             {receiptPaymentState.isAdjustment && <p className="muted small">Đã thu trước đó: {formatMoney(receiptPaymentState.basePaidAmount)}</p>}
             <p className="muted small">Tháng {receipt.month}</p>
           </div>
           <label>
             Số tiền khách trả 
-            <input type="number" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} />
+            <input type="number" min="1" max={receiptPaymentState.debt} step="1" value={paidAmount} onChange={e => setPaidAmount(e.target.value)} />
           </label>
           <label>
             Ngày thanh toán 
             <input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} />
           </label>
           <div style={{ marginTop: '10px' }}>
-            {Number(paidAmount) >= (receiptPaymentState.debt || receipt.total) ? 
+            {Number(paidAmount) > 0 && Number(paidAmount) === receiptPaymentState.debt ?
               <span className="status-badge-liquid active">Thanh toán đủ</span> : 
               Number(paidAmount) > 0 ? 
                 <span className="status-badge-liquid notice">Thanh toán một phần</span> : 
@@ -7137,25 +7170,11 @@ function PaymentModal({ receipt, onClose, onSave }) {
             }
           </div>
           <button className="primary-btn wide" onClick={() => { 
-            if (receiptPaymentState.isAdjustment) {
-              const adjustmentDue = Number(receipt.adjustmentDueAmount || receiptPaymentState.adjustmentDue || receipt.total || 0);
-              const nextAdjustmentPaid = Number(receipt.adjustmentPaidAmount || 0) + Number(paidAmount || 0);
-              let status = 'Chưa thanh toán';
-              if (nextAdjustmentPaid >= adjustmentDue) status = 'Đã thanh toán';
-              else if (nextAdjustmentPaid > 0) status = 'Nợ một phần';
-              onSave({
-                ...receipt,
-                adjustmentDueAmount: adjustmentDue,
-                adjustmentPaidAmount: nextAdjustmentPaid,
-                adjustmentPaidDate: paidDate,
-                status
-              });
-              return;
+            try {
+              onSave(recordReceiptPayment(receipt, paidAmount, paidDate));
+            } catch (error) {
+              alert(error.message);
             }
-            let status = 'Chưa thanh toán'; 
-            if (Number(paidAmount) >= receipt.total) status = 'Đã thanh toán'; 
-            else if (Number(paidAmount) > 0) status = 'Nợ một phần'; 
-            onSave({ ...receipt, paidAmount: Number(paidAmount), paidDate, status }); 
           }}>Xác nhận</button>
         </div>
       </div>
