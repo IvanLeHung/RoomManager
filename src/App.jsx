@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import './styles.css';
+import { trackChanges, restoreChanges, acknowledgeChanges } from './pending-sync.mjs';
 
 const STORAGE_KEY = 'room_manager_qr_app_v1';
 const BANK_KEY = 'room_manager_bank_v1';
 const PIN_KEY = 'room_manager_pin_v1';
+const PENDING_SYNC_KEY = 'room_manager_pending_sync_v1';
+const RECEIPT_MONTH_KEY = 'room_manager_receipt_month_v1';
 
 const DEFAULT_BANK = {
   bankName: 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam',
@@ -1688,6 +1691,19 @@ function AppMain() {
   const [lastSynced, setLastSynced] = useState(null);
   const fileInputRef = React.useRef(null);
   const cloudFailureRef = React.useRef(0);
+  const previousDataRef = React.useRef(data);
+  const pendingSyncRef = React.useRef(safeRead(PENDING_SYNC_KEY, {}));
+  const syncInFlightRef = React.useRef(false);
+  const latestDataRef = React.useRef(data);
+  const [syncRevision, setSyncRevision] = useState(0);
+
+  useEffect(() => {
+    pendingSyncRef.current = trackChanges(previousDataRef.current, data, pendingSyncRef.current);
+    previousDataRef.current = data;
+    latestDataRef.current = data;
+    localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingSyncRef.current));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, [data]);
 
   // Initial Fetch from Cloud
   useEffect(() => {
@@ -1702,10 +1718,9 @@ function AppMain() {
         }
         const cloudData = await res.json();
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
-          // Cloud is authoritative after a successful fetch. Choosing the newer
-          // local timestamp can resurrect records that were intentionally deleted
-          // or restored directly on the server.
-          setData(prev => ({
+          // Replay only unacknowledged edits over the server snapshot.
+          setData(prev => {
+            const restored = restoreChanges({
             ...prev,
             ...cloudData,
             suppliers: cloudData.suppliers || prev.suppliers || [],
@@ -1713,7 +1728,10 @@ function AppMain() {
             expensePayments: cloudData.expensePayments || prev.expensePayments || [],
             contractRenewals: cloudData.contractRenewals || prev.contractRenewals || [],
             roomTransfers: cloudData.roomTransfers || prev.roomTransfers || [],
-          }));
+            }, pendingSyncRef.current);
+            previousDataRef.current = restored;
+            return restored;
+          });
           setLastSynced(new Date());
           setCloudEnabled(true);
         }
@@ -1733,6 +1751,9 @@ function AppMain() {
     const timer = setTimeout(() => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       if (!data || data === DEFAULT_DATA || !hasLoadedCloud || !cloudEnabled) return;
+      if (syncInFlightRef.current) return;
+      syncInFlightRef.current = true;
+      const sentChanges = pendingSyncRef.current;
       
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
@@ -1746,6 +1767,8 @@ function AppMain() {
       .then(async res => {
         if (res.ok) {
           cloudFailureRef.current = 0;
+          pendingSyncRef.current = acknowledgeChanges(pendingSyncRef.current, sentChanges);
+          localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingSyncRef.current));
           setLastSynced(new Date());
         } else {
           const errData = await res.json().catch(async () => ({ raw: await res.text().catch(() => '') }));
@@ -1764,11 +1787,14 @@ function AppMain() {
         setIsSyncing(false);
         console.info("Cloud sync unavailable; local data was saved.", err?.message || err);
         setCloudEnabled(false);
+      }).finally(() => {
+        syncInFlightRef.current = false;
+        if (latestDataRef.current !== data) setSyncRevision(value => value + 1);
       });
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [data, hasLoadedCloud, cloudEnabled]);
+  }, [data, hasLoadedCloud, cloudEnabled, syncRevision]);
   useEffect(() => {
     if (!data || !data.contracts || !data.memberships) return;
     
@@ -3944,7 +3970,11 @@ function TenantsTab({ tenants, data, onAction, query, setQuery, setData }) {
 }
 
 function ReceiptsTab({ data, bankInfo, onUpdateReceipt, onBatchCreate, onView, onPrintBatch, onPay, onDeleteReceipt, onGoToPayment }) {
-  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentMonthLabel());
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const saved = safeRead(RECEIPT_MONTH_KEY, '');
+    return /^(0[1-9]|1[0-2])\/\d{4}$/.test(saved) ? saved : getCurrentMonthLabel();
+  });
+  useEffect(() => { localStorage.setItem(RECEIPT_MONTH_KEY, JSON.stringify(selectedMonth)); }, [selectedMonth]);
   const [activeTab, setActiveTab] = useState('entry');
   const [saveModal, setSaveModal] = useState(null);
 
