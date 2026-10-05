@@ -107,8 +107,6 @@ model Receipt {
   note           String?
   createdAt      String
   savedAt        String?
-  isFinalized    Boolean @default(false)
-  paidDate       String?
 }
 
 model MoveOutReport {
@@ -192,6 +190,7 @@ model Supplier {
   defaultCategory String?
   phone       String?
   email       String?
+  invoiceEmail String?
   address     String?
   bankName    String?
   bankAccount String?
@@ -226,6 +225,7 @@ model ExpensePayment {
   recipientBankAccount String?
   recipientBankOwner String?
   recipientQrImageUrl String?
+  invoiceEmail String?
   month         String
   paymentDate   String
   title         String

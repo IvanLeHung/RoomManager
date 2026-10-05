@@ -1,4 +1,5 @@
 const { createPrismaClient } = require('./lib/prisma');
+const { validateSnapshot } = require('./lib/snapshot');
 
 async function retryNeonQuery(fn, retries = 2) {
   let lastError;
@@ -42,8 +43,6 @@ async function ensureDatabaseShape(prisma) {
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentReason" TEXT',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "otherType" TEXT',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "otherNote" TEXT',
-    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "isFinalized" BOOLEAN NOT NULL DEFAULT FALSE',
-    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "paidDate" TEXT',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "settlementMode" TEXT',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "depositForfeited" INTEGER',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "monthlyRent" INTEGER',
@@ -81,7 +80,22 @@ async function ensureDatabaseShape(prisma) {
 }
 
 module.exports = async (req, res) => {
-  const prisma = createPrismaClient();
+  if (!['GET', 'POST'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, POST');
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  if (req.method === 'POST') {
+    if (req.body?.type !== 'full_sync') return res.status(400).json({ error: 'Invalid sync type' });
+    const error = validateSnapshot(req.body.payload);
+    if (error) return res.status(400).json({ error });
+  }
+  let prisma;
+  try {
+    prisma = createPrismaClient();
+  } catch (error) {
+    console.error(error);
+    return res.status(503).json({ error: 'Database unavailable' });
+  }
 
   if (req.method === 'GET') {
     try {
@@ -114,9 +128,7 @@ module.exports = async (req, res) => {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ 
-        error: 'Failed to fetch data', 
-        details: error.message,
-        stack: error.stack 
+        error: 'Failed to fetch data' 
       });
     } finally {
       await prisma.$disconnect().catch(() => {});
@@ -131,6 +143,7 @@ module.exports = async (req, res) => {
         await ensureDatabaseShape(prisma);
         const { rooms = [], tenants = [], memberships = [], contracts = [], receipts = [], moveOutReports = [], contractRenewals = [], roomTransfers = [] } = payload;
 
+        await prisma.$transaction(async (prisma) => {
         const pick = (obj, keys) => {
           const res = {};
           keys.forEach(k => {
@@ -148,9 +161,9 @@ module.exports = async (req, res) => {
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
         const transferKeys = ['id', 'tenantId', 'oldContractId', 'newContractId', 'oldRoomId', 'newRoomId', 'transferDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
-        const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
+        const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'invoiceEmail', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
         const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
-        const expenseKeys = ['id', 'type', 'source', 'sourceReportId', 'roomId', 'contractId', 'tenantId', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'recipientPhone', 'recipientBankName', 'recipientBankAccount', 'recipientBankOwner', 'recipientQrImageUrl', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'amount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
+        const expenseKeys = ['id', 'type', 'source', 'sourceReportId', 'roomId', 'contractId', 'tenantId', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'recipientPhone', 'recipientBankName', 'recipientBankAccount', 'recipientBankOwner', 'recipientQrImageUrl', 'invoiceEmail', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'amount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
 
         const ids = (items) => items.filter(i => i && i.id).map(i => i.id);
         const nowIso = () => new Date().toISOString();
@@ -164,8 +177,6 @@ module.exports = async (req, res) => {
           const data = { type: 'monthly', rent: 0, fixedServices: 0, electricOld: 0, electricNew: 0, electricUsed: 0, electricAmount: 0, waterOld: 0, waterNew: 0, waterUsed: 0, waterAmount: 0, other: 0, total: 0, paidAmount: 0, debt: 0, status: 'Chưa thanh toán', createdAt: nowIso(), ...pick(item, receiptKeys) };
           ['rent', 'fixedServices', 'other', 'total', 'paidAmount', 'adjustmentDueAmount', 'adjustmentPaidAmount', 'debt'].forEach(k => { if (data[k] !== undefined) data[k] = toInt(data[k]); });
           ['electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount'].forEach(k => { data[k] = toFloat(data[k]); });
-          data.isFinalized = Boolean(item.isFinalized || item.savedAt);
-          if (item.paidDate !== undefined) data.paidDate = item.paidDate;
           return data;
         };
         const prepareMoveOut = (item) => {
@@ -224,6 +235,7 @@ module.exports = async (req, res) => {
 
         await runInBatches(operations);
         await runInBatches(deleteOperations, 4);
+        }, { maxWait: 10000, timeout: 60000 });
         
         return res.status(200).json({ success: true });
       }
@@ -232,9 +244,7 @@ module.exports = async (req, res) => {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ 
-        error: 'Failed to save data', 
-        details: error.message,
-        stack: error.stack 
+        error: 'Failed to save data' 
       });
     } finally {
       await prisma.$disconnect().catch(() => {});
@@ -244,3 +254,4 @@ module.exports = async (req, res) => {
   await prisma.$disconnect().catch(() => {});
   return res.status(405).json({ error: 'Method not allowed' });
 };
+
