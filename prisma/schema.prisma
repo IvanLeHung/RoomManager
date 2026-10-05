@@ -191,6 +191,8 @@ model Supplier {
   phone       String?
   email       String?
   invoiceEmail String?
+  invoiceUrl String?
+  invoiceLookupCode String?
   address     String?
   bankName    String?
   bankAccount String?
@@ -226,6 +228,8 @@ model ExpensePayment {
   recipientBankOwner String?
   recipientQrImageUrl String?
   invoiceEmail String?
+  invoiceUrl String?
+  invoiceLookupCode String?
   month         String
   paymentDate   String
   title         String

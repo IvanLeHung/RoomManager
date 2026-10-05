@@ -161,9 +161,9 @@ module.exports = async (req, res) => {
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
         const transferKeys = ['id', 'tenantId', 'oldContractId', 'newContractId', 'oldRoomId', 'newRoomId', 'transferDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
-        const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'invoiceEmail', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
+        const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'invoiceEmail', 'invoiceUrl', 'invoiceLookupCode', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
         const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
-        const expenseKeys = ['id', 'type', 'source', 'sourceReportId', 'roomId', 'contractId', 'tenantId', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'recipientPhone', 'recipientBankName', 'recipientBankAccount', 'recipientBankOwner', 'recipientQrImageUrl', 'invoiceEmail', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'amount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
+        const expenseKeys = ['id', 'type', 'source', 'sourceReportId', 'roomId', 'contractId', 'tenantId', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'recipientPhone', 'recipientBankName', 'recipientBankAccount', 'recipientBankOwner', 'recipientQrImageUrl', 'invoiceEmail', 'invoiceUrl', 'invoiceLookupCode', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'amount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
 
         const ids = (items) => items.filter(i => i && i.id).map(i => i.id);
         const nowIso = () => new Date().toISOString();
