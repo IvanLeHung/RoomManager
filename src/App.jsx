@@ -1696,6 +1696,8 @@ function AppMain() {
   const syncInFlightRef = React.useRef(false);
   const latestDataRef = React.useRef(data);
   const [syncRevision, setSyncRevision] = useState(0);
+  const [reconnectRevision, setReconnectRevision] = useState(0);
+  const reconnect = () => setReconnectRevision(value => value + 1);
 
   useEffect(() => {
     pendingSyncRef.current = trackChanges(previousDataRef.current, data, pendingSyncRef.current);
@@ -1707,16 +1709,19 @@ function AppMain() {
 
   // Initial Fetch from Cloud
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
     async function initCloud() {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
-        const res = await fetch('/api/data', { signal: controller.signal });
+        const res = await fetch('/api/data', { signal: controller.signal, cache: 'no-store' });
         if (!res.ok) {
           const body = await res.text().catch(() => '');
           throw new Error(`GET /api/data ${res.status}: ${body.slice(0, 400) || res.statusText}`);
         }
         const cloudData = await res.json();
+        if (cancelled) return;
+        if (!cloudData || cloudData.error || !Array.isArray(cloudData.rooms)) throw new Error('Invalid cloud response');
         if (cloudData && !cloudData.error && Array.isArray(cloudData.rooms)) {
           // Replay only unacknowledged edits over the server snapshot.
           setData(prev => {
@@ -1736,15 +1741,25 @@ function AppMain() {
           setCloudEnabled(true);
         }
       } catch (err) {
+        if (cancelled) return;
         setCloudEnabled(false);
         console.info("Cloud sync inactive; using local storage only.", err?.message || err);
       } finally {
         clearTimeout(timeout);
-        setHasLoadedCloud(true);
+        if (!cancelled) setHasLoadedCloud(true);
       }
     }
     initCloud();
-  }, []);
+    return () => { cancelled = true; controller.abort(); };
+  }, [reconnectRevision]);
+
+  useEffect(() => {
+    if (cloudEnabled || !hasLoadedCloud) return;
+    const retry = () => { if (!syncInFlightRef.current) reconnect(); };
+    const timer = setInterval(retry, 60000);
+    window.addEventListener('online', retry);
+    return () => { clearInterval(timer); window.removeEventListener('online', retry); };
+  }, [cloudEnabled, hasLoadedCloud]);
 
   // Cloud Sync Logic (Debounced)
   useEffect(() => {
@@ -1756,7 +1771,7 @@ function AppMain() {
       const sentChanges = pendingSyncRef.current;
       
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 30000);
       setIsSyncing(true);
       fetch('/api/data', {
         method: 'POST',
@@ -1774,7 +1789,7 @@ function AppMain() {
           const errData = await res.json().catch(async () => ({ raw: await res.text().catch(() => '') }));
           cloudFailureRef.current += 1;
           console.info(`Cloud sync failed (${res.status}); local data was saved.`, errData);
-          if (res.status >= 500 || cloudFailureRef.current >= 2) {
+          if (!res.ok) {
             setCloudEnabled(false);
           }
         }
@@ -2404,6 +2419,7 @@ function AppMain() {
               onAction={handleAction} 
               isSyncing={isSyncing} 
               cloudEnabled={cloudEnabled}
+              onReconnect={reconnect}
               hasLoadedCloud={hasLoadedCloud}
               lastSynced={lastSynced} 
             />
@@ -3275,7 +3291,7 @@ function PaymentHistoryTab({ data, bankInfo, onAction, onUpdateReceipt, onView, 
   );
 }
 
-function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced, cloudEnabled, hasLoadedCloud }) {
+function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced, cloudEnabled, hasLoadedCloud, onReconnect }) {
   const today = new Date();
   const [periodMode, setPeriodMode] = useState('month');
   const [periodMonth, setPeriodMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
@@ -3424,6 +3440,7 @@ function Dashboard({ data, onRoomClick, onAction, isSyncing, lastSynced, cloudEn
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: !cloudEnabled || isSyncing ? 'var(--warning)' : 'var(--success)' }}></span>
             {!hasLoadedCloud ? 'Đang kiểm tra kết nối...' : !cloudEnabled ? 'Chỉ lưu trên trình duyệt · Chưa đồng bộ' : isSyncing ? 'Đang đồng bộ...' : lastSynced ? `Đã đồng bộ: ${lastSynced.toLocaleTimeString()}` : 'Chờ đồng bộ'}
+            {!cloudEnabled && hasLoadedCloud && <button className="secondary-btn sm" onClick={onReconnect}>Kết nối lại</button>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>

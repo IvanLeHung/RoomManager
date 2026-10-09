@@ -1,4 +1,3 @@
-const { createPrismaClient } = require('./lib/prisma');
 
 async function retryNeonQuery(fn, retries = 2) {
   let lastError;
@@ -81,7 +80,15 @@ async function ensureDatabaseShape(prisma) {
 }
 
 module.exports = async (req, res) => {
-  const prisma = createPrismaClient();
+  res.setHeader('Cache-Control', 'no-store');
+  let prisma;
+  try {
+    const { createPrismaClient } = require('./lib/prisma');
+    prisma = createPrismaClient();
+  } catch (error) {
+    console.error('Database initialization failed', error);
+    return res.status(503).json({ error: 'Không thể kết nối cơ sở dữ liệu. Kiểm tra cấu hình và log Vercel.' });
+  }
 
   if (req.method === 'GET') {
     try {

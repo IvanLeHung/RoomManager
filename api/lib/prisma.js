@@ -1,4 +1,4 @@
-const { Pool, neonConfig } = require('@neondatabase/serverless');
+const { neonConfig } = require('@neondatabase/serverless');
 const { PrismaNeon } = require('@prisma/adapter-neon');
 const { PrismaClient } = require('@prisma/client');
 const ws = require('ws');
@@ -23,25 +23,14 @@ const createPrismaClient = () => {
     throw new Error("DATABASE_URL is missing or empty");
   }
   
-  const pool = new Pool({ 
+  const adapter = new PrismaNeon({
     connectionString,
     max: 1,
     ssl: true
   });
-  const adapter = new PrismaNeon(pool);
   return new PrismaClient({ adapter });
 };
 
-let prisma;
-
-if (process.env.NODE_ENV !== 'production') {
-  if (!global.prisma) {
-    global.prisma = createPrismaClient();
-  }
-  prisma = global.prisma;
-}
-
 module.exports = {
-  prisma,
   createPrismaClient
 };
