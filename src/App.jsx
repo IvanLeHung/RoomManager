@@ -2083,6 +2083,26 @@ function AppMain() {
         console.error(err);
         alert('Không thể xuất báo cáo biển kiểm soát. Vui lòng thử lại.');
       }
+    } else if (type === 'export_invoices') {
+      try {
+        const rows = (roomOrTenant || data.expensePayments || []).map(e => ({
+          'Mã phiếu': e.expenseCode || e.id,
+          'Ngày': e.paymentDate || '',
+          'Nhà cung cấp': (data.suppliers || []).find(s => s.id === e.supplierId)?.name || e.recipientName || 'Vãng lai',
+          'Nội dung': e.title || '',
+          'Số tiền': Number(e.totalAmount || 0),
+          'Đã thanh toán': Number(e.paidAmount || 0),
+          'Trạng thái': e.status === 'paid' ? 'Đã thanh toán' : e.status === 'partial' ? 'Thanh toán một phần' : 'Chưa thanh toán',
+          'Link địa chỉ': e.invoiceUrl || '',
+          'Mã tra cứu': e.invoiceLookupCode || ''
+        }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'Thông báo': 'Không có hóa đơn phù hợp.' }]), 'Tong hop hoa don');
+        XLSX.writeFile(wb, `tong-hop-hoa-don-do-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      } catch (err) {
+        console.error(err);
+        alert('Không thể tải tổng hợp hóa đơn. Vui lòng thử lại.');
+      }
     } else if (type === 'export_excel') {
       try {
         const wb = XLSX.utils.book_new();
@@ -7214,6 +7234,7 @@ function ExpensesTab({ data, onAction, focusFilter, onFocusConsumed }) {
       if (filter.supplierId && e.supplierId !== filter.supplierId) return false;
       if (filter.categoryId && e.categoryId !== filter.categoryId) return false;
       if (filter.status !== 'all' && e.status !== filter.status) return false;
+      if (filter.search && !`${e.expenseCode || ''} ${e.title || ''} ${e.invoiceUrl || ''} ${e.invoiceLookupCode || ''}`.toLowerCase().includes(filter.search.toLowerCase())) return false;
       return true;
     }).sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
   }, [data.expensePayments, filter]);
@@ -7230,16 +7251,18 @@ function ExpensesTab({ data, onAction, focusFilter, onFocusConsumed }) {
           <label style={{ margin: 0 }}>Nhà CC / Nhà cung cấp <select value={filter.supplierId} onChange={e => setFilter({...filter, supplierId: e.target.value})}><option value="">Tất cả</option>{(data.suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
           <label style={{ margin: 0 }}>Loại chi phí <select value={filter.categoryId} onChange={e => setFilter({...filter, categoryId: e.target.value})}><option value="">Tất cả</option>{(data.expenseCategories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label style={{ margin: 0 }}>Trạng thái <select value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}><option value="all">Tất cả</option><option value="paid">Đã thanh toán</option><option value="partial">Thanh toán một phần</option><option value="unpaid">Chưa thanh toán</option></select></label>
+          <label style={{ margin: 0, minWidth: '220px' }}>Tìm hóa đơn <input type="search" value={filter.search || ''} onChange={e => setFilter({...filter, search: e.target.value})} placeholder="Mã phiếu, nội dung, mã tra cứu..." /></label>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="primary-btn" onClick={() => onAction('create_expense')}>+ Tạo phiếu chi</button>
             <button className="secondary-btn" onClick={() => onAction('manage_suppliers')}>🏢 Quản lý Nhà CC</button>
+            <button className="secondary-btn" onClick={() => onAction('export_invoices', filteredExpenses)}>⬇️ Tải tổng hợp hóa đơn</button>
           </div>
         </div>
       </div>
       <div className="widget liquid-glass" style={{ padding: 0 }}>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Mã phiếu</th><th>Ngày</th><th>Nhà CC</th><th>Loại</th><th>Nội dung</th><th>Tổng tiền</th><th>Đã trả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <thead><tr><th>Mã phiếu</th><th>Ngày</th><th>Nhà CC</th><th>Nội dung</th><th>Số tiền</th><th>Thanh toán</th><th>Hóa đơn đỏ</th><th>Thao tác</th></tr></thead>
             <tbody>
               {filteredExpenses.map(e => {
                 const supplier = (data.suppliers || []).find(s => s.id === e.supplierId);
@@ -7249,15 +7272,14 @@ function ExpensesTab({ data, onAction, focusFilter, onFocusConsumed }) {
                     <td><span className="small muted mono">{e.expenseCode}</span></td>
                     <td>{e.paymentDate ? e.paymentDate.split('-').reverse().join('/') : 'N/A'}</td>
                     <td><b>{supplier?.name || e.recipientName || 'Vãng lai'}</b></td>
-                    <td><span className="small muted">{category?.name}</span></td>
                     <td>{e.title}</td>
                     <td style={{ fontWeight: '700' }}>{formatMoney(e.totalAmount)}</td>
-                    <td>{formatMoney(e.paidAmount)}</td>
                     <td>
                       <span className={`status-badge-liquid ${e.status === 'paid' ? 'active' : e.status === 'partial' ? 'notice' : 'debt'}`}>
                         {e.status === 'paid' ? 'ĐÃ THANH TOÁN' : e.status === 'partial' ? 'THANH TOÁN MỘT PHẦN' : 'CHƯA THANH TOÁN'}
                       </span>
                     </td>
+                    <td><div className="small">{e.invoiceUrl ? <a href={e.invoiceUrl} target="_blank" rel="noreferrer">Link địa chỉ</a> : 'Chưa có link'}{e.invoiceLookupCode && <div className="muted">Mã: {e.invoiceLookupCode}</div>}</div></td>
                     <td>
                       <div style={{ display: 'flex', gap: '4px' }}>
                         <button className="secondary-btn sm" onClick={() => onAction('edit_expense', e)}>✏️</button>
@@ -7268,7 +7290,7 @@ function ExpensesTab({ data, onAction, focusFilter, onFocusConsumed }) {
                   </tr>
                 );
               })}
-              {filteredExpenses.length === 0 && <tr><td colSpan="9" style={{ textAlign: 'center', padding: '40px' }}>Không có dữ liệu chi phí.</td></tr>}
+              {filteredExpenses.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', padding: '40px' }}>Không có dữ liệu chi phí.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -7443,6 +7465,9 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
     paidAmount: 0,
     status: 'unpaid',
     paymentMethod: 'transfer',
+    invoiceEmail: '',
+    invoiceUrl: '',
+    invoiceLookupCode: '',
     note: ''
   });
 
@@ -7542,6 +7567,17 @@ function ExpenseModal({ expense, data, onClose, onSave }) {
               </span>
             </label>
           </div>
+          <label>Địa chỉ email nhận hóa đơn điện tử
+            <input type="email" value={form.invoiceEmail || ''} onChange={e => setForm({...form, invoiceEmail: e.target.value})} placeholder="VD: ketoan@example.com" />
+          </label>
+          <div className="form-grid-v2">
+            <label>Link địa chỉ hóa đơn đỏ
+              <input type="url" value={form.invoiceUrl || ''} onChange={e => setForm({...form, invoiceUrl: e.target.value})} placeholder="https://..." />
+            </label>
+            <label>Mã tra cứu hóa đơn
+              <input type="text" value={form.invoiceLookupCode || ''} onChange={e => setForm({...form, invoiceLookupCode: e.target.value})} placeholder="Nhập mã tra cứu" />
+            </label>
+          </div>
           <label>Ghi chú
             <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="Thêm ghi chú nếu cần..."></textarea>
           </label>
@@ -7565,6 +7601,7 @@ function SupplierModal({ supplier, onClose, onSave }) {
     name: '',
     phone: '',
     email: '',
+    invoiceEmail: '',
     address: '',
     bankName: '',
     bankAccount: '',
@@ -7599,6 +7636,9 @@ function SupplierModal({ supplier, onClose, onSave }) {
               <input type="text" value={form.bankOwner} onChange={e => setForm({...form, bankOwner: e.target.value})} />
             </label>
           </div>
+          <label>Địa chỉ email nhận hóa đơn điện tử
+            <input type="email" value={form.invoiceEmail || ''} onChange={e => setForm({...form, invoiceEmail: e.target.value})} placeholder="VD: ketoan@example.com" />
+          </label>
           <label>Ghi chú
             <textarea value={form.note} onChange={e => setForm({...form, note: e.target.value})}></textarea>
           </label>

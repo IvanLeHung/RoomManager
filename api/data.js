@@ -1,3 +1,4 @@
+const { validateSnapshot } = require('./lib/snapshot');
 
 async function retryNeonQuery(fn, retries = 2) {
   let lastError;
@@ -43,6 +44,12 @@ async function ensureDatabaseShape(prisma) {
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "otherNote" TEXT',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "isFinalized" BOOLEAN NOT NULL DEFAULT FALSE',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "paidDate" TEXT',
+    'ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "invoiceEmail" TEXT',
+    'ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "invoiceUrl" TEXT',
+    'ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "invoiceLookupCode" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "invoiceEmail" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "invoiceUrl" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "invoiceLookupCode" TEXT',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "settlementMode" TEXT',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "depositForfeited" INTEGER',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "monthlyRent" INTEGER',
@@ -81,13 +88,22 @@ async function ensureDatabaseShape(prisma) {
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
+  if (!['GET', 'POST'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, POST');
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  if (req.method === 'POST') {
+    if (req.body?.type !== 'full_sync') return res.status(400).json({ error: 'Invalid sync type' });
+    const error = validateSnapshot(req.body.payload);
+    if (error) return res.status(400).json({ error });
+  }
   let prisma;
   try {
     const { createPrismaClient } = require('./lib/prisma');
     prisma = createPrismaClient();
   } catch (error) {
-    console.error('Database initialization failed', error);
-    return res.status(503).json({ error: 'Không thể kết nối cơ sở dữ liệu. Kiểm tra cấu hình và log Vercel.' });
+    console.error(error);
+    return res.status(503).json({ error: 'Database unavailable' });
   }
 
   if (req.method === 'GET') {
@@ -120,10 +136,8 @@ module.exports = async (req, res) => {
       });
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ 
-        error: 'Failed to fetch data', 
-        details: error.message,
-        stack: error.stack 
+      return res.status(500).json({
+        error: 'Failed to fetch data'
       });
     } finally {
       await prisma.$disconnect().catch(() => {});
@@ -132,12 +146,13 @@ module.exports = async (req, res) => {
 
   if (req.method === 'POST') {
     const { type, payload } = req.body;
-    
+
     try {
       if (type === 'full_sync') {
         await ensureDatabaseShape(prisma);
         const { rooms = [], tenants = [], memberships = [], contracts = [], receipts = [], moveOutReports = [], contractRenewals = [], roomTransfers = [] } = payload;
 
+        await prisma.$transaction(async (prisma) => {
         const pick = (obj, keys) => {
           const res = {};
           keys.forEach(k => {
@@ -155,9 +170,9 @@ module.exports = async (req, res) => {
         const renewalKeys = ['id', 'contractId', 'roomId', 'signedDate', 'oldEndDate', 'newStartDate', 'newEndDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
         const transferKeys = ['id', 'tenantId', 'oldContractId', 'newContractId', 'oldRoomId', 'newRoomId', 'transferDate', 'oldRent', 'newRent', 'oldDeposit', 'newDeposit', 'note', 'createdAt'];
 
-        const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
+        const supplierKeys = ['id', 'name', 'group', 'defaultCategory', 'phone', 'email', 'invoiceEmail', 'invoiceUrl', 'invoiceLookupCode', 'address', 'bankName', 'bankAccount', 'bankOwner', 'note', 'createdAt', 'updatedAt'];
         const categoryKeys = ['id', 'name', 'description', 'createdAt', 'updatedAt'];
-        const expenseKeys = ['id', 'type', 'source', 'sourceReportId', 'roomId', 'contractId', 'tenantId', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'recipientPhone', 'recipientBankName', 'recipientBankAccount', 'recipientBankOwner', 'recipientQrImageUrl', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'amount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
+        const expenseKeys = ['id', 'type', 'source', 'sourceReportId', 'roomId', 'contractId', 'tenantId', 'supplierId', 'categoryId', 'expenseCode', 'recipientName', 'recipientPhone', 'recipientBankName', 'recipientBankAccount', 'recipientBankOwner', 'recipientQrImageUrl', 'invoiceEmail', 'invoiceUrl', 'invoiceLookupCode', 'month', 'paymentDate', 'title', 'description', 'totalAmount', 'amount', 'paidAmount', 'status', 'paymentMethod', 'attachmentUrl', 'note', 'createdAt', 'updatedAt'];
 
         const ids = (items) => items.filter(i => i && i.id).map(i => i.id);
         const nowIso = () => new Date().toISOString();
@@ -231,17 +246,16 @@ module.exports = async (req, res) => {
 
         await runInBatches(operations);
         await runInBatches(deleteOperations, 4);
-        
+        }, { maxWait: 10000, timeout: 60000 });
+
         return res.status(200).json({ success: true });
       }
 
       return res.status(400).json({ error: 'Invalid sync type' });
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ 
-        error: 'Failed to save data', 
-        details: error.message,
-        stack: error.stack 
+      return res.status(500).json({
+        error: 'Failed to save data'
       });
     } finally {
       await prisma.$disconnect().catch(() => {});
@@ -251,3 +265,4 @@ module.exports = async (req, res) => {
   await prisma.$disconnect().catch(() => {});
   return res.status(405).json({ error: 'Method not allowed' });
 };
+

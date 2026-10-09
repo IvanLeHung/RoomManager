@@ -192,6 +192,9 @@ model Supplier {
   defaultCategory String?
   phone       String?
   email       String?
+  invoiceEmail String?
+  invoiceUrl String?
+  invoiceLookupCode String?
   address     String?
   bankName    String?
   bankAccount String?
@@ -226,6 +229,9 @@ model ExpensePayment {
   recipientBankAccount String?
   recipientBankOwner String?
   recipientQrImageUrl String?
+  invoiceEmail String?
+  invoiceUrl String?
+  invoiceLookupCode String?
   month         String
   paymentDate   String
   title         String
