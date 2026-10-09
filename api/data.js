@@ -1,4 +1,3 @@
-const { createPrismaClient } = require('./lib/prisma');
 const { validateSnapshot } = require('./lib/snapshot');
 
 async function retryNeonQuery(fn, retries = 2) {
@@ -43,6 +42,14 @@ async function ensureDatabaseShape(prisma) {
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "adjustmentReason" TEXT',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "otherType" TEXT',
     'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "otherNote" TEXT',
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "isFinalized" BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE "Receipt" ADD COLUMN IF NOT EXISTS "paidDate" TEXT',
+    'ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "invoiceEmail" TEXT',
+    'ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "invoiceUrl" TEXT',
+    'ALTER TABLE "Supplier" ADD COLUMN IF NOT EXISTS "invoiceLookupCode" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "invoiceEmail" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "invoiceUrl" TEXT',
+    'ALTER TABLE "ExpensePayment" ADD COLUMN IF NOT EXISTS "invoiceLookupCode" TEXT',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "settlementMode" TEXT',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "depositForfeited" INTEGER',
     'ALTER TABLE "MoveOutReport" ADD COLUMN IF NOT EXISTS "monthlyRent" INTEGER',
@@ -80,6 +87,7 @@ async function ensureDatabaseShape(prisma) {
 }
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   if (!['GET', 'POST'].includes(req.method)) {
     res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ error: 'Method not allowed' });
@@ -91,6 +99,7 @@ module.exports = async (req, res) => {
   }
   let prisma;
   try {
+    const { createPrismaClient } = require('./lib/prisma');
     prisma = createPrismaClient();
   } catch (error) {
     console.error(error);
@@ -127,8 +136,8 @@ module.exports = async (req, res) => {
       });
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ 
-        error: 'Failed to fetch data' 
+      return res.status(500).json({
+        error: 'Failed to fetch data'
       });
     } finally {
       await prisma.$disconnect().catch(() => {});
@@ -137,7 +146,7 @@ module.exports = async (req, res) => {
 
   if (req.method === 'POST') {
     const { type, payload } = req.body;
-    
+
     try {
       if (type === 'full_sync') {
         await ensureDatabaseShape(prisma);
@@ -177,6 +186,8 @@ module.exports = async (req, res) => {
           const data = { type: 'monthly', rent: 0, fixedServices: 0, electricOld: 0, electricNew: 0, electricUsed: 0, electricAmount: 0, waterOld: 0, waterNew: 0, waterUsed: 0, waterAmount: 0, other: 0, total: 0, paidAmount: 0, debt: 0, status: 'Chưa thanh toán', createdAt: nowIso(), ...pick(item, receiptKeys) };
           ['rent', 'fixedServices', 'other', 'total', 'paidAmount', 'adjustmentDueAmount', 'adjustmentPaidAmount', 'debt'].forEach(k => { if (data[k] !== undefined) data[k] = toInt(data[k]); });
           ['electricOld', 'electricNew', 'electricUsed', 'electricAmount', 'waterOld', 'waterNew', 'waterUsed', 'waterAmount'].forEach(k => { data[k] = toFloat(data[k]); });
+          data.isFinalized = Boolean(item.isFinalized || item.savedAt);
+          if (item.paidDate !== undefined) data.paidDate = item.paidDate;
           return data;
         };
         const prepareMoveOut = (item) => {
@@ -236,15 +247,15 @@ module.exports = async (req, res) => {
         await runInBatches(operations);
         await runInBatches(deleteOperations, 4);
         }, { maxWait: 10000, timeout: 60000 });
-        
+
         return res.status(200).json({ success: true });
       }
 
       return res.status(400).json({ error: 'Invalid sync type' });
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ 
-        error: 'Failed to save data' 
+      return res.status(500).json({
+        error: 'Failed to save data'
       });
     } finally {
       await prisma.$disconnect().catch(() => {});
